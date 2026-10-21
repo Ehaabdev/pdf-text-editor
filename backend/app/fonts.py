@@ -37,7 +37,9 @@ def default_font_dirs() -> list[Path]:
     dirs = []
     if sys.platform == "win32":
         windir = os.environ.get("WINDIR", r"C:\Windows")
-        dirs += [Path(windir) / "Fonts", Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts"]
+        local = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft"
+        # FontCache holds Office's cloud fonts (Aptos, Word's default since 2023), once used.
+        dirs += [Path(windir) / "Fonts", local / "Windows" / "Fonts", local / "FontCache"]
     elif sys.platform == "darwin":
         dirs += [Path("/System/Library/Fonts"), Path("/Library/Fonts"), Path.home() / "Library" / "Fonts"]
     else:

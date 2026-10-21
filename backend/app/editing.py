@@ -102,6 +102,7 @@ class Word:
     x: float = 0.0  # new left edge
     shaped: list = field(default_factory=list)  # new glyphs: (gid, cluster, advance, dx, dy)
     choice: "FontChoice | None" = None
+    group: int = -1  # old words between the same two spaces share a group ("review" and ".")
 
     @property
     def is_new(self) -> bool:
@@ -154,6 +155,7 @@ def _split_words(text: str) -> list[tuple[str, str]]:
 def _old_words(line: Line, rp: Replay) -> list[Word]:
     words: list[Word] = []
     current: list[int] = []
+    groups = [0]
 
     def add(indices):
         text = "".join(line.glyph_text(i) for i in indices)
@@ -161,6 +163,7 @@ def _old_words(line: Line, rp: Replay) -> list[Word]:
         extents = [_extent(rp.glyphs[t]) for t in traces]
         chars = [line.glyphs[i].traces[0] for i in indices for _ in line.glyph_text(i)]
         words.append(Word(text, _script(text), traces, chars, min(e[0] for e in extents), max(e[1] for e in extents)))
+        words[-1].group = groups[0]
 
     def flush():
         if not current:
@@ -183,6 +186,7 @@ def _old_words(line: Line, rp: Replay) -> list[Word]:
             add([i])
         words[-1].sep = " "  # a space follows the group; its parts are joined
         current.clear()
+        groups[0] += 1
 
     for i in line.order:
         g = line.glyphs[i]
@@ -213,17 +217,21 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
     """How an old word's characters look: per character, the index of its look, and
     one glyph showing each look. A superscript "rd", small capitals or a red letter
     inside a word make more than one."""
-    font_of = {g.traces[0]: g.style.font for g in line.glyphs if g.traces}
+    style_of = {g.traces[0]: g.style for g in line.glyphs if g.traces}
 
     def same(a, b):
         da, db = rp.glyphs[a], rp.glyphs[b]
         pa, pb = da.paint, db.paint
+        sa, sb = style_of.get(a), style_of.get(b)
         size = pa.size * pa.trm2[3]
+        # Colors as the reader resolved them: one color can be written several ways.
+        strokes = pa.Tr in (1, 2, 5, 6) and pa.stroke != pb.stroke
         return (
-            font_of.get(a) == font_of.get(b)
+            (sa and sa.font, sa and sa.color) == (sb and sb.font, sb and sb.color)
             and abs(size - pb.size * pb.trm2[3]) < 0.05
             and abs(pa.Tz - pb.Tz) < 1e-3
-            and (pa.Tr, pa.fill, pa.stroke) == (pb.Tr, pb.fill, pb.stroke)
+            and pa.Tr == pb.Tr
+            and not strokes
             and abs(da.origin[1] - db.origin[1]) < 0.1 * size
         )
 
@@ -238,10 +246,13 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
 
 
 def _pieces(word: Word, line: Line, rp: Replay) -> list[Word]:
-    """A new word replacing one whose letters differ in look keeps those looks letter
-    by letter: each new letter takes the look of the old letter it lines up with ("3rd"
-    to "4th" keeps "th" raised), an added letter that of the letter before it. Each run
-    of one look becomes a piece of its own, joined to the next."""
+    """A new word replacing one old word whose letters differ in look keeps those looks.
+    Where the look changes between digits and letters ("3rd", "CO2"), a new word with
+    the same pattern keeps it run by run ("21st", "CO3"); any other word ("third") gets
+    the look of the old word's first letter. Otherwise (small capitals, one red letter)
+    each new letter takes the look of the old letter it lines up with, and an added
+    letter that of the letter before it. Each run of one look becomes a piece of its
+    own, joined to the next."""
     src = word.source
     looks, kinds = _looks(src, line, rp)
     if len(kinds) <= 1:
@@ -249,11 +260,26 @@ def _pieces(word: Word, line: Line, rp: Replay) -> list[Word]:
     if word.script == "R" or src.script == "R":
         # Arabic letters join, so the word can't be cut into separately drawn pieces.
         raise EditRejected("This Arabic word mixes sizes, colors or heights inside it, and changing it isn't possible yet.")
-    picked = [0] * len(word.text)
-    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, src.text, word.text, autojunk=False).get_opcodes():
-        for j in range(j1, j2):
-            i = i1 + (j - j1) * (i2 - i1) // (j2 - j1) if i2 > i1 else max(i1 - 1, 0)
-            picked[j] = looks[i]
+    runs, start = [], 0
+    for i in range(1, len(looks) + 1):
+        if i == len(looks) or looks[i] != looks[start]:
+            runs.append((src.text[start:i], looks[start]))
+            start = i
+    digits = lambda t: all(c.isdecimal() for c in t)
+    letters = lambda t: not any(c.isdecimal() for c in t)
+    at_digits = all(digits(t) or letters(t) for t, _ in runs) and all(
+        digits(a) != digits(b) for (a, _), (b, _) in zip(runs, runs[1:])
+    )
+    if at_digits:
+        new_runs = re.findall(r"\d+|\D+", word.text)
+        same_pattern = len(new_runs) == len(runs) and all(digits(a) == digits(b) for a, (b, _) in zip(new_runs, runs))
+        picked = [look for t, (_, look) in zip(new_runs, runs) for _ in t] if same_pattern else [looks[0]] * len(word.text)
+    else:
+        picked = [0] * len(word.text)
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, src.text, word.text, autojunk=False).get_opcodes():
+            for j in range(j1, j2):
+                i = i1 + (j - j1) * (i2 - i1) // (j2 - j1) if i2 > i1 else max(i1 - 1, 0)
+                picked[j] = looks[i]
     pieces, start = [], 0
     for j in range(1, len(word.text) + 1):
         if j == len(word.text) or picked[j] != picked[start]:
@@ -573,6 +599,46 @@ def _visual_order_standard(words: list[Word], rtl: bool) -> list[Word]:
     return split, visual
 
 
+def _pdf_rect(bbox, page: pymupdf.Page) -> pymupdf.Rect:
+    """A rectangle in displayed page space, in PDF coordinates (x as in the content stream)."""
+    r = pymupdf.Rect(bbox) * (page.derotation_matrix * ~page.transformation_matrix)
+    r.normalize()
+    return r
+
+
+def _room(line: Line, lines: list[Line], page: pymupdf.Page, column, u0: float, u1: float) -> tuple[float, float]:
+    """How far the line may reach (PDF x). A table cell's borders are firm. Without
+    one, the column edges are only the page's outermost text, which on a page of short
+    lines is the longest of them; side margins are then taken to mirror each other,
+    as in most documents, so a short line can still grow."""
+    left, right = column
+    paper = _pdf_rect(page.rect, page)
+    edges = [_pdf_rect((l.column[0], l.bbox[1], l.column[1], l.bbox[3]), page) for l in lines if l.column]
+    if edges:
+        text_left, text_right = min(r.x0 for r in edges), max(r.x1 for r in edges)
+        if right > text_right - 0.5:
+            right = max(right, paper.x1 - (text_left - paper.x0))
+        if left < text_left + 0.5:
+            left = min(left, paper.x0 + (paper.x1 - text_right))
+    return min(left, u0) - 0.5, max(right, u1) + 0.5
+
+
+def _collides(line: Line, lines: list[Line], page: pymupdf.Page, old: tuple[float, float], new: tuple[float, float]) -> bool:
+    """Whether the new extent (PDF x) reaches text or an image beside the line that the
+    old one stayed clear of: a second column, a value on the same row, a picture."""
+    me = _pdf_rect(line.bbox, page)
+    others = [_pdf_rect(l.bbox, page) for l in lines if l is not line]
+    others += [_pdf_rect(i["bbox"], page) for i in page.get_image_info()]
+    for r in others:
+        if min(r.y1, me.y1) - max(r.y0, me.y0) <= 0.3 * min(r.height, me.height):
+            continue  # another row
+        if r.x0 < old[1] and r.x1 > old[0]:
+            continue  # beside the old text already (underneath it, or a background)
+        if r.x0 < new[1] + 1 and r.x1 > new[0] - 1:
+            return True
+    return False
+
+
 def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
     """Left and right ink edges (PDF x) of the nearby lines in the same column: the
     lines just above and below that overlap this one, i.e. probably its paragraph."""
@@ -677,11 +743,15 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     new_texts = [w for w, _ in new_pairs]
     words: list[Word] = []
     opcodes = difflib.SequenceMatcher(None, old_texts, new_texts, autojunk=False).get_opcodes()
-    tangled = any(b.u0 < a.u1 - 0.5 for a, b in zip(old_visual, old_visual[1:]))
-    if redraw_all or tangled or line.kashida:
-        opcodes = [("replace", 0, len(old_texts), 0, len(new_texts))]
+    # Words drawn over each other (Word puts an Arabic word's bracket on its far side)
+    # can't be laid out word by word. Kerning that tucks "." under "w" doesn't count.
+    tangled = any(
+        b.u0 < a.u1 - (0.15 * line.style.size if a.group == b.group else 0.5) for a, b in zip(old_visual, old_visual[1:])
+    )
+    # Some lines are drawn again in full, unchanged words too.
+    redraw = redraw_all or tangled or line.kashida
     for tag, i1, i2, j1, j2 in opcodes:
-        if tag == "equal":
+        if tag == "equal" and not redraw:
             for k in range(i2 - i1):
                 old[i1 + k].sep = new_pairs[j1 + k][1]
                 words.append(old[i1 + k])
@@ -689,9 +759,9 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         for j in range(j1, j2):
             source = old[min(i1 + (j - j1), i2 - 1)] if i2 > i1 else (old[i1 - 1] if i1 > 0 else old[0])
             word = Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1])
-            # A word replacing another keeps its letters' looks; an added word takes its
-            # neighbour's main look.
-            words += _pieces(word, line, rp) if i2 > i1 else [word]
+            # A word that replaces exactly one old word keeps its letters' looks; others
+            # (two words for one, an added word) take their source's main look.
+            words += _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]
     for k, w in enumerate(words):
         w.logical = k
     if not words:
@@ -766,10 +836,14 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     for w, gap in zip(visual, gaps + [0.0]):
         w.x = x
         x += w.width + gap
-    room = (min(column[0], u0) - 0.5, max(column[1], u1) + 0.5)
-    if visual[0].x < room[0] or visual[-1].x + visual[-1].width > room[1]:
+    room = _room(line, all_lines, page, column, u0, u1)
+    nx0, nx1 = visual[0].x, visual[-1].x + visual[-1].width
+    if nx0 < room[0] or nx1 > room[1]:
         log.info("too long: %s", layout_facts())
         raise EditRejected("The new text is too long to fit on this line. Shorten it a little.")
+    if _collides(line, all_lines, page, (u0, u1), (nx0, nx1)):
+        log.info("collides: %s", layout_facts())
+        raise EditRejected("The new text would run into other text on the page. Shorten it a little.")
 
     warnings = list(fonts.warnings)
     if line.kashida:

@@ -122,6 +122,38 @@ def test_deleting_all_text_removes_the_line():
     assert find_line(result.pdf, "Report ID") is None
 
 
+def _arial_page(rows) -> bytes:
+    """A page with a few short lines of 12 pt Arial: (x, baseline, text) each."""
+    doc = pymupdf.open()
+    font = pymupdf.Font(fontbuffer=Path(library().find("ArialMT").path).read_bytes())
+    page = doc.new_page(width=595, height=842)
+    tw = pymupdf.TextWriter(page.rect)
+    for x, y, text in rows:
+        tw.append((x, y), text, font=font, fontsize=12)
+    tw.write_text(page)
+    return doc.tobytes(garbage=3, deflate=True)
+
+
+@needs_fonts
+def test_a_short_line_on_a_sparse_page_can_grow():
+    """With no long line to show the margin, the right margin mirrors the left one."""
+    src = _arial_page([(72, 100, "Short note."), (72, 118, "Second line.")])
+    page_no, line = find_line(src, "Short note.")
+    longer = "Short note, now a good deal longer than it was before."
+    result = replace_line(src, page_no, line.id, line.text, longer)
+    assert comparable(find_line(result.pdf, longer)[1].text) == comparable(longer)
+
+
+@needs_fonts
+def test_text_that_would_run_into_its_neighbour_is_refused():
+    src = _arial_page([(72, 100, "Total:"), (300, 100, "45,000 dollars"), (72, 118, "Second line.")])
+    page_no, line = find_line(src, "Total:")
+    assert comparable(line.text) == "Total:"  # the value is a separate piece of text
+    with pytest.raises(EditRejected, match="run into other text"):
+        replace_line(src, page_no, line.id, line.text, "Total amount owed by the customer this quarter:")
+    replace_line(src, page_no, line.id, line.text, "Total due:")  # a little longer still fits
+
+
 def _letters_near(src: bytes, page_no: int, line, word: str):
     """(size, baseline) of each letter of a word on the line, left to right."""
     page = pymupdf.open("pdf", src)[page_no]
@@ -143,6 +175,8 @@ def _letters_near(src: bytes, page_no: int, line, word: str):
         ("3rd", "21st", [0, 0, 1, 1]),  # "st" stays raised and small
         ("CO2", "CO3", [0, 1, 2]),  # the "3" stays lowered
         ("EXECUTIVE", "EXECUTIVES", [0, 1, 1, 1, 1, 1, 1, 1, 1, 1]),  # small capitals
+        ("3rd", "third", [0] * 5),  # a spelled-out word isn't half raised
+        ("3rd", "third best", [0] * 9),  # two words for one: neither borrows the raised letters
     ],
 )
 def test_letters_keep_their_own_size_and_height(old, new, like):
@@ -150,8 +184,9 @@ def test_letters_keep_their_own_size_and_height(old, new, like):
     src = pdf_path("word", "english-styles").read_bytes()
     page_no, line = find_line(src, old)
     before = _letters_near(src, page_no, line, old)
-    result = replace_line(src, page_no, line.id, line.text, line.text.replace(old, new))
-    after = _letters_near(result.pdf, page_no, find_line(result.pdf, new)[1], new)
+    changed = line.text.replace(old, new)
+    result = replace_line(src, page_no, line.id, line.text, changed)
+    after = _letters_near(result.pdf, page_no, find_line(result.pdf, changed)[1], new.replace(" ", ""))
     assert after == [before[i] for i in like]
 
 
