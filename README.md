@@ -10,8 +10,8 @@ Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public 
 |---|---|---|
 | 1 | Upload, view pages, download | Done |
 | 2 | Detect every text line with its font, size, color and position | Done |
-| 3 | Edit text in place, matching the original style | Next |
-| 4 | Delete text | |
+| 3 | Edit text in place, matching the original style | Done |
+| 4 | Delete text | Next (an empty edit already removes a line) |
 | 5 | Add new text | |
 | 6 | Undo, before/after view, several edits | |
 | 7 | Public launch: limits, password PDFs, deploy | |
@@ -34,21 +34,43 @@ Files not made by Word are read the way the standard Unicode bidi rules lay text
 
 `backend/tests/test_textlayout.py` checks against an answer key, the made-up documents saved as PDF by Word and printed to PDF by Chrome. Every line must be typed text, and every paragraph must be found again in order. A consistency check also runs on any PDF. It confirms the display text lays out like the page, but it can't catch a wrong direction. So for private samples, a report (`samples/detection-report.txt`) lists every line whose direction was a guess.
 
-## Edit accuracy
+## Editing
 
-`backend/tests/test_edit_fidelity.py` checks that an edit is invisible. Every other line must keep its text. The edited line must keep its font, size, color and baseline. Not one pixel may change outside the edited line, checked in MuPDF and in PDFium (the engine inside Chrome). Links must survive.
+`backend/app/editing.py` changes one line at a time:
 
-The editing approach already passes these checks on a real Word PDF, for justified text and for text on a background image. Known gaps for step 3, each tracked by a test that will start failing once it's fixed:
+1. **Replay.** The page's drawing instructions are replayed (`pdfcontent.py`), and every glyph must land where MuPDF puts it. If not, the page uses something not modelled yet and the edit is refused.
+2. **Keep unchanged words.** Words that didn't change keep their original glyphs. Changed words are shaped with the installed font (`fonts.py`, HarfBuzz), with the line's own letter spacing. Each new letter keeps the look of the old letter it replaces, so superscripts ("3rd"), subscripts ("CO2") and small capitals stay as they were. The font must match by its exact name: a missing bold or italic is never swapped for the regular weight.
+3. **Choose the font.** The PDF's embedded copy of the font is reused only when it has every glyph needed, drawn identically, with correct copy/search labels. Otherwise the installed font's glyphs are embedded.
+4. **Lay out.** The line keeps its alignment: left, right, centered, or justified (detected from the paragraph's other lines). Word documents follow Word's ordering of mixed Arabic and English. Other PDFs follow the Unicode bidi algorithm (`bidi.py`).
+5. **Check before accepting.** The edit is refused, and nothing changes, unless:
+   - the line reads back as typed;
+   - the new text is visible (it leaves ink, in both engines);
+   - a second reader (PDFium) sees the new letters;
+   - nothing outside the line changes by a single pixel, in MuPDF and PDFium;
+   - no other page changes.
 
-- Links on the edited line are removed.
-- With some Word fonts, spaces in the new text come back as non-breaking spaces when the text is copied.
-- A re-justified line can end about 0.5pt short of the original right edge.
-- The removal step rewrites the whole page's text with tiny rounding changes (about 0.00003pt). That is invisible, but editing only the target line's instructions would leave the rest byte-for-byte identical. Doing so may also fix the first issue and keep the text order.
-- Fonts trimmed to the letters a document uses (subsets) can't draw new letters. A font library and a clear warning are needed when the exact font isn't available.
+Each edit is a new version, so Undo goes back.
+
+Known limits:
+- one line at a time, with no reflow into the next line;
+- text too long for its line is refused;
+- kashida-justified lines come back justified with spaces, with a warning;
+- an Arabic word that mixes sizes or colors inside it can't be changed;
+- fonts whose licence forbids embedding can't get new letters;
+- lines marked uncertain need their unreadable letters retyped;
+- rotated text and text inside embedded objects can't be edited yet.
+
+**Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). Without it, only letters already in the PDF can be reused. If the installed font isn't the exact version in the PDF, the edit goes ahead with a warning. Office's cloud fonts (Aptos, the default in recent Word) aren't regular installed fonts and aren't found.
+
+### Edit accuracy
+
+`backend/tests/test_edit_fidelity.py` measures edits independently of the editor, with MuPDF's own text extraction and pixels in MuPDF and PDFium. `backend/tests/test_editing.py` runs 20 realistic edits on the Word and Chrome test documents, and pins the ones that must be refused. It also runs many edits in a row on the same file, and edits words with superscripts, subscripts and small capitals.
+
+Redrawing every word of every line with its own text, as a stress test, gives a median ink agreement of 0.93 with the original (1 px slack). Arabic lines score lowest: HarfBuzz spaces the letters slightly differently from Word, while the text stays correct. Normal edits redraw only the changed words.
 
 ## How it works
 
-- `backend/`: Python (FastAPI + PyMuPDF). Stores uploads, renders page images, and will do all PDF editing. Page images are rendered by the same engine that edits the file, so the preview matches the result.
+- `backend/`: Python. FastAPI serves the API, and PyMuPDF renders pages and reads text. pikepdf, HarfBuzz and fontTools do the editing. Page images are rendered by the engine that reads the file, so the preview matches it.
 - `frontend/`: React + Vite website. Shows the pages and the editing tools.
 
 Uploaded files live in `backend/data/<random id>/` and are deleted an hour after they were last used.

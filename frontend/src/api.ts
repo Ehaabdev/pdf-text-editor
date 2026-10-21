@@ -6,6 +6,7 @@ export type DocInfo = {
   /** Increases with every change and is never reused, so it can key cached images. */
   revision: number;
   edited: boolean;
+  canUndo: boolean;
   pageCount: number;
   pages: PageSize[];
   isSigned: boolean;
@@ -114,6 +115,34 @@ export function getLines(doc: DocInfo, pageNo: number): Promise<PageLines> {
     linesCache.set(key, p);
   }
   return p;
+}
+
+export type EditOutcome = { document: DocInfo; warnings: string[] };
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0);
+  }
+  if (!res.ok) throw await errorFrom(res);
+  return res.json();
+}
+
+/** Replace the text of one line. The server refuses if the document or the line changed. */
+export function editLine(doc: DocInfo, page: number, line: TextLine, newText: string): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/edits`, {
+    revision: doc.revision,
+    page,
+    lineId: line.id,
+    oldText: line.text,
+    newText,
+  });
+}
+
+export function undoEdit(doc: DocInfo): Promise<DocInfo> {
+  return postJson(`/api/documents/${doc.id}/undo`, { revision: doc.revision });
 }
 
 export function downloadUrl(doc: DocInfo): string {

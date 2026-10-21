@@ -27,6 +27,14 @@ class DocumentNotFound(Exception):
     pass
 
 
+class StaleRevision(Exception):
+    """The document changed since the client last saw it (another tab, a double click)."""
+
+
+class NothingToUndo(Exception):
+    pass
+
+
 @dataclass
 class DocumentMeta:
     id: str
@@ -83,6 +91,38 @@ class DocumentStore:
 
     def current_path(self, meta: DocumentMeta) -> Path:
         return self._dir(meta.id) / f"v{meta.version}.pdf"
+
+    def save_version(self, doc_id: str, expected_revision: int, data: bytes) -> DocumentMeta:
+        """Store an edited copy as the new current version. Versions after the current
+        one (undone edits) are dropped. Fails if someone changed the document meanwhile."""
+        with self._lock:
+            meta = self._read_meta(doc_id)
+            if meta.revision != expected_revision:
+                raise StaleRevision(doc_id)
+            folder = self._dir(doc_id)
+            for old in folder.glob("v*.pdf"):
+                if int(old.stem[1:]) > meta.version:
+                    old.unlink(missing_ok=True)
+            meta.version += 1
+            meta.revision += 1
+            meta.last_access = time.time()
+            (folder / f"v{meta.version}.pdf").write_bytes(data)
+            self._write_meta(meta)
+            return meta
+
+    def undo(self, doc_id: str, expected_revision: int) -> DocumentMeta:
+        """Go back to the previous version. The undone version is kept until a new edit."""
+        with self._lock:
+            meta = self._read_meta(doc_id)
+            if meta.revision != expected_revision:
+                raise StaleRevision(doc_id)
+            if meta.version == 0:
+                raise NothingToUndo(doc_id)
+            meta.version -= 1
+            meta.revision += 1
+            meta.last_access = time.time()
+            self._write_meta(meta)
+            return meta
 
     def delete(self, doc_id: str) -> None:
         folder = self._dir(doc_id)

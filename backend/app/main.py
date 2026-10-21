@@ -5,14 +5,16 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import PurePath
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
-from .storage import DocumentMeta, DocumentNotFound, DocumentStore
+from .editing import EditRejected, replace_line
+from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NothingToUndo, StaleRevision
 from .textlayout import line_json, lines_for
 
 # Arabic and other non-Latin text must never crash logging on a Windows console.
@@ -82,6 +84,7 @@ def _document_json(meta: DocumentMeta, info) -> dict:
         "name": meta.name,
         "revision": meta.revision,
         "edited": meta.version > 0,
+        "canUndo": meta.version > 0,
         "pageCount": info.page_count,
         "pages": [{"width": p.width, "height": p.height} for p in info.pages],
         "isSigned": info.is_signed,
@@ -140,6 +143,54 @@ def page_text_lines(doc_id: str, page_no: int):
         {"width": width, "height": height, "lines": [line_json(l) for l in lines]},
         headers={"Cache-Control": "private, max-age=3600"},
     )
+
+
+class EditRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)
+    oldText: str = Field(max_length=5000)
+    newText: str = Field(max_length=5000)
+
+
+class RevisionRequest(BaseModel):
+    revision: int
+
+
+_STALE = "This document changed in another tab or window. Reload the page to see the latest version."
+
+
+@app.post("/api/documents/{doc_id}/edits")
+async def edit_line(doc_id: str, edit: EditRequest):
+    meta = _get_meta(doc_id)
+    if meta.revision != edit.revision:
+        raise HTTPException(409, _STALE)
+    if any(c in edit.newText for c in ("\n", "\r", "\u2028", "\u2029")):
+        raise HTTPException(422, "A line can't contain a line break.")
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(replace_line, src, edit.page, edit.lineId, edit.oldText, edit.newText)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    if result.pdf == src:
+        return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+
+
+@app.post("/api/documents/{doc_id}/undo")
+def undo_edit(doc_id: str, body: RevisionRequest):
+    _get_meta(doc_id)
+    try:
+        meta = store.undo(doc_id, body.revision)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    except NothingToUndo:
+        raise HTTPException(409, "There is nothing to undo.")
+    return _document_json(meta, describe_file(store.current_path(meta)))
 
 
 @app.get("/api/documents/{doc_id}/download")

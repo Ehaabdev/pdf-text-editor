@@ -657,3 +657,77 @@ body {
 .line-others li + li {
   margin-top: 2px;
 }
+
+/* Editing ------------------------------------------------------------------ */
+.line-edit {
+  display: block;
+  width: 100%;
+  margin: 6px 0 8px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 1.125rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1.5px solid var(--npb);
+  border-radius: 8px;
+  resize: vertical;
+  text-align: start;
+}
+
+.line-edit:focus {
+  outline: 3px solid var(--npb-wash);
+  outline-offset: 0;
+}
+
+.edit-note {
+  margin: 0 0 10px;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.line-panel .error {
+  margin: 0 0 4px;
+  font-size: 0.9375rem;
+}
+
+.viewer-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 460px);
+  padding: 6px 6px 6px 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-inline-start: 4px solid var(--npb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px -10px rgba(22, 34, 46, 0.4);
+}
+
+.viewer-notice p {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.viewer-notice--warning {
+  border-inline-start-color: var(--caution-edge);
+}
+
+.viewer-notice--error {
+  border-inline-start-color: var(--red);
+}
+
+@media (max-width: 600px) {
+  .viewer-notice {
+    width: calc(100% - 2 * var(--gutter));
+    margin-inline: var(--gutter);
+  }
+}

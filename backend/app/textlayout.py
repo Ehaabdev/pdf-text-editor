@@ -70,6 +70,7 @@ class Glyph:
     direction: tuple[float, float]  # text direction, unrotated page space
     seq: int  # drawing order
     synthetic: bool = False  # a space inferred from a gap, not drawn
+    traces: tuple[int, ...] = ()  # the drawn glyphs this stands for (itself and attached marks)
     drawn_as: str | None = None  # for brackets: the shape actually drawn, when known
     verified: bool | None = None  # Arabic glyph checked against the font's own table
     corrected: bool = False  # the PDF's label was wrong and was replaced from the font
@@ -109,6 +110,8 @@ class Line:
     kashida: bool = False  # stretched with tatweel glyphs (removed from the text)
     direction_basis: str = "script"  # what decided the direction: script, column, majority, bracket, paragraph
     uncertain: bool = False  # some characters could not be confirmed
+    members: tuple[int, ...] = ()  # every drawn glyph of the line, hidden ones included
+    column: tuple[float, float] | None = None  # left and right edge of its column or cell
 
     def __post_init__(self):
         self._run_of = {i: r for r in self.runs for i in r.glyphs}
@@ -300,8 +303,12 @@ def _check_glyph(g: Glyph, table: dict[int, frozenset[str]], space_gids: set[int
         if space_gids and g.gid not in space_gids and width < 0.5:
             g.text, g.suspect = "", True
         return
-    if g.text.isspace():
-        g.verified = True if " " in chars else g.verified
+    if g.text.isspace() and " " in chars:
+        # The font's own space glyph. One glyph serves both the space and the no-break
+        # space; a label saying "no-break" is the producer's guess. A plain space wins.
+        g.text = " " + g.text[1:]
+        g.verified = True
+        return
     if chars is None:
         if any(_is_arabic_letter(c) for c in g.text):
             g.verified = False
@@ -325,8 +332,10 @@ def _read_glyphs(page: pymupdf.Page) -> list[Glyph]:
     tables = _font_tables(page)
     glyphs: list[Glyph] = []
     seq = 0
+    trace = 0  # index among all glyphs drawn on the page, as pdfcontent.replay counts them
     for span in page.get_texttrace():
         if span["type"] == 3 or span.get("opacity", 1) == 0:  # invisible text
+            trace += sum(1 for c in span["chars"] if c[1] != -1)
             continue
         style = _style(span)
         dx, dy = span["dir"]
@@ -338,8 +347,10 @@ def _read_glyphs(page: pymupdf.Page) -> list[Glyph]:
             if gid == -1 and len(glyphs) > start:
                 glyphs[-1].text += ch  # another character of the same glyph
                 continue
-            glyphs.append(Glyph(ch, gid, tuple(bbox), tuple(origin), style, direction, seq))
+            glyphs.append(Glyph(ch, gid, tuple(bbox), tuple(origin), style, direction, seq, traces=(trace,) if gid != -1 else ()))
             seq += 1
+            if gid != -1:
+                trace += 1
         for g in glyphs[start:]:
             # Chrome labels a vowel-mark glyph " َّ": a space carrying the marks.
             if len(g.text) > 1 and g.text[0].isspace() and all(unicodedata.combining(c) for c in g.text[1:]):
@@ -525,6 +536,7 @@ def _attach_marks(glyphs: list[Glyph], proj) -> list[Glyph]:
         else:
             best = min(letters, key=lambda b: min(abs(e - u) for e in _extent(b, proj)))
         _add_mark(best, m.text, u, proj)
+        best.traces += m.traces
     return [g for g in glyphs if not g.is_mark]
 
 
@@ -874,10 +886,14 @@ def _continue_paragraph_direction(lines: list[Line]) -> None:
             _set_direction(line, True)
 
 
-def page_lines(page: pymupdf.Page) -> list[Line]:
-    meta = page.parent.metadata or {}
+def made_by_word(doc: pymupdf.Document) -> bool:
+    meta = doc.metadata or {}
     made_by = f"{meta.get('creator', '')} {meta.get('producer', '')}".lower()
-    word_made = "microsoft" in made_by and "word" in made_by
+    return "microsoft" in made_by and "word" in made_by
+
+
+def page_lines(page: pymupdf.Page) -> list[Line]:
+    word_made = made_by_word(page.parent)
     rules = _vertical_rules(page)
     pieces = _merge_small_pieces(_rows(_read_glyphs(page), rules))
     bounds = _column_bounds(pieces, rules)
@@ -886,6 +902,7 @@ def page_lines(page: pymupdf.Page) -> list[Line]:
         proj = _frame(piece[0].direction)
         where = bounds.get(id(piece))
         suspect = any(g.suspect for g in piece)
+        members = tuple(sorted({t for g in piece for t in g.traces}))
         row = _attach_marks([g for g in piece if g.text], proj)
         row.sort(key=lambda g: _extent(g, proj)[0])
         row = _drop_hidden_spaces(row, proj)
@@ -916,6 +933,8 @@ def page_lines(page: pymupdf.Page) -> list[Line]:
         line.spans = _spans(line)
         line.kashida = kashida
         line.direction_basis = basis
+        line.members = members
+        line.column = (where[0], where[1]) if where else None
         # The PDF's labels proved wrong in this line and some glyphs could not be
         # checked against the font, or a glyph's real character is unknown: the text
         # may still contain mistakes.
