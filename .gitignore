@@ -1,0 +1,27 @@
+# Real user PDFs — never commit (they contain personal and business data)
+samples/
+*.pdf
+!backend/tests/fixtures/*.pdf
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Uploaded documents at runtime
+backend/data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env*.local
+
+# Browser test output
+.playwright-mcp/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
