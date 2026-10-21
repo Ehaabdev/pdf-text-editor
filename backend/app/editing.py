@@ -18,7 +18,7 @@ import io
 import logging
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pikepdf
@@ -88,6 +88,7 @@ class Word:
     script: str
     # An unchanged word from the page:
     traces: list[int] = field(default_factory=list)  # its drawn glyphs
+    char_traces: list[int] = field(default_factory=list)  # the glyph drawing each character
     u0: float = 0.0  # left and right edge on the page (PDF x)
     u1: float = 0.0
     visual: int = -1  # position among the old line's words, left to right
@@ -110,6 +111,13 @@ class Word:
 _BRACKET = set("()[]{}<>«»‹›")
 
 
+def _edge(ch: str) -> bool:
+    """Punctuation that separates from a word's edge: in mixed Arabic/English text it
+    takes the line's direction, not the word's (Word puts "الاسم:" in an English line
+    as Arabic word + colon on the right). Number signs stay: "+966", "-10", "15%"."""
+    return ch in _BRACKET or unicodedata.bidirectional(ch) in ("CS", "ON", "S", "B")
+
+
 def _split_words(text: str) -> list[tuple[str, str]]:
     """(word, separator after it). Words also split where Arabic meets Latin letters,
     and a bracket at either end is its own word: in Arabic text Word draws it on the
@@ -121,11 +129,11 @@ def _split_words(text: str) -> list[tuple[str, str]]:
         if not word:
             continue
         pieces = []
-        while word and word[0] in _BRACKET and len(word) > 1:
+        while word and _edge(word[0]) and len(word) > 1:
             pieces.append(word[0])
             word = word[1:]
         tail = []
-        while word and word[-1] in _BRACKET and len(word) > 1:
+        while word and _edge(word[-1]) and len(word) > 1:
             tail.insert(0, word[-1])
             word = word[:-1]
         current = word[0]
@@ -151,17 +159,22 @@ def _old_words(line: Line, rp: Replay) -> list[Word]:
         text = "".join(line.glyph_text(i) for i in indices)
         traces = [t for i in indices for t in line.glyphs[i].traces]
         extents = [_extent(rp.glyphs[t]) for t in traces]
-        words.append(Word(text, _script(text), traces, min(e[0] for e in extents), max(e[1] for e in extents)))
+        chars = [line.glyphs[i].traces[0] for i in indices for _ in line.glyph_text(i)]
+        words.append(Word(text, _script(text), traces, chars, min(e[0] for e in extents), max(e[1] for e in extents)))
 
     def flush():
         if not current:
             return
         # Brackets at either end are words of their own, as in _split_words.
+        def edge(i):
+            t = line.glyph_text(i)
+            return len(t) == 1 and _edge(t)
+
         head = []
-        while len(current) > 1 and line.glyph_text(current[0]) in _BRACKET:
+        while len(current) > 1 and edge(current[0]):
             head.append(current.pop(0))
         tail = []
-        while len(current) > 1 and line.glyph_text(current[-1]) in _BRACKET:
+        while len(current) > 1 and edge(current[-1]):
             tail.insert(0, current.pop())
         for i in head:
             add([i])
@@ -196,6 +209,62 @@ def _old_words(line: Line, rp: Replay) -> list[Word]:
     return words
 
 
+def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
+    """How an old word's characters look: per character, the index of its look, and
+    one glyph showing each look. A superscript "rd", small capitals or a red letter
+    inside a word make more than one."""
+    font_of = {g.traces[0]: g.style.font for g in line.glyphs if g.traces}
+
+    def same(a, b):
+        da, db = rp.glyphs[a], rp.glyphs[b]
+        pa, pb = da.paint, db.paint
+        size = pa.size * pa.trm2[3]
+        return (
+            font_of.get(a) == font_of.get(b)
+            and abs(size - pb.size * pb.trm2[3]) < 0.05
+            and abs(pa.Tz - pb.Tz) < 1e-3
+            and (pa.Tr, pa.fill, pa.stroke) == (pb.Tr, pb.fill, pb.stroke)
+            and abs(da.origin[1] - db.origin[1]) < 0.1 * size
+        )
+
+    looks, kinds = [], []
+    for t in word.char_traces:
+        k = next((n for n, r in enumerate(kinds) if same(r, t)), None)
+        if k is None:
+            kinds.append(t)
+            k = len(kinds) - 1
+        looks.append(k)
+    return looks, kinds
+
+
+def _pieces(word: Word, line: Line, rp: Replay) -> list[Word]:
+    """A new word replacing one whose letters differ in look keeps those looks letter
+    by letter: each new letter takes the look of the old letter it lines up with ("3rd"
+    to "4th" keeps "th" raised), an added letter that of the letter before it. Each run
+    of one look becomes a piece of its own, joined to the next."""
+    src = word.source
+    looks, kinds = _looks(src, line, rp)
+    if len(kinds) <= 1:
+        return [word]
+    if word.script == "R" or src.script == "R":
+        # Arabic letters join, so the word can't be cut into separately drawn pieces.
+        raise EditRejected("This Arabic word mixes sizes, colors or heights inside it, and changing it isn't possible yet.")
+    picked = [0] * len(word.text)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, src.text, word.text, autojunk=False).get_opcodes():
+        for j in range(j1, j2):
+            i = i1 + (j - j1) * (i2 - i1) // (j2 - j1) if i2 > i1 else max(i1 - 1, 0)
+            picked[j] = looks[i]
+    pieces, start = [], 0
+    for j in range(1, len(word.text) + 1):
+        if j == len(word.text) or picked[j] != picked[start]:
+            t = kinds[picked[start]]
+            source = replace(src, traces=[t] + [x for x in src.traces if x != t])
+            text = word.text[start:j]
+            pieces.append(Word(text, _script(text), source=source, sep=word.sep if j == len(word.text) else ""))
+            start = j
+    return pieces
+
+
 def _extent(g: DrawnGlyph) -> tuple[float, float]:
     width = g.advance / 1000 * g.paint.size * g.paint.Tz * g.paint.trm2[0]
     return g.origin[0], g.origin[0] + max(width, 0.0)
@@ -218,10 +287,30 @@ def _base_name(font_dict) -> str:
 
 
 class Fonts:
-    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool):
-        self.pdf, self.page_index, self.rp, self.word_made = pdf, page_index, rp, word_made
+    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line):
+        self.pdf, self.page_index, self.rp, self.word_made, self.line = pdf, page_index, rp, word_made, line
         self.embedded: dict[str, fontlib.EmbeddedFont] = {}
         self.warnings: list[str] = []
+        self.checked: set[str] = set()
+
+    def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
+        """Warn when the installed font draws the line's existing glyphs differently
+        from the copy in the PDF: another version, or not the same font at all."""
+        if font_name in self.checked:
+            return
+        self.checked.add(font_name)
+        gids = {g.gid for g in self.line.glyphs if g.style.font == font_name and g.gid > 0 and not g.is_space}
+        compared = differ = 0
+        for resource in self._resources_named(font_name, ""):
+            emb = self._embedded(resource)
+            for gid in gids:
+                if emb.has_drawn_glyph(gid):
+                    compared += 1
+                    differ += not emb.has_same_glyph(gid, full)
+        if compared and differ:
+            self.warnings.append(
+                f"The installed {font_name} isn't exactly the version in this PDF, so the changed words may look slightly different."
+            )
 
     def _resources_named(self, name: str, prefer: str) -> list[str]:
         names = [r for r, info in self.rp.fonts.items() if info is not None and _base_name(info.obj) == name]
@@ -241,6 +330,7 @@ class Fonts:
         needs_shaping = word.script == "R" or any(unicodedata.combining(c) for c in text)
 
         if full is not None:
+            self._check_same_font(font_name, full)
             shaped = full.shape(text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
             missing = [text[c] for gid, c, *_ in shaped if gid == 0]
             if missing:
@@ -291,7 +381,7 @@ class Fonts:
         info, emb = self.rp.fonts[resource], self._embedded(resource)
         if emb.tt is None:
             return None
-        texts = _glyph_texts(text, shaped)
+        texts = _glyph_texts(text, shaped, full)
         codes = []
         for (gid, cluster, *_), wanted in zip(shaped, texts):
             same = emb.has_same_glyph(gid, full) or (full.glyph_signature(gid) == ("empty",) and gid < len(emb.tt.getGlyphOrder()))
@@ -316,7 +406,12 @@ class Fonts:
     def resource_for(self, full: "fontlib.FullFont", used: dict[int, str], cache: dict) -> str:
         key = full.entry
         if key not in cache:
-            font = fontlib.embed_font(self.pdf, full, used)
+            try:
+                font = fontlib.embed_font(self.pdf, full, used)
+            except fontlib.EmbeddingNotAllowed:
+                raise EditRejected(
+                    f"The licence of the font {full.entry.ps_name} doesn't allow putting it in a PDF, so new letters can't be added in it."
+                )
             cache[key] = str(pikepdf.Page(self.pdf.pages[self.page_index]).add_resource(font, pikepdf.Name.Font, prefix="FE"))
         return cache[key]
 
@@ -329,21 +424,43 @@ def _winansi(ch: str) -> int | None:
     return b[0] if len(b) == 1 else None
 
 
-def _glyph_texts(text: str, shaped) -> list[str]:
+def _glyph_texts(text: str, shaped, full: "fontlib.FullFont | None" = None) -> list[str]:
     """For copy and search: the text each new glyph stands for. A ligature gets all its
-    letters; a mark drawn as its own glyph gets just the mark."""
+    letters; a vowel mark drawn as its own glyph gets just the mark. In right-to-left
+    output a mark's glyph comes before its letter's, so glyphs are told apart by what
+    the font says they are (or, failing that, marks have no advance)."""
     clusters = sorted({c for _, c, *_ in shaped})
     span = {c: text[c : (clusters[i + 1] if i + 1 < len(clusters) else len(text))] for i, c in enumerate(clusters)}
-    out, used = [], set()
-    for gid, c, *_ in shaped:
+    by_gid = full.char_of_gid() if full is not None else {}
+    out: list[str] = [""] * len(shaped)
+    for c in clusters:
+        members = [k for k, g in enumerate(shaped) if g[1] == c]
         piece = span[c]
-        if c not in used:
-            used.add(c)
-            out.append(piece if len(piece) == 1 or not any(unicodedata.combining(x) for x in piece) else "".join(x for x in piece if not unicodedata.combining(x)) or piece)
-        else:
-            marks = "".join(x for x in piece if unicodedata.combining(x))
-            out.append(marks[:1] or piece[:1])
-    return out
+        marks = [ch for ch in piece if unicodedata.combining(ch)]
+        letters = "".join(ch for ch in piece if not unicodedata.combining(ch))
+
+        def is_mark(k):
+            ch = by_gid.get(shaped[k][0])
+            if ch is not None:
+                return bool(unicodedata.combining(ch))
+            return shaped[k][2] == 0 and len(members) > 1
+
+        mark_glyphs = [k for k in members if is_mark(k)]
+        base_glyphs = [k for k in members if k not in mark_glyphs]
+        for k in mark_glyphs:
+            ch = by_gid.get(shaped[k][0])
+            pick = ch if ch in marks else (marks[0] if marks else "")
+            if pick in marks:
+                marks.remove(pick)
+            out[k] = pick
+        if base_glyphs:
+            out[base_glyphs[0]] = letters + "".join(marks)  # marks with no glyph of their own
+            for k in base_glyphs[1:]:
+                out[k] = ""
+        elif mark_glyphs and letters:
+            out[mark_glyphs[0]] = letters + out[mark_glyphs[0]]
+    # A glyph must stand for something; give an empty one its cluster's first character.
+    return [t or span[shaped[k][1]][:1] for k, t in enumerate(out)]
 
 
 # Layout ---------------------------------------------------------------------------------
@@ -571,7 +688,10 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             continue
         for j in range(j1, j2):
             source = old[min(i1 + (j - j1), i2 - 1)] if i2 > i1 else (old[i1 - 1] if i1 > 0 else old[0])
-            words.append(Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1]))
+            word = Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1])
+            # A word replacing another keeps its letters' looks; an added word takes its
+            # neighbour's main look.
+            words += _pieces(word, line, rp) if i2 > i1 else [word]
     for k, w in enumerate(words):
         w.logical = k
     if not words:
@@ -581,13 +701,19 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         visual = _visual_order(words, line.rtl)
     else:
         words, visual = _visual_order_standard(words, line.rtl)
-    fonts = Fonts(pdf, page_no, rp, word_made)
+    fonts = Fonts(pdf, page_no, rp, word_made, line)
+    tracking: dict[str, float] = {}
     for w in visual:
         if w.is_new:
             src_glyph = rp.glyphs[w.source.traces[0]]
             style = _style_of(line, w.source)
             fonts.shape(w, src_glyph.paint, style)
             em = src_glyph.paint.size * src_glyph.paint.Tz * src_glyph.paint.trm2[0] / 1000
+            if w.choice.full is not None:
+                if style not in tracking:
+                    tracking[style] = _tracking(line, old, rp, style, w.choice.full, word_made)
+                r = tracking[style]
+                w.shaped = [(gid, c, adv * r, dx * r, dy) for gid, c, adv, dx, dy in w.shaped]
             w.width = sum(g[2] for g in w.shaped) * em
         else:
             w.width = w.u1 - w.u0
@@ -600,9 +726,12 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     for k, (a, b) in enumerate(zip(visual, visual[1:])):
         first = words[min(a.logical, b.logical)]
         is_joined = (abs(a.logical - b.logical) == 1 and first.sep == "") or (k, k + 1) in inside
-        if not a.is_new and not b.is_new and b.visual == a.visual + 1:
-            gaps.append(b.u0 - a.u1)
-            is_joined = is_joined or b.u0 - a.u1 < 0.3 * space  # touching on the page
+        # The words on the page these stand for (themselves, or the words they replace).
+        pa, pb = (a if not a.is_new else a.source), (b if not b.is_new else b.source)
+        if pa is not None and pb is not None and pa is not pb and pb.visual == pa.visual + 1 and not (is_joined and (a.is_new or b.is_new)):
+            # Neighbours on the page keep their gap: a list's tab, a justified space.
+            gaps.append(pb.u0 - pa.u1)
+            is_joined = is_joined or pb.u0 - pa.u1 < 0.3 * space  # touching on the page
         elif is_joined:
             gaps.append(0.0)
         else:
@@ -646,6 +775,28 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     if line.kashida:
         warnings.append("This line was stretched with Arabic kashida; it is now justified with wider spaces instead.")
     return _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warnings, new_text, gaps=gaps, joined=joined, fonts=fonts, space=space)
+
+
+def _tracking(line: Line, old: list[Word], rp: Replay, font_name: str, full: "fontlib.FullFont", word_made: bool) -> float:
+    """How tightly this line's words in this font were spaced, compared with the font's
+    own widths: Word rounds letter positions, which makes lines a fraction of a percent
+    tighter or looser. New words get the same, so they sit like the rest of the line."""
+    shaped_total = actual_total = 0.0
+    chars = 0
+    for w in old:
+        if _style_of(line, w) != font_name or not w.text.strip() or len(_looks(w, line, rp)[1]) > 1:
+            continue
+        d = rp.glyphs[w.traces[0]]
+        em = d.paint.size * d.paint.Tz * d.paint.trm2[0] / 1000
+        shaped = full.shape(w.text, w.script == "R", latin_ligatures=not word_made, kerning=not word_made)
+        if any(g[0] == 0 for g in shaped):
+            continue
+        shaped_total += sum(g[2] for g in shaped) * em
+        actual_total += w.u1 - w.u0
+        chars += len(w.text)
+    if chars < 4 or shaped_total <= 0:
+        return 1.0
+    return min(1.03, max(0.97, actual_total / shaped_total))
 
 
 def _style_of(line: Line, word: Word) -> str:
@@ -699,7 +850,7 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         choice = w.choice
         if choice.resource is None:
             used = new_fonts.setdefault(choice.full.entry, {})
-            for (gid, *_), text in zip(w.shaped, _glyph_texts(w.text, w.shaped)):
+            for (gid, *_), text in zip(w.shaped, _glyph_texts(w.text, w.shaped, choice.full)):
                 used.setdefault(gid, text)
     for entry, used in new_fonts.items():
         fonts.resource_for(fontlib.load_full_font(entry), used, embed_cache)
@@ -723,7 +874,10 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
 
     runs += _spaces(line, rp, visual, untouched, joined or [])
 
-    first = min(remove)
+    # Draw the block next to the line's own visible letters: hidden members (a cell's
+    # paragraph mark) can sit in a neighbouring cell, whose clipping would hide the text.
+    ink = [t for w in old for t in w.traces if t in remove]
+    first = min(ink) if ink else min(remove)
     insert_after = rp.et_after.get(rp.glyphs[first].op)
     if insert_after is None:
         raise EditRejected("This page is built in a way that can't be edited safely yet.")
@@ -763,8 +917,8 @@ def _spaces(line: Line, rp: Replay, visual: list[Word], untouched: set[int], joi
         advance = d.advance / 1000 * d.paint.size * d.paint.Tz * d.paint.trm2[0]
         if end - start < 0.6 * advance:
             continue  # too tight for a space glyph; readers see the gap
-        baseline = rp.glyphs[(a.traces or a.source.traces)[0]].origin[1]
-        runs.append(PlacedRun(d.paint.font, rp.fonts[d.paint.font], d.paint, [PlacedGlyph(d.code, (start, baseline))]))
+        # On the space's own baseline: next to a superscript the word's would be raised.
+        runs.append(PlacedRun(d.paint.font, rp.fonts[d.paint.font], d.paint, [PlacedGlyph(d.code, (start, d.origin[1]))]))
     return runs
 
 
@@ -825,6 +979,15 @@ def _outside(a, b, box, zoom, tolerance_px):
     return int(changed[mask].sum()), int((a != b)[~mask].sum())
 
 
+def _ink(img, box, zoom) -> int:
+    """Pixels in the box clearly darker than its background."""
+    x0, y0, x1, y1 = (int(v * zoom) for v in box)
+    region = img[max(0, y0) : y1 + 1, max(0, x0) : x1 + 1].astype(int)
+    if region.size == 0:
+        return 0
+    return int((region < np.median(region) - 60).sum())
+
+
 def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_text: str, new_box, drawn: str) -> None:
     def fail(why: str):
         raise EditRejected(f"The change couldn't be made exactly ({why}), so nothing was changed.")
@@ -852,12 +1015,17 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
     area.normalize()
     old_mu, old_pf = _render(old_bytes, page_no)
     new_mu, new_pf = _render(new_bytes, page_no)
-    outside_mu, inside_mu = _outside(old_mu, new_mu, tuple(area), 2.0, 0)
-    outside_pf, inside_pf = _outside(old_pf, new_pf, tuple(area), 2.0, 1)
+    outside_mu, _ = _outside(old_mu, new_mu, tuple(area), 2.0, 0)
+    outside_pf, _ = _outside(old_pf, new_pf, tuple(area), 2.0, 1)
     if outside_mu or outside_pf:
         fail("other parts of the page would have moved")
-    if new_text.strip() and (inside_mu == 0 or inside_pf == 0):
-        fail("the new text wasn't visible")
+    # The new text leaves ink, in both engines: text can vanish (a clipping window, a
+    # wrong colour) while pixels still change.
+    if new_text.strip():
+        for before, after in ((old_mu, new_mu), (old_pf, new_pf)):
+            had, has = _ink(before, tuple(area), 2.0), _ink(after, tuple(area), 2.0)
+            if has < max(1, 0.3 * had) * (1 if had else 0) or (had == 0 and has == 0):
+                fail("the new text wasn't visible")
 
     # The line reads back as typed.
     if new_text.strip():

@@ -117,29 +117,55 @@ class FontLibrary:
         return entries
 
     def find(self, pdf_font_name: str) -> FontEntry | None:
-        """The installed font a PDF font name refers to: exact PostScript name, else
-        the same family and style ("Arial-BoldMT" -> Arial Bold)."""
+        """The installed font a PDF font name refers to: the exact PostScript or full
+        name, else the same family when every style word in the name is understood
+        ("Arial,Bold", "TimesNewRomanPS-BoldItalicMT"). A name with any other style
+        word ("Semibold", "Light", "Condensed") never falls back: that would be a
+        different font."""
         name = pdf_font_name.split("+")[-1]
         hit = self.by_ps.get(name.lower()) or self.by_full.get(name.lower())
         if hit:
             return hit
-        family, _, style = name.partition("-")
-        words = family.split(" ")
-        # "Arial Bold Italic": a full name with the style written out.
-        while len(words) > 1 and words[-1].lower() in ("regular", "bold", "italic", "oblique", "normal"):
-            style = words.pop().lower() + " " + style
-        family = " ".join(words)
-        style = style.lower() + (" bold" if "," in name and "bold" in name.lower() else "")
-        family = family.split(",")[0]
-        for suffix in ("PSMT", "MT", "PS"):
-            if family.endswith(suffix) and len(family) > len(suffix) + 2:
-                family = family[: -len(suffix)]
-        want = family.replace(" ", "").lower()
+        family, style = _split_style(name)
+        if family is None:
+            return None
         bold, italic = "bold" in style, "italic" in style or "oblique" in style
         for e in self.entries:
-            if e.family.replace(" ", "").lower() == want and e.bold == bold and e.italic == italic:
+            if e.family.replace(" ", "").lower() == family and e.bold == bold and e.italic == italic:
                 return e
         return None
+
+    def is_exact(self, pdf_font_name: str) -> bool:
+        name = pdf_font_name.split("+")[-1].lower()
+        return name in self.by_ps or name in self.by_full
+
+
+_STYLE_WORDS = {"regular", "normal", "roman", "bold", "italic", "oblique"}
+
+
+def _split_style(name: str) -> tuple[str | None, set[str]]:
+    """("arial", {"bold"}) from "Arial,Bold", "Arial-BoldMT" or "Arial Bold";
+    (None, ...) when a style word isn't one of regular/bold/italic/oblique."""
+    import re
+
+    family, style = name, ""
+    for sep in (",", "-"):
+        if sep in family:
+            family, _, style = family.partition(sep)
+            break
+    words = family.split(" ")
+    while len(words) > 1 and words[-1].lower() in _STYLE_WORDS:
+        style = words.pop() + " " + style
+    family = "".join(words)
+    for suffix in ("PSMT", "MT", "PS"):
+        if family.endswith(suffix) and len(family) > len(suffix) + 2:
+            family = family[: -len(suffix)]
+        if style.endswith(suffix):
+            style = style[: -len(suffix)]
+    tokens = {t.lower() for t in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", style)}
+    if tokens - _STYLE_WORDS:
+        return None, tokens
+    return family.lower(), tokens
 
 
 _library: FontLibrary | None = None
@@ -193,6 +219,20 @@ class FullFont:
             (info.codepoint, info.cluster, pos.x_advance * scale, pos.x_offset * scale, pos.y_offset * scale)
             for info, pos in zip(buf.glyph_infos, buf.glyph_positions)
         ]
+
+    def char_of_gid(self) -> dict[int, str]:
+        """glyph id -> the plain character the font maps to it (shaped forms normalized)."""
+        if not hasattr(self, "_char_of_gid"):
+            import unicodedata
+
+            table: dict[int, str] = {}
+            for cp, name in sorted(self.cmap.items()):
+                gid = self.tt.getGlyphID(name)
+                ch = unicodedata.normalize("NFKC", chr(cp)) if 0xFB00 <= cp <= 0xFEFF else chr(cp)
+                if len(ch) == 1:
+                    table.setdefault(gid, ch)
+            self._char_of_gid = table
+        return self._char_of_gid
 
     def glyph_signature(self, gid: int):
         return _glyph_signature(self.tt, gid)
@@ -269,6 +309,10 @@ class EmbeddedFont:
         return self.tt.getGlyphID(name) if name is not None else None
 
 
+class EmbeddingNotAllowed(Exception):
+    """The font's licence (OS/2 fsType) doesn't allow embedding it in a document."""
+
+
 def _tag() -> str:
     return "".join(random.choice(string.ascii_uppercase) for _ in range(6))
 
@@ -300,13 +344,19 @@ def embed_font(pdf: pikepdf.Pdf, full: FullFont, used: dict[int, str]) -> pikepd
     options.notdef_outline = True
     options.name_IDs = ["*"]
     options.drop_tables += ["GSUB", "GPOS", "GDEF", "kern", "DSIG", "morx", "BASE", "JSTF", "MATH", "meta"]
-    tt = TTFont(io.BytesIO(_font_bytes(full)))
-    subsetter = ft_subset.Subsetter(options)
-    subsetter.populate(gids=sorted(set(used) | {0}))
-    subsetter.subset(tt)
-    out = io.BytesIO()
-    tt.save(out)
-    program = out.getvalue()
+    fs_type = getattr(full.tt["OS/2"], "fsType", 0) if "OS/2" in full.tt else 0
+    if fs_type & 0x000F == 0x0002:
+        raise EmbeddingNotAllowed(full.entry.ps_name)
+    if fs_type & 0x0100:  # the font's licence forbids subsetting: embed it whole
+        program = _font_bytes(full)
+    else:
+        tt = TTFont(io.BytesIO(_font_bytes(full)))
+        subsetter = ft_subset.Subsetter(options)
+        subsetter.populate(gids=sorted(set(used) | {0}))
+        subsetter.subset(tt)
+        out = io.BytesIO()
+        tt.save(out)
+        program = out.getvalue()
 
     head, hhea = full.tt["head"], full.tt["hhea"]
     scale = 1000 / full.upem

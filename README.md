@@ -39,11 +39,12 @@ Files not made by Word are read the way the standard Unicode bidi rules lay text
 `backend/app/editing.py` changes one line at a time:
 
 1. **Replay.** The page's drawing instructions are replayed (`pdfcontent.py`), and every glyph must land where MuPDF puts it. If not, the page uses something not modelled yet and the edit is refused.
-2. **Keep unchanged words.** Words that didn't change keep their original glyphs. Changed words are shaped with the installed font (`fonts.py`, HarfBuzz).
+2. **Keep unchanged words.** Words that didn't change keep their original glyphs. Changed words are shaped with the installed font (`fonts.py`, HarfBuzz), with the line's own letter spacing. Each new letter keeps the look of the old letter it replaces, so superscripts ("3rd"), subscripts ("CO2") and small capitals stay as they were. The font must match by its exact name: a missing bold or italic is never swapped for the regular weight.
 3. **Choose the font.** The PDF's embedded copy of the font is reused only when it has every glyph needed, drawn identically, with correct copy/search labels. Otherwise the installed font's glyphs are embedded.
 4. **Lay out.** The line keeps its alignment: left, right, centered, or justified (detected from the paragraph's other lines). Word documents follow Word's ordering of mixed Arabic and English. Other PDFs follow the Unicode bidi algorithm (`bidi.py`).
 5. **Check before accepting.** The edit is refused, and nothing changes, unless:
    - the line reads back as typed;
+   - the new text is visible (it leaves ink, in both engines);
    - a second reader (PDFium) sees the new letters;
    - nothing outside the line changes by a single pixel, in MuPDF and PDFium;
    - no other page changes.
@@ -54,14 +55,18 @@ Known limits:
 - one line at a time, with no reflow into the next line;
 - text too long for its line is refused;
 - kashida-justified lines come back justified with spaces, with a warning;
+- an Arabic word that mixes sizes or colors inside it can't be changed;
+- fonts whose licence forbids embedding can't get new letters;
 - lines marked uncertain need their unreadable letters retyped;
 - rotated text and text inside embedded objects can't be edited yet.
 
-**Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). Without it, only letters already in the PDF can be reused.
+**Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). Without it, only letters already in the PDF can be reused. If the installed font isn't the exact version in the PDF, the edit goes ahead with a warning. Office's cloud fonts (Aptos, the default in recent Word) aren't regular installed fonts and aren't found.
 
 ### Edit accuracy
 
-`backend/tests/test_edit_fidelity.py` measures edits independently of the editor, with MuPDF's own text extraction and pixels in MuPDF and PDFium. `backend/tests/test_editing.py` runs 20 realistic edits on the Word and Chrome test documents, and pins the ones that must be refused.
+`backend/tests/test_edit_fidelity.py` measures edits independently of the editor, with MuPDF's own text extraction and pixels in MuPDF and PDFium. `backend/tests/test_editing.py` runs 20 realistic edits on the Word and Chrome test documents, and pins the ones that must be refused. It also runs many edits in a row on the same file, and edits words with superscripts, subscripts and small capitals.
+
+Redrawing every word of every line with its own text, as a stress test, gives a median ink agreement of 0.93 with the original (1 px slack). Arabic lines score lowest: HarfBuzz spaces the letters slightly differently from Word, while the text stays correct. Normal edits redraw only the changed words.
 
 ## How it works
 
