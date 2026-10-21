@@ -53,6 +53,6 @@ export default function App() {
   }
 
   if (restoring) return <div className="desk" aria-busy="true" />;
-  if (doc) return <Viewer doc={doc} onClose={close} />;
+  if (doc) return <Viewer doc={doc} onClose={close} onChange={setDoc} />;
   return <UploadScreen onOpen={open} notice={notice} />;
 }

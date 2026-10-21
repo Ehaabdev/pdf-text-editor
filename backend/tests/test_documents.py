@@ -153,3 +153,50 @@ def test_page_lines_endpoint(client):
     assert {"id", "display", "bbox", "font", "size", "italic", "spans", "uncertain"} <= title.keys()
     assert len({l["id"] for l in body["lines"]}) == len(body["lines"])
     assert client.get(f"/api/documents/{doc_id}/pages/9/lines").status_code == 404
+
+
+def _fixture_upload(client, name="english-styles-word.pdf"):
+    data = (Path(__file__).parent / "fixtures" / "word" / name).read_bytes()
+    return upload(client, data, name=name).json()
+
+
+def _line(client, doc, needle):
+    lines = client.get(f"/api/documents/{doc['id']}/pages/0/lines").json()["lines"]
+    return next(l for l in lines if needle in l["text"])
+
+
+def test_edit_then_undo(client):
+    doc = _fixture_upload(client)
+    line = _line(client, doc, "Quarterly Service Report")
+    r = client.post(f"/api/documents/{doc['id']}/edits", json={
+        "revision": doc["revision"], "page": 0, "lineId": line["id"],
+        "oldText": line["text"], "newText": "Annual Service Report"})
+    assert r.status_code == 200, r.text
+    edited = r.json()["document"]
+    assert edited["revision"] == doc["revision"] + 1 and edited["edited"] and edited["canUndo"]
+    assert _line(client, edited, "Annual Service Report")
+    assert 'filename="english-styles-word-edited.pdf"' in client.get(f"/api/documents/{doc['id']}/download").headers["content-disposition"]
+
+    undone = client.post(f"/api/documents/{doc['id']}/undo", json={"revision": edited["revision"]}).json()
+    assert undone["revision"] == edited["revision"] + 1 and not undone["canUndo"]
+    assert _line(client, undone, "Quarterly Service Report")
+
+
+def test_edit_with_an_old_revision_is_refused(client):
+    doc = _fixture_upload(client)
+    line = _line(client, doc, "Quarterly Service Report")
+    body = {"revision": doc["revision"] + 5, "page": 0, "lineId": line["id"], "oldText": line["text"], "newText": "X"}
+    assert client.post(f"/api/documents/{doc['id']}/edits", json=body).status_code == 409
+
+
+def test_edit_that_cannot_fit_explains_why(client):
+    doc = _fixture_upload(client)
+    line = _line(client, doc, "Report ID")
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "newText": "Report ID " + "W" * 400}
+    r = client.post(f"/api/documents/{doc['id']}/edits", json=body)
+    assert r.status_code == 422 and "too long" in r.json()["detail"]
+
+
+def test_nothing_to_undo(client):
+    doc = _fixture_upload(client)
+    assert client.post(f"/api/documents/{doc['id']}/undo", json={"revision": doc["revision"]}).status_code == 409

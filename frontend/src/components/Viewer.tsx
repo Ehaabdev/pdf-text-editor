@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { downloadUrl, type DocInfo, type TextLine } from "../api";
+import { ApiError, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type TextLine } from "../api";
 import LinePanel from "./LinePanel";
 import PageView from "./PageView";
 
@@ -21,6 +21,7 @@ const DOWNLOAD = "M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 14.5V16h12v-1.5";
 const PLUS = "M10 4v12M4 10h12";
 const MINUS = "M4 10h12";
 const BOXES = "M3 5h9M3 10h14M3 15h11";
+const UNDO = "M7.5 5.5L4 9l3.5 3.5M4.5 9H12a4 4 0 010 8h-2";
 
 function useWidth(ref: React.RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(0);
@@ -37,7 +38,42 @@ function useWidth(ref: React.RefObject<HTMLElement | null>) {
 
 type Selection = { page: number; line: TextLine } | null;
 
-export default function Viewer({ doc, onClose }: { doc: DocInfo; onClose: () => void }) {
+type Notice = { text: string; tone: "done" | "warning" | "error" };
+
+export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClose: () => void; onChange: (d: DocInfo) => void }) {
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [undoing, setUndoing] = useState(false);
+
+  // Confirmations fade after a while; warnings and errors stay until dismissed.
+  useEffect(() => {
+    if (notice?.tone !== "done") return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  function edited(outcome: EditOutcome) {
+    setSelection(null);
+    onChange(outcome.document);
+    setNotice(
+      outcome.warnings.length
+        ? { text: `Line changed. ${outcome.warnings.join(" ")}`, tone: "warning" }
+        : { text: "Line changed.", tone: "done" },
+    );
+  }
+
+  async function undo() {
+    setUndoing(true);
+    try {
+      onChange(await undoEdit(doc));
+      setSelection(null);
+      setNotice({ text: "Last change undone.", tone: "done" });
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't undo. Try again.", tone: "error" });
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   const scroller = useRef<HTMLElement>(null);
   const available = useWidth(scroller);
   const [zoomStep, setZoomStep] = useState(0);
@@ -82,6 +118,12 @@ export default function Viewer({ doc, onClose }: { doc: DocInfo; onClose: () => 
             {doc.pageCount} {doc.pageCount === 1 ? "page" : "pages"}
           </span>
         </div>
+        {doc.canUndo && (
+          <button className="btn btn-ghost" onClick={() => void undo()} disabled={undoing} aria-label="Undo the last change">
+            <Icon d={UNDO} />
+            <span className="wide-only">Undo</span>
+          </button>
+        )}
         <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name}>
           <Icon d={DOWNLOAD} />
           <span>
@@ -146,7 +188,17 @@ export default function Viewer({ doc, onClose }: { doc: DocInfo; onClose: () => 
         </div>
       </div>
 
-      {selection && <LinePanel line={selection.line} page={selection.page + 1} onClose={() => setSelection(null)} />}
+      {notice && (
+        <div className={`viewer-notice viewer-notice--${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>
+          <p>{notice.text}</p>
+          <button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)} aria-label="Dismiss">
+            <Icon d={CLOSE} size={16} />
+          </button>
+        </div>
+      )}
+      {selection && (
+        <LinePanel doc={doc} line={selection.line} page={selection.page} onClose={() => setSelection(null)} onEdited={edited} />
+      )}
       </div>
     </div>
   );

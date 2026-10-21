@@ -1,4 +1,5 @@
-import type { TextLine, TextSpan } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { ApiError, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 
 type Look = Pick<TextSpan, "font" | "size" | "color" | "bold" | "italic">;
@@ -11,17 +12,58 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
-export default function LinePanel({ line, page, onClose }: { line: TextLine; page: number; onClose: () => void }) {
+type Props = {
+  doc: DocInfo;
+  line: TextLine;
+  page: number; // 0-based
+  onClose: () => void;
+  onEdited: (outcome: EditOutcome) => void;
+};
+
+export default function LinePanel({ doc, line, page, onClose, onEdited }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(line.display);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  // A different line was selected: start over.
+  useEffect(() => {
+    setEditing(false);
+    setDraft(line.display);
+    setError(null);
+  }, [line.id, line.display]);
+
+  useEffect(() => {
+    if (editing) {
+      box.current?.focus();
+      box.current?.select();
+    }
+  }, [editing]);
+
   // Other styles used in the line, besides the main one: a bold word, a colored word.
   const others: TextSpan[] = [];
   for (const s of line.spans) {
     if (s.text.trim() && !sameLook(s, line) && !others.some((o) => sameLook(o, s))) others.push(s);
   }
 
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      onEdited(await editLine(doc, page, line, draft));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <section className="line-panel" aria-label="Selected line">
+    <section className="line-panel" aria-label={editing ? "Edit line" : "Selected line"}>
       <div className="line-panel-head">
-        <h2>Line on page {page}</h2>
+        <h2>{editing ? "Edit line" : `Line on page ${page + 1}`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
             <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -29,51 +71,124 @@ export default function LinePanel({ line, page, onClose }: { line: TextLine; pag
         </button>
       </div>
 
-      <p className="line-text" dir={line.dir} lang={line.dir === "rtl" ? "ar" : undefined}>
-        {line.display}
-      </p>
+      {editing ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <textarea
+            ref={box}
+            className="line-edit"
+            dir={line.dir}
+            lang={line.dir === "rtl" ? "ar" : undefined}
+            value={draft}
+            rows={2}
+            spellCheck={false}
+            aria-label="New text for this line"
+            disabled={saving}
+            onChange={(e) => setDraft(e.target.value.replace(/[\r\n]+/g, " "))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void save();
+              } else if (e.key === "Escape") {
+                e.stopPropagation();
+                setEditing(false);
+                setDraft(line.display);
+                setError(null);
+              }
+            }}
+          />
+          <p className="edit-note">
+            Keeps the font ({fontLabel(line.font)}), size ({pointSize(line.size)}) and color. Leave it empty to remove
+            the line.
+          </p>
+          {line.uncertain && (
+            <p className="line-warning">
+              Some letters on this line are stored wrongly in the PDF itself. Check the text above against the page and
+              retype anything that differs.
+            </p>
+          )}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="edit-actions">
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save change"}
+            </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setEditing(false);
+                setDraft(line.display);
+                setError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p className="line-text" dir={line.dir} lang={line.dir === "rtl" ? "ar" : undefined}>
+            {line.display}
+          </p>
 
-      {line.uncertain && (
-        <p className="line-warning">
-          Some letters on this line are stored wrongly in the PDF itself, so the text above may not match the page. You'll
-          be able to retype the whole line.
-        </p>
-      )}
+          {line.uncertain && (
+            <p className="line-warning">
+              Some letters on this line are stored wrongly in the PDF itself, so the text above may not match the page.
+              Retype the whole line when you edit it.
+            </p>
+          )}
 
-      <dl className="line-style">
-        <div>
-          <dt>Font</dt>
-          <dd>{fontLabel(line.font)}</dd>
-        </div>
-        <div>
-          <dt>Size</dt>
-          <dd>{pointSize(line.size)}</dd>
-        </div>
-        <div>
-          <dt>Color</dt>
-          <dd>
-            <Swatch color={line.color} />#{line.color.toUpperCase()}
-          </dd>
-        </div>
-        <div>
-          <dt>Style</dt>
-          <dd>{styleLabel(line.bold, line.italic)}</dd>
-        </div>
-      </dl>
+          <dl className="line-style">
+            <div>
+              <dt>Font</dt>
+              <dd>{fontLabel(line.font)}</dd>
+            </div>
+            <div>
+              <dt>Size</dt>
+              <dd>{pointSize(line.size)}</dd>
+            </div>
+            <div>
+              <dt>Color</dt>
+              <dd>
+                <Swatch color={line.color} />#{line.color.toUpperCase()}
+              </dd>
+            </div>
+            <div>
+              <dt>Style</dt>
+              <dd>{styleLabel(line.bold, line.italic)}</dd>
+            </div>
+          </dl>
 
-      {others.length > 0 && (
-        <div className="line-others">
-          <h3>Also on this line</h3>
-          <ul>
-            {others.map((s, i) => (
-              <li key={i}>
-                <span dir="auto">“{s.text.trim()}”</span> in {fontLabel(s.font)}, {pointSize(s.size)},{" "}
-                <Swatch color={s.color} />#{s.color.toUpperCase()}
-                {s.bold || s.italic ? `, ${styleLabel(s.bold, s.italic).toLowerCase()}` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
+          {others.length > 0 && (
+            <div className="line-others">
+              <h3>Also on this line</h3>
+              <ul>
+                {others.map((s, i) => (
+                  <li key={i}>
+                    <span dir="auto">“{s.text.trim()}”</span> in {fontLabel(s.font)}, {pointSize(s.size)},{" "}
+                    <Swatch color={s.color} />#{s.color.toUpperCase()}
+                    {s.bold || s.italic ? `, ${styleLabel(s.bold, s.italic).toLowerCase()}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="edit-actions">
+            <button className="btn btn-primary" onClick={() => setEditing(true)}>
+              Edit text
+            </button>
+          </div>
+        </>
       )}
     </section>
   );
