@@ -60,16 +60,18 @@ class FontEntry:
     family: str
     bold: bool
     italic: bool
+    full_name: str = ""
 
 
-def _names(tt: TTFont) -> tuple[str, str, bool, bool]:
+def _names(tt: TTFont) -> tuple[str, str, bool, bool, str]:
     name = tt["name"]
     ps = str(name.getDebugName(6) or "")
+    full = str(name.getDebugName(4) or "")
     family = str(name.getDebugName(16) or name.getDebugName(1) or "")
     sub = str(name.getDebugName(17) or name.getDebugName(2) or "").lower()
     bold = "bold" in sub or ("OS/2" in tt and tt["OS/2"].usWeightClass >= 600)
     italic = "italic" in sub or "oblique" in sub
-    return ps, family, bold, italic
+    return ps, family, bold, italic, full
 
 
 class FontLibrary:
@@ -77,6 +79,7 @@ class FontLibrary:
         self.dirs = dirs if dirs is not None else font_dirs()
         self.entries: list[FontEntry] = self._load()
         self.by_ps = {e.ps_name.lower(): e for e in self.entries}
+        self.by_full = {e.full_name.lower(): e for e in self.entries if e.full_name}
 
     def _load(self) -> list[FontEntry]:
         files = []
@@ -101,11 +104,11 @@ class FontLibrary:
                 continue
             for i, tt in enumerate(faces):
                 try:
-                    ps, family, bold, italic = _names(tt)
+                    ps, family, bold, italic, full = _names(tt)
                 except Exception:
                     continue
                 if ps:
-                    entries.append(FontEntry(str(p), i, ps, family, bold, italic))
+                    entries.append(FontEntry(str(p), i, ps, family, bold, italic, full))
         try:
             config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps({"stamp": stamp, "entries": [e.__dict__ for e in entries]}), encoding="utf-8")
@@ -117,10 +120,15 @@ class FontLibrary:
         """The installed font a PDF font name refers to: exact PostScript name, else
         the same family and style ("Arial-BoldMT" -> Arial Bold)."""
         name = pdf_font_name.split("+")[-1]
-        hit = self.by_ps.get(name.lower())
+        hit = self.by_ps.get(name.lower()) or self.by_full.get(name.lower())
         if hit:
             return hit
         family, _, style = name.partition("-")
+        words = family.split(" ")
+        # "Arial Bold Italic": a full name with the style written out.
+        while len(words) > 1 and words[-1].lower() in ("regular", "bold", "italic", "oblique", "normal"):
+            style = words.pop().lower() + " " + style
+        family = " ".join(words)
         style = style.lower() + (" bold" if "," in name and "bold" in name.lower() else "")
         family = family.split(",")[0]
         for suffix in ("PSMT", "MT", "PS"):
@@ -237,7 +245,10 @@ class EmbeddedFont:
                 self.tt = TTFont(io.BytesIO(stream.read_bytes()))
             except Exception:
                 self.tt = None
-        self.cmap = (self.tt.getBestCmap() or {}) if self.tt is not None else {}
+        try:
+            self.cmap = (self.tt.getBestCmap() or {}) if self.tt is not None else {}
+        except Exception:  # subsets often have no character table at all
+            self.cmap = {}
 
     def has_same_glyph(self, gid: int, full: FullFont) -> bool:
         if self.tt is None:

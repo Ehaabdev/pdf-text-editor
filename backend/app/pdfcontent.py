@@ -48,6 +48,12 @@ def inverse(m) -> Matrix:
 _HEX = re.compile(rb"<([0-9A-Fa-f]*)>")
 
 
+def _hex(value: bytes) -> bytes:
+    """A PDF hex string's bytes; an odd last digit counts as followed by 0 (PDF 7.3.4.3)."""
+    digits = value.decode("ascii")
+    return bytes.fromhex(digits + "0" if len(digits) % 2 else digits)
+
+
 def _parse_to_unicode(stream) -> dict[int, str]:
     """A font's ToUnicode table: code -> the text viewers copy for that glyph."""
     if stream is None:
@@ -57,27 +63,32 @@ def _parse_to_unicode(stream) -> dict[int, str]:
     except Exception:
         return {}
 
-    def text(hexstr: bytes) -> str:
-        raw = bytes.fromhex(hexstr.decode())
+    def text(raw: bytes) -> str:
         return raw.decode("utf-16-be", errors="replace")
 
     out: dict[int, str] = {}
     for block in re.findall(rb"beginbfchar(.*?)endbfchar", data, re.S):
         values = _HEX.findall(block)
         for src, dst in zip(values[0::2], values[1::2]):
-            out[int(src, 16)] = text(dst)
+            try:
+                out[int(src, 16)] = text(_hex(dst))
+            except ValueError:
+                continue
     for block in re.findall(rb"beginbfrange(.*?)endbfrange", data, re.S):
         for line in re.findall(rb"<[0-9A-Fa-f]+>\s*<[0-9A-Fa-f]+>\s*(?:<[0-9A-Fa-f]*>|\[[^\]]*\])", block):
-            parts = _HEX.findall(line)
-            lo, hi = int(parts[0], 16), int(parts[1], 16)
-            if b"[" in line:
-                for k, dst in enumerate(parts[2:]):
-                    out[lo + k] = text(dst)
-            else:
-                start = bytes.fromhex(parts[2].decode())
-                for k in range(hi - lo + 1):
-                    value = int.from_bytes(start, "big") + k
-                    out[lo + k] = value.to_bytes(len(start), "big").decode("utf-16-be", errors="replace")
+            try:
+                parts = _HEX.findall(line)
+                lo, hi = int(parts[0], 16), int(parts[1], 16)
+                if b"[" in line:
+                    for k, dst in enumerate(parts[2:]):
+                        out[lo + k] = text(_hex(dst))
+                else:
+                    first = _hex(parts[2])
+                    base = int.from_bytes(first, "big")
+                    for k in range(min(hi - lo + 1, 65536)):
+                        out[lo + k] = text((base + k).to_bytes(len(first), "big"))
+            except (ValueError, OverflowError, IndexError):
+                continue
     return out
 
 

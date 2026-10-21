@@ -303,8 +303,12 @@ def _check_glyph(g: Glyph, table: dict[int, frozenset[str]], space_gids: set[int
         if space_gids and g.gid not in space_gids and width < 0.5:
             g.text, g.suspect = "", True
         return
-    if g.text.isspace():
-        g.verified = True if " " in chars else g.verified
+    if g.text.isspace() and " " in chars:
+        # The font's own space glyph. One glyph serves both the space and the no-break
+        # space; a label saying "no-break" is the producer's guess. A plain space wins.
+        g.text = " " + g.text[1:]
+        g.verified = True
+        return
     if chars is None:
         if any(_is_arabic_letter(c) for c in g.text):
             g.verified = False

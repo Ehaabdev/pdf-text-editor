@@ -261,13 +261,22 @@ class Fonts:
         # No installed font: Latin text can still use the embedded copy if it has every letter.
         for resource in candidates:
             info, emb = self.rp.fonts[resource], self._embedded(resource)
+            # Which code draws a character: the copy's own labels (subsets often have no
+            # character table of their own), else its character table.
+            by_label = {}
+            for code, label in sorted(info.to_unicode.items()):
+                by_label.setdefault(label, code)
             shaped, codes = [], []
             for k, ch in enumerate(text):
-                gid = emb.gid_for(ch)
-                code = gid if info.two_byte else _winansi(ch)
-                if gid is None or code is None or code not in info.widths or not (emb.has_drawn_glyph(gid) or ch.isspace()):
+                code = by_label.get(ch)
+                if code is None:
+                    gid = emb.gid_for(ch)
+                    code = gid if info.two_byte else _winansi(ch)
+                gid = code if info.two_byte else emb.gid_for(ch)
+                drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid)) or ch.isspace()
+                if code is None or code not in info.widths or not drawn:
                     break
-                shaped.append((gid, k, info.width(code), 0.0, 0.0))
+                shaped.append((gid or 0, k, info.width(code), 0.0, 0.0))
                 codes.append(code)
             else:
                 word.shaped = shaped
@@ -405,13 +414,53 @@ def _bracket_insides(words: list[Word], visual: list[Word]) -> set[tuple[int, in
     return out
 
 
-def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: float) -> str:
+def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
+    """Left and right ink edges (PDF x) of the nearby lines in the same column: the
+    lines just above and below that overlap this one, i.e. probably its paragraph."""
+    to_pdf = page.derotation_matrix * ~page.transformation_matrix
+    def edges(l):
+        r = pymupdf.Rect(l.bbox) * to_pdf
+        r.normalize()
+        return r
+    me = edges(line)
+    height = me.height or 1.0
+    out = []
+    for other in lines:
+        if other is line:
+            continue
+        r = edges(other)
+        overlap = min(r.x1, me.x1) - max(r.x0, me.x0)
+        if overlap > 0.5 * min(r.width, me.width) and abs(r.y0 - me.y0) < 3 * height and abs(r.height - height) < 0.5 * height:
+            out.append((r.x0, r.x1))
+    return out
+
+
+def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: float, neighbours) -> str:
     u0, u1 = old[0].u0, old[-1].u1
-    left, right = column
     gaps = [b.u0 - a.u1 for a, b in zip(old, old[1:]) if b.u0 - a.u1 > 0.3 * space]
-    touches_left, touches_right = u0 - left < 2.5, right - u1 < 2.5
-    # A line reaching both edges of its column is justified, however little it was stretched.
-    if line.kashida or (touches_left and touches_right and gaps):
+    if line.kashida:
+        return "justify"
+    if neighbours:
+        # The paragraph's edges are where its lines end. A line reaching both, when at
+        # least one other line shares the edge it would otherwise be ragged on, is justified.
+        left = min([u0] + [a for a, _ in neighbours])
+        right = max([u1] + [b for _, b in neighbours])
+        at_left, at_right = u0 - left < 1.5, right - u1 < 1.5
+        ragged_side = [b for _, b in neighbours] if not line.rtl else [a for a, _ in neighbours]
+        edge = right if not line.rtl else left
+        shared = any(abs(x - edge) < 1.5 for x in ragged_side)
+        if at_left and at_right and shared and gaps:
+            return "justify"
+        lefts_vary = any(abs(a - left) > 1.5 for a, _ in neighbours)
+        rights_vary = any(abs(b - right) > 1.5 for _, b in neighbours)
+        centres = [(a + b) / 2 for a, b in neighbours]
+        if lefts_vary and rights_vary and all(abs(c - (u0 + u1) / 2) < 2 for c in centres):
+            return "center"
+        return "right" if line.rtl else "left"
+    left, right = column
+    # Within one space of an edge: the column's edge can include a trailing space.
+    touches_left, touches_right = u0 - left < 2.5 + space, right - u1 < 2.5 + space
+    if touches_left and touches_right and gaps:
         return "justify"
     if not touches_left and not touches_right and abs((u0 - left) - (right - u1)) < 3:
         return "center"
@@ -429,7 +478,8 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     if not 0 <= page_no < mu.page_count:
         raise EditRejected("That page doesn't exist.")
     page = mu[page_no]
-    line = next((l for l in page_lines(page) if l.id == line_id), None)
+    all_lines = page_lines(page)
+    line = next((l for l in all_lines if l.id == line_id), None)
     if line is None or comparable(line.text) != comparable(old_text):
         raise EditRejected("This line changed since you selected it. Select it again.")
     if comparable(new_text) == comparable(line.text) and not redraw_all:
@@ -514,7 +564,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             gaps.append(typical)
         joined.append(is_joined)
 
-    mode = _alignment(line, old_visual, column, space)
+    mode = _alignment(line, old_visual, column, space, _paragraph_edges(line, all_lines, page))
     u0, u1 = old_visual[0].u0, old_visual[-1].u1
     natural = sum(w.width for w in visual) + sum(gaps)
     stretchable = [i for i, j in enumerate(joined) if not j]
@@ -550,7 +600,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     warnings = list(fonts.warnings)
     if line.kashida:
         warnings.append("This line was stretched with Arabic kashida; it is now justified with wider spaces instead.")
-    return _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warnings, new_text, gaps=gaps, fonts=fonts, space=space)
+    return _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warnings, new_text, gaps=gaps, joined=joined, fonts=fonts, space=space)
 
 
 def _style_of(line: Line, word: Word) -> str:
@@ -570,9 +620,15 @@ def _space_width(rp: Replay, line: Line) -> float:
     return 0.25 * size
 
 
-def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warnings, new_text, gaps=None, fonts=None, space=0.0):
-    # Words that land exactly where they were stay untouched.
-    untouched = {id(w) for w in visual if not w.is_new and abs(w.x - w.u0) < 1e-4}
+def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warnings, new_text, gaps=None, joined=None, fonts=None, space=0.0):
+    # Words that land exactly where they were stay untouched, but only those left of the
+    # first word drawn again: other programs read a line in drawing order, so the kept
+    # words and the new block must follow each other left to right. (A word drawn again
+    # in its old place, with its old glyphs, looks exactly the same.)
+    in_place = {id(w) for w in visual if not w.is_new and abs(w.x - w.u0) < 1e-4}
+    redrawn_x = [w.x for w in visual if id(w) not in in_place]
+    first_redrawn = min(redrawn_x) if redrawn_x else float("inf")
+    untouched = {id(w) for w in visual if id(w) in in_place and w.x < first_redrawn}
     keep = {t for w in old if id(w) in untouched for t in w.traces}
     # Spaces between two untouched words stay as well.
     kept_spaces = set()
@@ -620,6 +676,8 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
             pen += adv
         runs.append(PlacedRun(resource, info, draw_paint, placed))
 
+    runs += _spaces(line, rp, visual, untouched, joined or [])
+
     first = min(remove)
     insert_after = rp.et_after.get(rp.glyphs[first].op)
     if insert_after is None:
@@ -641,6 +699,28 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
     drawn = "".join(w.text for w in visual if w.is_new)
     _verify(src, result, page_no, line, new_text, new_box, drawn)
     return EditResult(result, warnings, new_text)
+
+
+def _spaces(line: Line, rp: Replay, visual: list[Word], untouched: set[int], joined: list[bool]) -> list[PlacedRun]:
+    """Real space glyphs in the gaps next to redrawn words, as Word draws them, so other
+    programs copy the line with its spaces. The line's own space glyph is reused: the one
+    from that gap if the two words were neighbours, else any from the line."""
+    originals = [t for g in line.glyphs if g.is_space and not g.synthetic for t in g.traces]
+    if not originals:
+        return []
+    runs = []
+    for k, (a, b) in enumerate(zip(visual, visual[1:])):
+        if (id(a) in untouched and id(b) in untouched) or (k < len(joined) and joined[k]):
+            continue
+        start, end = a.x + a.width, b.x
+        between = [t for t in originals if not a.is_new and not b.is_new and a.u1 - 0.01 <= rp.glyphs[t].origin[0] <= b.u0 + 0.01]
+        d = rp.glyphs[(between or originals)[0]]
+        advance = d.advance / 1000 * d.paint.size * d.paint.Tz * d.paint.trm2[0]
+        if end - start < 0.6 * advance:
+            continue  # too tight for a space glyph; readers see the gap
+        baseline = rp.glyphs[(a.traces or a.source.traces)[0]].origin[1]
+        runs.append(PlacedRun(d.paint.font, rp.fonts[d.paint.font], d.paint, [PlacedGlyph(d.code, (start, baseline))]))
+    return runs
 
 
 def _rewrite(rp: Replay, remove: set[int], insert_after: int, block: list) -> list:
@@ -757,5 +837,14 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
     # No other page changed.
     old_pdf, new_pdf = pikepdf.open(io.BytesIO(old_bytes)), pikepdf.open(io.BytesIO(new_bytes))
     for i, (a, b) in enumerate(zip(old_pdf.pages, new_pdf.pages)):
-        if i != page_no and pikepdf.Page(a).obj.Contents.read_bytes() != pikepdf.Page(b).obj.Contents.read_bytes():
+        if i != page_no and _contents(a) != _contents(b):
             fail("another page changed")
+
+
+def _contents(page) -> bytes:
+    contents = page.obj.get("/Contents")
+    if contents is None:
+        return b""
+    if isinstance(contents, pikepdf.Array):
+        return b" ".join(s.read_bytes() for s in contents)
+    return contents.read_bytes()
