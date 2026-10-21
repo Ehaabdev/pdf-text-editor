@@ -69,6 +69,53 @@ export function pageImageUrl(doc: DocInfo, pageNo: number, width: number): strin
   return `/api/documents/${doc.id}/pages/${pageNo}/image?width=${width}&r=${doc.revision}`;
 }
 
+export type TextSpan = {
+  text: string;
+  font: string;
+  size: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+  superscript: boolean;
+};
+
+export type TextLine = {
+  id: string;
+  /** Typing order. */
+  text: string;
+  /** Text with direction marks so it shows in the same order as on the page. */
+  display: string;
+  dir: "ltr" | "rtl";
+  /** [x0, y0, x1, y1] in PDF points on the page as displayed. */
+  bbox: [number, number, number, number];
+  font: string;
+  size: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+  spans: TextSpan[];
+  /** The PDF's own text for this line is partly wrong (a known Word problem). */
+  uncertain: boolean;
+};
+
+export type PageLines = { width: number; height: number; lines: TextLine[] };
+
+const linesCache = new Map<string, Promise<PageLines>>();
+
+export function getLines(doc: DocInfo, pageNo: number): Promise<PageLines> {
+  const key = `${doc.id}:${doc.revision}:${pageNo}`;
+  let p = linesCache.get(key);
+  if (!p) {
+    p = fetch(`/api/documents/${doc.id}/pages/${pageNo}/lines?r=${doc.revision}`).then(async (res) => {
+      if (!res.ok) throw await errorFrom(res);
+      return res.json();
+    });
+    p.catch(() => linesCache.delete(key));
+    linesCache.set(key, p);
+  }
+  return p;
+}
+
 export function downloadUrl(doc: DocInfo): string {
   return `/api/documents/${doc.id}/download?r=${doc.revision}`;
 }

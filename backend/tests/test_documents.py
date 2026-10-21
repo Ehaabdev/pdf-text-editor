@@ -139,3 +139,17 @@ def test_private_samples_upload(client, monkeypatch, path):
     assert r.status_code == 201, r.text
     with pymupdf.open("pdf", data) as doc:
         assert r.json()["pageCount"] == doc.page_count
+
+
+def test_page_lines_endpoint(client):
+    fixture = Path(__file__).parent / "fixtures" / "word" / "arabic-quotation-word.pdf"
+    doc_id = upload(client, fixture.read_bytes(), name="quote.pdf").json()["id"]
+    r = client.get(f"/api/documents/{doc_id}/pages/0/lines")
+    assert r.status_code == 200
+    body = r.json()
+    assert (round(body["width"]), round(body["height"])) == (595, 842)
+    title = next(l for l in body["lines"] if l["text"] == "عرض سعر خدمات الرسائل والمحادثات")
+    assert title["dir"] == "rtl" and title["bold"] and title["color"] == "1f4e79"
+    assert {"id", "display", "bbox", "font", "size", "italic", "spans", "uncertain"} <= title.keys()
+    assert len({l["id"] for l in body["lines"]}) == len(body["lines"])
+    assert client.get(f"/api/documents/{doc_id}/pages/9/lines").status_code == 404

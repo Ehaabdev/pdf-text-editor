@@ -1,28 +1,55 @@
-import { useState } from "react";
-import { pageImageUrl, type DocInfo } from "../api";
+import { useEffect, useState } from "react";
+import { getLines, pageImageUrl, type DocInfo, type PageLines, type TextLine } from "../api";
 
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
-const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400];
-// On-screen size of a page on wide screens: an A4 page (595pt) shows about 860px wide.
-const CSS_PX_PER_PT = 1.45;
-const GUTTER = 16;
+const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
 
-export default function PageView({ doc, index }: { doc: DocInfo; index: number }) {
+type Props = {
+  doc: DocInfo;
+  index: number;
+  /** Width of the page on screen, in CSS pixels. */
+  width: number;
+  selectedId: string | null;
+  onSelect: (line: TextLine | null) => void;
+};
+
+export default function PageView({ doc, index, width, selectedId, onSelect }: Props) {
   const size = doc.pages[index];
-  const maxCss = Math.round(size.width * CSS_PX_PER_PT);
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
+  const [text, setText] = useState<PageLines | null>(null);
+
+  // Text boxes are fetched once the page image is on screen.
+  useEffect(() => {
+    if (state !== "ready" || text) return;
+    let alive = true;
+    getLines(doc, index)
+      .then((t) => alive && setText(t))
+      .catch(() => {
+        // Without text boxes the page still shows; nothing to tell the user here.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [state, text, doc, index]);
 
   const url = (w: number) => pageImageUrl(doc, index, w) + (attempt ? `&retry=${attempt}` : "");
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
   return (
-    <figure className="page-wrap" style={{ maxWidth: maxCss }}>
-      <div className={`page page--${state}`} style={{ aspectRatio: `${size.width} / ${size.height}` }}>
+    <figure className="page-wrap" style={{ width }}>
+      <div
+        className={`page page--${state}`}
+        style={{ aspectRatio: `${size.width} / ${size.height}` }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null);
+        }}
+      >
         <img
           key={attempt}
           src={url(960)}
           srcSet={WIDTHS.map((w) => `${url(w)} ${w}w`).join(", ")}
-          sizes={`(max-width: ${maxCss + GUTTER * 2}px) calc(100vw - ${GUTTER * 2}px), ${maxCss}px`}
+          sizes={`${Math.round(width)}px`}
           alt={`Page ${index + 1}`}
           loading={index < 2 ? "eager" : "lazy"}
           decoding="async"
@@ -30,8 +57,35 @@ export default function PageView({ doc, index }: { doc: DocInfo; index: number }
           onLoad={() => setState("ready")}
           onError={() => setState("failed")}
         />
-        {/* Editable text boxes are drawn here in a later step. */}
-        <div className="page-overlay" />
+        {text && (
+          <div className="page-overlay">
+            {text.lines.map((line) => {
+              const [x0, y0, x1, y1] = line.bbox;
+              // A little extra around each line makes small text easier to tap.
+              const padX = 1, padY = Math.min(2, (y1 - y0) * 0.15);
+              const selected = line.id === selectedId;
+              return (
+                <button
+                  key={line.id}
+                  type="button"
+                  className={`line-box${selected ? " line-box--selected" : ""}${line.uncertain ? " line-box--uncertain" : ""}`}
+                  style={{
+                    left: pct(x0 - padX, text.width),
+                    top: pct(y0 - padY, text.height),
+                    width: pct(x1 - x0 + 2 * padX, text.width),
+                    height: pct(y1 - y0 + 2 * padY, text.height),
+                  }}
+                  aria-label={line.text}
+                  aria-pressed={selected}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(selected ? null : line);
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
         {state === "failed" && (
           <div className="page-failed">
             <p>This page didn't load.</p>

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from . import config
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .storage import DocumentMeta, DocumentNotFound, DocumentStore
+from .textlayout import line_json, lines_for
 
 # Arabic and other non-Latin text must never crash logging on a Windows console.
 for stream in (sys.stdout, sys.stderr):
@@ -126,6 +127,19 @@ def page_image(doc_id: str, page_no: int, width: int = Query(1200)):
         raise HTTPException(404, "That page doesn't exist.")
     # Image URLs carry the document revision, so a given URL never changes.
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/lines")
+def page_text_lines(doc_id: str, page_no: int):
+    meta = _get_meta(doc_id)
+    try:
+        width, height, lines = lines_for(store.current_path(meta), page_no)
+    except IndexError:
+        raise HTTPException(404, "That page doesn't exist.")
+    return JSONResponse(
+        {"width": width, "height": height, "lines": [line_json(l) for l in lines]},
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @app.get("/api/documents/{doc_id}/download")

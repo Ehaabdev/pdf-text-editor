@@ -9,12 +9,30 @@ Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public 
 | Step | What | State |
 |---|---|---|
 | 1 | Upload, view pages, download | Done |
-| 2 | Detect every text line with its font, size, color and position | Next |
-| 3 | Edit text in place, matching the original style | |
+| 2 | Detect every text line with its font, size, color and position | Done |
+| 3 | Edit text in place, matching the original style | Next |
 | 4 | Delete text | |
 | 5 | Add new text | |
 | 6 | Undo, before/after view, several edits | |
 | 7 | Public launch: limits, password PDFs, deploy | |
+
+## Text detection
+
+`backend/app/textlayout.py` rebuilds lines from the glyphs on the page. It doesn't use the PDF engine's own line grouping, which splits lines Word drew in pieces and scrambles Arabic. For every line it finds:
+- the text in typing order, including where Arabic and English mix
+- the direction
+- the font, size, color and bold/italic, plus any style changes inside the line
+- its box on the page
+
+Word sometimes stores wrong characters in the PDF:
+- **Kashida-justified Arabic:** stretch glyphs labelled "ز", spaces labelled "يم".
+- **Some Arabic ligatures:** for example the Rial sign, labelled "ريا".
+
+Each glyph is checked against the font's own character table and corrected where it can be. Lines that still can't be trusted are marked *uncertain* instead of shown as fact.
+
+`backend/tests/test_textlayout.py` checks this two ways:
+- against the answer key of the made-up Word documents
+- for any PDF, including private samples: laid out with the standard bidi rules a browser uses, the extracted text must come out in the same order as on the page
 
 ## Edit accuracy
 

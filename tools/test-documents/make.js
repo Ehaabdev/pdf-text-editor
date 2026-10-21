@@ -24,7 +24,9 @@ const ARABIC_WORDS = new RegExp(`[${AR}]+(?:[ ـ]+[${AR}]+)*`, "g");
 // are left-to-right, the way Word types them.
 const DATE = String.raw`\d{1,4}/\d{1,2}/\d{1,4}|[٠-٩]{1,4}/[٠-٩]{1,2}/[٠-٩]{1,4}`;
 const PHONE = String.raw`\+?\d[\d ]{6,}\d`;
-const LATIN = String.raw`[A-Za-z][A-Za-z0-9@._\-/:+&]*(?: [A-Za-z][A-Za-z0-9@._\-/:+&]*)*`;
+// A Latin chunk ends on a letter or digit: a full stop after it is typed in Arabic mode.
+const WORD_LTR = String.raw`[A-Za-z](?:[A-Za-z0-9@._\-/:+&]*[A-Za-z0-9])?`;
+const LATIN = `${WORD_LTR}(?: ${WORD_LTR})*`;
 const LTR_CHUNK = new RegExp(`${DATE}|${PHONE}|${LATIN}`, "g");
 const NUMERIC_CHUNK = new RegExp(`^(?:${DATE}|${PHONE})$`);
 // Word otherwise shows "21/10/2026" as "2026/10/21" and reverses the groups of a phone
@@ -103,8 +105,10 @@ function para(doc, parts, opts = {}) {
     text: recorded.map((r) => r.text).join(""),
     rtl: !!opts.rtl,
     align: opts.align || "start",
-    runs: recorded.map(({ text, font, size, color, bold, italic, link }) => ({
+    runs: recorded.map(({ text, font, size, color, bold, italic, link, smallCaps, allCaps, spacing }) => ({
       text, font: font || "Arial", size: size || 11, color: color || "000000", bold: !!bold, italic: !!italic, link,
+      // Drawn differently from how it was typed: capitals, or letters spaced apart.
+      changesLetters: !!(smallCaps || allCaps || spacing),
     })),
   });
   return new Paragraph({
