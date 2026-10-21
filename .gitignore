@@ -1,7 +1,8 @@
 # Real user PDFs — never commit (they contain personal and business data)
 samples/
 *.pdf
-!backend/tests/fixtures/*.pdf
+# Made-up test documents are fine to share
+!backend/tests/fixtures/**/*.pdf
 
 # Python
 backend/.venv/
@@ -14,6 +15,7 @@ backend/data/
 
 # Frontend
 frontend/node_modules/
+tools/test-documents/node_modules/
 frontend/dist/
 frontend/.env*.local
 

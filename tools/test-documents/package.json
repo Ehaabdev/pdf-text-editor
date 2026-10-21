@@ -1,0 +1,12 @@
+{
+  "name": "test-documents",
+  "private": true,
+  "description": "Generates the Word test documents used by the backend tests. Run make.js, then export.ps1 (needs Microsoft Word on Windows).",
+  "type": "commonjs",
+  "scripts": {
+    "make": "node make.js"
+  },
+  "dependencies": {
+    "docx": "^9.13.0"
+  }
+}

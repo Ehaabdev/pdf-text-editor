@@ -1,0 +1,22 @@
+[
+  {"doc": "arabic-quotation", "find": "رقم العرض: Q-2026-0417", "old": "Q-2026-0417", "new": "Q-2026-0533", "kind": "code"},
+  {"doc": "arabic-quotation", "find": "التاريخ: 21/10/2026", "old": "21/10/2026", "new": "28/10/2026", "kind": "date"},
+  {"doc": "arabic-quotation", "find": "إلى: مؤسسة الريادة التجارية", "old": "مؤسسة الريادة التجارية", "new": "شركة الواحة للتجارة والمقاولات", "kind": "name, longer"},
+  {"doc": "arabic-quotation", "find": "يسعدنا في شركة الأفق الرقمي", "old": "اجتماعنا الأخير", "new": "اجتماعنا السابق", "kind": "word in justified paragraph"},
+  {"doc": "arabic-quotation", "find": "نلتزم بتقديم خدمة متميزة", "old": "متميزة", "new": "احترافية", "kind": "word in kashida-justified paragraph"},
+  {"doc": "arabic-quotation", "find": "1,700.00", "old": "1,700.00", "new": "1,850.00", "kind": "number in table"},
+  {"doc": "french-quote", "find": "Devis n° 2026-047", "old": "047", "new": "052", "kind": "code"},
+  {"doc": "french-quote", "find": "Lyon, le 21 octobre 2026", "old": "21", "new": "28", "kind": "date"},
+  {"doc": "french-quote", "find": "Mme Hélène Dupré", "old": "Hélène Dupré", "new": "Béatrice Lefèvre-Château", "kind": "name with accents, longer"},
+  {"doc": "french-quote", "find": "économes en énergie", "old": "économes en énergie", "new": "très économes en énergie", "kind": "longer text in justified paragraph"},
+  {"doc": "french-quote", "find": "Total TTC : 6 201,12 €", "old": "6 201,12", "new": "6 482,90", "kind": "amount with thin spaces"},
+  {"doc": "bilingual-contract", "find": "This Agreement is made on 21 October 2026", "old": "21 October 2026", "new": "28 October 2026", "kind": "date in English table cell"},
+  {"doc": "bilingual-contract", "find": "٣. الرسوم: 4,542.50 ريال", "old": "4,542.50", "new": "4,980.00", "kind": "number in Arabic table cell"},
+  {"doc": "bilingual-contract", "find": "The Client’s representative, Mr.", "old": "Khalid Al-Otaibi", "new": "Faisal Al-Qahtani", "kind": "English name in a line with Arabic"},
+  {"doc": "bilingual-contract", "find": "للتواصل مع فريق الدعم", "old": "+966 11 234 5678", "new": "+966 11 765 4321", "kind": "phone number inside Arabic"},
+  {"doc": "english-styles", "find": "Quarterly Service Report", "old": "Quarterly", "new": "Annual", "kind": "title, shorter"},
+  {"doc": "english-styles", "find": "Overall delivery rates improved", "old": "improved", "new": "rose", "kind": "bold word mid-sentence"},
+  {"doc": "english-styles", "find": "Full statistics are available at", "old": "reports@example.com", "new": "stats@example.com", "kind": "link text"},
+  {"doc": "english-styles", "find": "140,250", "old": "140,250", "new": "141,000", "kind": "number in table"},
+  {"doc": "english-styles", "find": "without adding staff", "old": "without adding staff", "new": "without hiring any additional staff", "kind": "longer text in justified paragraph"}
+]

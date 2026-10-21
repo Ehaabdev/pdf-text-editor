@@ -72,6 +72,26 @@ cd backend
 
 Put real PDFs to test with in `samples/`. That folder is never committed.
 
+### Test documents
+
+`backend/tests/fixtures/word/` holds made-up business documents saved as PDF by Microsoft Word, the most common source of the PDFs people edit:
+
+| Document | Tests |
+|---|---|
+| `arabic-quotation` | Arabic right-to-left text, Simplified/Traditional Arabic, Sakkal Majalla and Tahoma fonts, kashida justification, vowel marks, Arabic-Indic digits, an RTL table |
+| `french-quote` | Every French accent, œ/æ, « guillemets », French non-breaking spaces, ligatures, superscript, a price table |
+| `bilingual-contract` | English and Arabic side by side, Arabic sentences with English words, phone numbers and URLs, and the reverse |
+| `english-styles` | Many fonts and sizes, style changes mid-sentence, links, shading, text box, small caps, two columns |
+
+`expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. To rebuild them (Windows with Microsoft Word, Word closed):
+
+```powershell
+cd tools	est-documents
+npm install
+node make.js
+powershell -ExecutionPolicy Bypass -File export.ps1
+```
+
 ## Settings (environment variables)
 
 | Variable | Default | Meaning |
