@@ -25,6 +25,7 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
+from . import bidi
 from . import fonts as fontlib
 from .pdfcontent import (
     DrawnGlyph,
@@ -414,6 +415,47 @@ def _bracket_insides(words: list[Word], visual: list[Word]) -> set[tuple[int, in
     return out
 
 
+def _visual_order_standard(words: list[Word], rtl: bool) -> list[Word]:
+    """Words in left-to-right page order by the Unicode bidi algorithm, as Chrome and
+    other programs that follow it lay text out. A new word whose characters end up at
+    different levels ("+966" after Arabic: the "+" goes on the other side) is split into
+    joined pieces. Returns the (possibly longer) typing-order list and the visual list."""
+    def text_of(ws):
+        return "".join(w.text + w.sep for w in ws)
+
+    lv = bidi.levels(text_of(words), rtl)
+    split: list[Word] = []
+    pos = 0
+    for w in words:
+        own = lv[pos : pos + len(w.text)]
+        if w.is_new and len(set(own)) > 1:
+            k = 0
+            while k < len(w.text):
+                j = k + 1
+                while j < len(w.text) and own[j] == own[k]:
+                    j += 1
+                piece = w.text[k:j]
+                last = j == len(w.text)
+                split.append(Word(piece, _script(piece), source=w.source, sep=w.sep if last else ""))
+                k = j
+        else:
+            split.append(w)
+        pos += len(w.text) + len(w.sep)
+    for k, w in enumerate(split):
+        w.logical = k
+
+    lv = bidi.levels(text_of(split), rtl)
+    starts, pos = [], 0
+    for w in split:
+        starts.append(pos)
+        pos += len(w.text) + len(w.sep)
+    rank = {i: r for r, i in enumerate(bidi.visual_order(lv))}
+    for w, s in zip(split, starts):
+        w.rtl = lv[s] % 2 == 1
+    visual = sorted(split, key=lambda w: min(rank[starts[w.logical] + k] for k in range(len(w.text))))
+    return split, visual
+
+
 def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
     """Left and right ink edges (PDF x) of the nearby lines in the same column: the
     lines just above and below that overlap this one, i.e. probably its paragraph."""
@@ -535,7 +577,10 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     if not words:
         return _apply(src, pdf, mu, rp, page_no, line, old, [], column, word_made, [], new_text)
 
-    visual = _visual_order(words, line.rtl)
+    if word_made:
+        visual = _visual_order(words, line.rtl)
+    else:
+        words, visual = _visual_order_standard(words, line.rtl)
     fonts = Fonts(pdf, page_no, rp, word_made)
     for w in visual:
         if w.is_new:

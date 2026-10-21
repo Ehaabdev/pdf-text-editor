@@ -26,8 +26,6 @@ REFUSED = {
     ("word", "English name in a line with Arabic", "bilingual-contract"): "too long",  # Word would wrap it
     ("chrome", "English name in a line with Arabic", "bilingual-contract"): "couldn't be read",  # Chrome left glyphs unlabelled
     ("chrome", "longer text in justified paragraph", "english-styles"): "too long",
-    # Chrome lays out numbers in Arabic text by the Unicode rules; the layout for that comes next.
-    ("chrome", "phone number inside Arabic", "bilingual-contract"): "exactly",
 }
 
 
