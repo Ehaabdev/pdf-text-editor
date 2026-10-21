@@ -215,9 +215,9 @@ def test_link_on_another_line_survives(fixture_pdf):
     assert len(m["links"][0]) == len(m["links"][1]) == 1
 
 
-def test_link_on_edited_line_survives(fixture_pdf):
+def test_link_on_edited_line_follows_the_address(fixture_pdf):
     m = edit_and_measure(fixture_pdf, 0, "Email:", "sender", "orders")
-    assert [l["uri"] for l in m["links"][1]] == ["mailto:sender@example.com"]
+    assert [l["uri"] for l in m["links"][1]] == ["mailto:orders@example.com"]
 
 
 # Private real-world PDFs (local only) ---------------------------------------------

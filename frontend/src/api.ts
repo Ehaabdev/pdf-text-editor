@@ -141,6 +141,16 @@ export function editLine(doc: DocInfo, page: number, line: TextLine, newText: st
   });
 }
 
+export type PickedLine = { page: number; line: TextLine };
+
+/** Delete whole lines, on any pages, as one change: one Undo brings them all back. */
+export function deleteLines(doc: DocInfo, lines: PickedLine[]): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/deletions`, {
+    revision: doc.revision,
+    lines: lines.map(({ page, line }) => ({ page, lineId: line.id, oldText: line.text })),
+  });
+}
+
 export function undoEdit(doc: DocInfo): Promise<DocInfo> {
   return postJson(`/api/documents/${doc.id}/undo`, { revision: doc.revision });
 }

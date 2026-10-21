@@ -16,11 +16,15 @@ type Props = {
   doc: DocInfo;
   line: TextLine;
   page: number; // 0-based
+  deleting: boolean;
   onClose: () => void;
-  onEdited: (outcome: EditOutcome) => void;
+  /** deleted: the text was emptied, which deletes the line. */
+  onEdited: (outcome: EditOutcome, deleted: boolean) => void;
+  onDelete: () => void;
+  onSelectMore: () => void;
 };
 
-export default function LinePanel({ doc, line, page, onClose, onEdited }: Props) {
+export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(line.display);
   const [saving, setSaving] = useState(false);
@@ -52,7 +56,7 @@ export default function LinePanel({ doc, line, page, onClose, onEdited }: Props)
     setSaving(true);
     setError(null);
     try {
-      onEdited(await editLine(doc, page, line, draft));
+      onEdited(await editLine(doc, page, line, draft), draft.trim() === "");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
     } finally {
@@ -102,8 +106,7 @@ export default function LinePanel({ doc, line, page, onClose, onEdited }: Props)
             }}
           />
           <p className="edit-note">
-            Keeps the font ({fontLabel(line.font)}), size ({pointSize(line.size)}) and color. Leave it empty to remove
-            the line.
+            Keeps the font ({fontLabel(line.font)}), size ({pointSize(line.size)}) and color.
           </p>
           {line.uncertain && (
             <p className="line-warning">
@@ -184,8 +187,14 @@ export default function LinePanel({ doc, line, page, onClose, onEdited }: Props)
           )}
 
           <div className="edit-actions">
-            <button className="btn btn-primary" onClick={() => setEditing(true)}>
+            <button className="btn btn-primary" onClick={() => setEditing(true)} disabled={deleting}>
               Edit text
+            </button>
+            <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete line"}
+            </button>
+            <button className="btn btn-ghost" onClick={onSelectMore} disabled={deleting}>
+              Select more lines
             </button>
           </div>
         </>

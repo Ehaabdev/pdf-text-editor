@@ -9,11 +9,12 @@ type Props = {
   index: number;
   /** Width of the page on screen, in CSS pixels. */
   width: number;
-  selectedId: string | null;
-  onSelect: (line: TextLine | null) => void;
+  selectedIds: Set<string>;
+  /** A line was clicked; `more` when it should be added to the selection (Shift or Ctrl). */
+  onSelect: (line: TextLine | null, more: boolean) => void;
 };
 
-export default function PageView({ doc, index, width, selectedId, onSelect }: Props) {
+export default function PageView({ doc, index, width, selectedIds, onSelect }: Props) {
   const size = doc.pages[index];
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -42,7 +43,7 @@ export default function PageView({ doc, index, width, selectedId, onSelect }: Pr
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
         onClick={(e) => {
-          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null);
+          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null, false);
         }}
       >
         <img
@@ -63,7 +64,7 @@ export default function PageView({ doc, index, width, selectedId, onSelect }: Pr
               const [x0, y0, x1, y1] = line.bbox;
               // A little extra around each line makes small text easier to tap.
               const padX = 1, padY = Math.min(2, (y1 - y0) * 0.15);
-              const selected = line.id === selectedId;
+              const selected = selectedIds.has(line.id);
               return (
                 <button
                   key={line.id}
@@ -79,7 +80,7 @@ export default function PageView({ doc, index, width, selectedId, onSelect }: Pr
                   aria-pressed={selected}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onSelect(selected ? null : line);
+                    onSelect(line, e.shiftKey || e.ctrlKey || e.metaKey);
                   }}
                 />
               );

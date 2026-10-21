@@ -524,6 +524,11 @@ def _attach_marks(glyphs: list[Glyph], proj) -> list[Glyph]:
         else:  # no width (Word): the shape is painted just right of its origin
             u = proj(m.origin)[0] + 0.6
         over = [b for b in letters if _extent(b, proj)[0] - 0.1 <= u <= _extent(b, proj)[1] + 0.1]
+        if over and not any(_is_letter(b) for b in over):
+            # A vowel mark sits on a letter, never on punctuation: Word can anchor the
+            # tanween of "صالحاً." a little inside the full stop's space, next to the alef.
+            near = [b for b in letters if _is_letter(b) and min(abs(e - u) for e in _extent(b, proj)) < 1.5]
+            over = near or over
         after = [b for b in letters if b.seq > m.seq and min(abs(e - u) for e in _extent(b, proj)) < 3]
         if after and any(a <= u <= b for a, b in stretches):
             # Over a tatweel: the mark belongs to the letter the tatweel lengthens,
@@ -538,6 +543,10 @@ def _attach_marks(glyphs: list[Glyph], proj) -> list[Glyph]:
         _add_mark(best, m.text, u, proj)
         best.traces += m.traces
     return [g for g in glyphs if not g.is_mark]
+
+
+def _is_letter(g: Glyph) -> bool:
+    return bool(g.base) and unicodedata.category(g.base[0]).startswith("L")
 
 
 def _add_mark(letter: Glyph, mark: str, u: float, proj) -> None:

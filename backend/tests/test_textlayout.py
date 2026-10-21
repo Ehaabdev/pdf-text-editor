@@ -314,3 +314,10 @@ def test_long_vowelled_page_is_fast():
     start = time.perf_counter()
     all_lines(path)
     assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize("source", ["word", "chrome"])
+def test_a_vowel_mark_next_to_a_full_stop_stays_on_its_letter(source):
+    """Word anchors the tanween of "صالحاً." a little inside the full stop's space."""
+    page = pymupdf.open(FIXTURES / "decorations" / f"decorations-{source}.pdf")[0]
+    assert "السعر القديم لم يعد صالحاً." in [l.text for l in page_lines(page)]

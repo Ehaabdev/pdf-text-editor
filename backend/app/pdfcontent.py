@@ -168,12 +168,56 @@ class DrawnGlyph:
 
 
 @dataclass
+class Subpath:
+    first: int  # index of its first construction instruction (m or re)
+    last: int  # index of its last one
+    bbox: tuple[float, float, float, float]  # PDF user space: x0, y0, x1, y1 (control points included)
+
+
+@dataclass
+class DrawnPath:
+    """A painted (or clipping) path: its construction instructions and how it's painted."""
+
+    start: int  # index of the first construction instruction
+    end: int  # index of the painting instruction (f, S, B, n, ...)
+    op: str  # the painting operator
+    clip: bool  # W or W* before the painting: it also clips what follows
+    subpaths: list[Subpath]
+    fill: tuple
+    stroke: tuple
+    line_width: float  # in user space units, before the CTM
+    ctm: Matrix
+
+    @property
+    def bbox(self) -> tuple[float, float, float, float]:
+        boxes = [s.bbox for s in self.subpaths]
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    @property
+    def fills(self) -> bool:
+        return self.op in ("f", "F", "f*", "B", "B*", "b", "b*")
+
+    @property
+    def strokes(self) -> bool:
+        return self.op in ("S", "s", "B", "B*", "b", "b*")
+
+
+_CONSTRUCT = {"m", "l", "c", "v", "y", "h", "re"}
+_PAINT = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*", "n"}
+
+
+def apply(m: Matrix, x: float, y: float) -> tuple[float, float]:
+    return x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5]
+
+
+@dataclass
 class Replay:
     instructions: list
     glyphs: list[DrawnGlyph]
     fonts: dict[str, FontInfo]
     # For each instruction index, the CTM in effect (only recorded for text objects' ET).
     et_after: dict[int, int] = field(default_factory=dict)  # text-showing op -> index of its ET
+    paths: list[DrawnPath] = field(default_factory=list)  # in drawing order
 
 
 def _number(x) -> float:
@@ -195,17 +239,49 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
 
     ctm: Matrix = IDENTITY
     stack = []
-    st = dict(Tc=0.0, Tw=0.0, Tz=1.0, TL=0.0, font=None, size=0.0, Ts=0.0, Tr=0, fill=(), stroke=(), gs=())
+    st = dict(Tc=0.0, Tw=0.0, Tz=1.0, TL=0.0, font=None, size=0.0, Ts=0.0, Tr=0, fill=(), stroke=(), gs=(), lw=1.0)
     tm = tlm = IDENTITY
     glyphs: list[DrawnGlyph] = []
     open_text_ops: list[int] = []
     et_after: dict[int, int] = {}
+    paths: list[DrawnPath] = []
+    path_start, subpaths, clip = None, [], False  # the path being built
 
     for k, ins in enumerate(instructions):
         if isinstance(ins, pikepdf.ContentStreamInlineImage):
             continue
         operands, op = ins.operands, str(ins.operator)
-        if op == "q":
+        if op in _CONSTRUCT:
+            if path_start is None:
+                path_start = k
+            nums = [_number(x) for x in operands]
+            if op == "re":
+                x, y, w, h = nums
+                pts = [apply(ctm, x, y), apply(ctm, x + w, y), apply(ctm, x, y + h), apply(ctm, x + w, y + h)]
+                subpaths.append([k, k, pts])
+            elif op == "m" or not subpaths:
+                subpaths.append([k, k, [apply(ctm, nums[-2], nums[-1])] if nums else []])
+            else:
+                subpaths[-1][1] = k
+                subpaths[-1][2] += [apply(ctm, nums[i], nums[i + 1]) for i in range(0, len(nums) - 1, 2)]
+            continue
+        if op in ("W", "W*"):
+            clip = True
+            continue
+        if op in _PAINT:
+            if path_start is not None:
+                built = [
+                    Subpath(a, b, (min(x for x, _ in pts), min(y for _, y in pts), max(x for x, _ in pts), max(y for _, y in pts)))
+                    for a, b, pts in subpaths
+                    if pts
+                ]
+                if built:
+                    paths.append(DrawnPath(path_start, k, op, clip, built, st["fill"], st["stroke"], st["lw"], ctm))
+            path_start, subpaths, clip = None, [], False
+            continue
+        if op == "w":
+            st["lw"] = _number(operands[0])
+        elif op == "q":
             stack.append((ctm, dict(st)))
         elif op == "Q":
             if stack:
@@ -285,7 +361,7 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
                     adv = font.width(code) + (1000 * (st["Tc"] + tw) / fs if fs else 0.0)
                     glyphs.append(DrawnGlyph(k, item_index, pos, code, (trm[4], trm[5]), adv, paint, ctm))
                     tm = mul((1, 0, 0, 1, adv / 1000 * fs * th, 0), tm)
-    return Replay(instructions, glyphs, fonts, et_after)
+    return Replay(instructions, glyphs, fonts, et_after, paths)
 
 
 def _has_text(xobject) -> bool:

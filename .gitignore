@@ -29,3 +29,4 @@ frontend/.env*.local
 .idea/
 Thumbs.db
 .DS_Store
+*.tsbuildinfo

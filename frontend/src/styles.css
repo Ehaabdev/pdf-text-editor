@@ -109,6 +109,16 @@ body {
   color: var(--ink);
 }
 
+.btn-delete {
+  background: var(--paper);
+  border-color: color-mix(in srgb, var(--red) 45%, var(--rule));
+  color: var(--red);
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 9%, var(--paper));
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--ink);
@@ -678,6 +688,23 @@ body {
 .line-edit:focus {
   outline: 3px solid var(--npb-wash);
   outline-offset: 0;
+}
+
+.picked-list {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.picked-list li {
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--npb-wash);
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .edit-note {
