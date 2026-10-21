@@ -1,0 +1,3024 @@
+[
+ {
+  "doc": "arabic-quotation",
+  "text": "شركة الأفق الرقمي لتقنية المعلومات - Digital Horizon IT",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "شركة الأفق الرقمي لتقنية المعلومات - Digital Horizon IT",
+    "font": "Arial",
+    "size": 9,
+    "color": "595959",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "عرض سعر خدمات الرسائل والمحادثات",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "عرض سعر خدمات الرسائل والمحادثات",
+    "font": "Simplified Arabic",
+    "size": 20,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "رقم العرض: Q-2026-0417",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "رقم العرض: Q-2026-0417",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "التاريخ: 21/10/2026",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "التاريخ: 21/10/2026",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "صالح حتى: ٢٠/١١/٢٠٢٦",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "صالح حتى: ٢٠/١١/٢٠٢٦",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "إلى: مؤسسة الريادة التجارية",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "إلى: مؤسسة الريادة التجارية",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "البريد الإلكتروني: sales@example.com",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "البريد الإلكتروني: sales@example.com",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الهاتف: +966 55 123 4567",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الهاتف: +966 55 123 4567",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الموقع: www.example.com",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الموقع: www.example.com",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "مقدمة",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "مقدمة",
+    "font": "Arial",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "يسعدنا في شركة الأفق الرقمي أن نقدم لكم هذا العرض لتقديم خدمات المحادثات عبر WhatsApp Business وخدمات الرسائل النصية القصيرة SMS، وذلك وفقاً للمتطلبات التي تم الاتفاق عليها خلال اجتماعنا الأخير. يتضمن العرض جميع الخدمات الفنية والدعم اللازم لضمان تشغيل الحلول بكفاءة عالية واستمرارية دون انقطاع.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "يسعدنا في شركة الأفق الرقمي أن نقدم لكم هذا العرض لتقديم خدمات المحادثات عبر WhatsApp Business وخدمات الرسائل النصية القصيرة SMS، وذلك وفقاً للمتطلبات التي تم الاتفاق عليها خلال اجتماعنا الأخير. يتضمن العرض جميع الخدمات الفنية والدعم اللازم لضمان تشغيل الحلول بكفاءة عالية واستمرارية دون انقطاع.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "نلتزم بتقديم خدمة متميزة تقوم على الشفافية والدقة والالتزام بالمواعيد، ونحرص على أن يحصل عملاؤنا على أفضل قيمة مقابل استثمارهم، مع فريق دعم متخصص متاح طوال أيام الأسبوع للإجابة على جميع الاستفسارات ومعالجة الطلبات في أسرع وقت ممكن.",
+  "rtl": true,
+  "align": "mediumKashida",
+  "runs": [
+   {
+    "text": "نلتزم بتقديم خدمة متميزة تقوم على الشفافية والدقة والالتزام بالمواعيد، ونحرص على أن يحصل عملاؤنا على أفضل قيمة مقابل استثمارهم، مع فريق دعم متخصص متاح طوال أيام الأسبوع للإجابة على جميع الاستفسارات ومعالجة الطلبات في أسرع وقت ممكن.",
+    "font": "Traditional Arabic",
+    "size": 14,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "قَالَ الحُكَمَاءُ: الإِتْقَانُ فِي العَمَلِ طَرِيقُ النَّجَاحِ.",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "قَالَ الحُكَمَاءُ: الإِتْقَانُ فِي العَمَلِ طَرِيقُ النَّجَاحِ.",
+    "font": "Sakkal Majalla",
+    "size": 14,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "تفاصيل الأسعار",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "تفاصيل الأسعار",
+    "font": "Arial",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الخدمة",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الخدمة",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الكمية",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "الكمية",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "سعر الوحدة (ريال)",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "سعر الوحدة (ريال)",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الإجمالي (ريال)",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "الإجمالي (ريال)",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "رسائل تسويقية عبر WhatsApp",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "رسائل تسويقية عبر WhatsApp",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "10,000",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "10,000",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "0.17",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "0.17",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "1,700.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1,700.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "رسائل الخدمة",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "رسائل الخدمة",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "5,000",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "5,000",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "0.04",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "0.04",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "200.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "200.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "رسائل التحقق OTP",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "رسائل التحقق OTP",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "20,000",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "20,000",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "0.08",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "0.08",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "1,600.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1,600.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "لوحة تحكم الموظفين (Agent Console)",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "لوحة تحكم الموظفين (Agent Console)",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "3",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "3",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "150.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "150.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "450.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "450.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الإجمالي قبل الضريبة",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الإجمالي قبل الضريبة",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "3,950.00",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "3,950.00",
+    "font": "Tahoma",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "ملاحظة: لا تشمل الأسعار المذكورة أعلاه ضريبة القيمة المضافة بنسبة 15%.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "ملاحظة: لا تشمل الأسعار المذكورة أعلاه ضريبة القيمة المضافة بنسبة 15%.",
+    "font": "Arial",
+    "size": 12,
+    "color": "C00000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الإجمالي شامل الضريبة: 4,542.50 ريال",
+  "rtl": true,
+  "align": "right",
+  "runs": [
+   {
+    "text": "الإجمالي شامل الضريبة: 4,542.50 ريال",
+    "font": "Arial",
+    "size": 12,
+    "color": "00B050",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "نطاق العمل",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "نطاق العمل",
+    "font": "Arial",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "تفعيل حساب WhatsApp Business وربطه بالأنظمة الحالية.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "تفعيل حساب WhatsApp Business وربطه بالأنظمة الحالية.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "إعداد قوالب الرسائل واعتمادها من Meta.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "إعداد قوالب الرسائل واعتمادها من Meta.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "تدريب فريق العمل على استخدام لوحة التحكم.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "تدريب فريق العمل على استخدام لوحة التحكم.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "تقديم تقارير شهرية عن أداء الحملات.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "تقديم تقارير شهرية عن أداء الحملات.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "مراحل التنفيذ",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "مراحل التنفيذ",
+    "font": "Arial",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "توقيع العقد واستلام الدفعة الأولى.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "توقيع العقد واستلام الدفعة الأولى.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "إعداد البيئة الفنية خلال ٥ أيام عمل.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "إعداد البيئة الفنية خلال ٥ أيام عمل.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الاختبار والتشغيل التجريبي.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الاختبار والتشغيل التجريبي.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الإطلاق الرسمي والمتابعة.",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الإطلاق الرسمي والمتابعة.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "الشروط والأحكام",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "الشروط والأحكام",
+    "font": "Arial",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "مدة صلاحية هذا العرض ثلاثون (30) يوماً من تاريخ إصداره. تُدفع قيمة العرض على دفعتين: ٥٠٪ عند توقيع العقد و٥٠٪ عند الإطلاق، ولا يحق لأي طرف إلغاء الاتفاق دون إشعار كتابي مسبق.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "مدة صلاحية هذا العرض ",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "ثلاثون (30) يوماً",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " من تاريخ إصداره. تُدفع قيمة العرض على دفعتين: ٥٠٪ عند توقيع العقد و٥٠٪ عند الإطلاق، ولا يحق لأي طرف إلغاء الاتفاق دون إشعار كتابي مسبق.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "للاستفسار: أحمد المنصور - مدير المبيعات - ahmed.mansour@example.com",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "للاستفسار: أحمد المنصور - مدير المبيعات - ahmed.mansour@example.com",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "إِنَّ العِلْمَ نُورٌ يُضِيءُ دُرُوبَ الحَيَاةِ، وَالمَعْرِفَةُ مِفْتَاحُ التَّقَدُّمِ وَالنَّجَاحِ، فَمَنْ جَدَّ وَجَدَ وَمَنْ زَرَعَ حَصَدَ.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "إِنَّ العِلْمَ نُورٌ يُضِيءُ دُرُوبَ الحَيَاةِ، وَالمَعْرِفَةُ مِفْتَاحُ التَّقَدُّمِ وَالنَّجَاحِ، فَمَنْ جَدَّ وَجَدَ وَمَنْ زَرَعَ حَصَدَ.",
+    "font": "Traditional Arabic",
+    "size": 18,
+    "color": "000000",
+    "bold": false,
+    "italic": false
+   }
+  ]
+ },
+ {
+  "doc": "arabic-quotation",
+  "text": "يُقَدِّمُ فَرِيقُنَا الدَّعْمَ الفَنِّيَّ عَلَى مَدَارِ السَّاعَةِ لِجَمِيعِ العُمَلَاءِ.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "يُقَدِّمُ فَرِيقُنَا الدَّعْمَ الفَنِّيَّ عَلَى مَدَارِ السَّاعَةِ لِجَمِيعِ العُمَلَاءِ.",
+    "font": "Arial",
+    "size": 14,
+    "color": "000000",
+    "bold": false,
+    "italic": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Atelier Lumière SARL - 12, rue de la République, 69002 Lyon",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Atelier Lumière SARL - 12, rue de la République, 69002 Lyon",
+    "font": "Calibri",
+    "size": 9,
+    "color": "595959",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Lyon, le 21 octobre 2026",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Lyon, le 21 octobre 2026",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Devis n° 2026-047",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Devis n° 2026-047",
+    "font": "Cambria",
+    "size": 20,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Mme Hélène Dupré",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Mme Hélène Dupré",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Société Bérénice & Fils",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Société Bérénice & Fils",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "8, avenue des Châteaux, 94240 L’Haÿ-les-Roses",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "8, avenue des Châteaux, 94240 L’Haÿ-les-Roses",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Objet : rénovation de l’éclairage de vos bureaux",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Objet :",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " rénovation de l’éclairage de vos bureaux",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Madame, suite à notre rencontre du 14 octobre, nous avons le plaisir de vous adresser notre proposition pour la rénovation complète de l’éclairage de vos bureaux. Notre équipe s’engage à réaliser des travaux efficaces, durables et économes en énergie, tout en respectant le calendrier défini ensemble.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Madame, suite à notre rencontre du 14 octobre, nous avons le plaisir de vous adresser notre proposition pour la rénovation complète de l’éclairage de vos bureaux. Notre équipe s’engage à réaliser des travaux efficaces, durables et économes en énergie, tout en respectant le calendrier défini ensemble.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "« Une lumière bien pensée change l’atmosphère d’un lieu », affirme notre fondatrice. C’est pourquoi chaque projet commence par une étude précise de vos besoins !",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "« Une lumière bien pensée change l’atmosphère d’un lieu », affirme notre fondatrice. C’est pourquoi chaque projet commence par une étude précise de vos besoins !",
+    "font": "Times New Roman",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Les fleurs de l’affiche, l’œuvre d’art et le cœur du hall d’entrée seront mis en valeur grâce à un éclairage d’ambiance. Où ? Dans l’accueil, la salle de réunion et le bureau de la direction.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Les fleurs de l’affiche, l’œuvre d’art et le cœur du hall d’entrée seront mis en valeur grâce à un éclairage d’ambiance. Où ? Dans l’accueil, la salle de réunion et le bureau de la direction.",
+    "font": "Garamond",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "ÉCLAIRAGE DE LA FAÇADE, CÔTÉ RUE",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "ÉCLAIRAGE DE LA FAÇADE, CÔTÉ RUE",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "La façade sera éclairée par des projecteurs basse consommation ; leur coût d’entretien est très faible. TRÈS IMPORTANT : les fenêtres du rez-de-chaussée et du 1er étage resteront accessibles pendant les travaux. Une ambiance naïve et chaleureuse, digne d’un maître artisan, ex æquo avec les plus belles réalisations de la région.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "La façade sera éclairée par des projecteurs basse consommation ; leur coût d’entretien est très faible. ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "TRÈS IMPORTANT",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " : les fenêtres du rez-de-chaussée et du 1",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "er",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " étage resteront accessibles pendant les travaux. Une ambiance naïve et chaleureuse, digne d’un maître artisan, ex æquo avec les plus belles réalisations de la région.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Détail des prestations",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Détail des prestations",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Désignation",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Désignation",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Quantité",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Quantité",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Prix unitaire HT",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Prix unitaire HT",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Total HT",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Total HT",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Luminaires LED encastrés",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Luminaires LED encastrés",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "24",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "24",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "89,90 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "89,90 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "2 157,60 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "2 157,60 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Câblage et raccordement",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Câblage et raccordement",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "1",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "1 450,00 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1 450,00 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "1 450,00 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1 450,00 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Main-d’œuvre (forfait)",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Main-d’œuvre (forfait)",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "3 j",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "3 j",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "520,00 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "520,00 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "1 560,00 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1 560,00 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Total HT",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Total HT",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "5 167,60 €",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "5 167,60 €",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "TVA (20 %) : 1 033,52 €",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "TVA (20 %) : 1 033,52 €",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Total TTC : 6 201,12 €",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Total TTC : 6 201,12 €",
+    "font": "Calibri",
+    "size": 11,
+    "color": "C00000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Conditions",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Conditions",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Validité du devis : 30 jours",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Validité du devis : 30 jours",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Acompte de 30 % à la commande",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Acompte de 30 % à la commande",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Garantie de 2 ans sur les luminaires",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Garantie de 2 ans sur les luminaires",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Délai d’exécution : 3 semaines, sauf fêtes de Noël",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Délai d’exécution : 3 semaines, sauf fêtes de Noël",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "À noter : les prix sont exprimés en euros (€) hors taxes. Pour toute question, n’hésitez pas à nous contacter au 04 72 00 00 00 ou par courriel à contact@example.com.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "À noter : les prix sont exprimés en euros (€) hors taxes. Pour toute question, n’hésitez pas à nous contacter au 04 72 00 00 00 ou par courriel à ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "contact@example.com",
+    "font": "Calibri",
+    "size": 11,
+    "color": "0563C1",
+    "bold": false,
+    "italic": false,
+    "link": "mailto:contact@example.com",
+    "changesLetters": false
+   },
+   {
+    "text": ".",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Veuillez agréer, Madame, l’expression de nos salutations distinguées.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Veuillez agréer, Madame, l’expression de nos salutations distinguées.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Jean-François Lefèvre",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Jean-François Lefèvre",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "french-quote",
+  "text": "Gérant",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Gérant",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Service Agreement",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Service Agreement",
+    "font": "Calibri",
+    "size": 20,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "اتفاقية تقديم خدمات",
+  "rtl": true,
+  "align": "center",
+  "runs": [
+   {
+    "text": "اتفاقية تقديم خدمات",
+    "font": "Simplified Arabic",
+    "size": 20,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "This Agreement is made on 21 October 2026 between Elite Services Co. (the “Provider”) and Al Noor Trading Est. (the “Client”).",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "This Agreement is made on 21 October 2026 between Elite Services Co. (the “Provider”) and Al Noor Trading Est. (the “Client”).",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "أُبرمت هذه الاتفاقية بتاريخ 21 أكتوبر 2026 بين شركة النخبة للخدمات (\"مقدم الخدمة\") ومؤسسة النور التجارية (\"العميل\").",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "أُبرمت هذه الاتفاقية بتاريخ 21 أكتوبر 2026 بين شركة النخبة للخدمات (\"مقدم الخدمة\") ومؤسسة النور التجارية (\"العميل\").",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "1. Scope: The Provider shall deliver customer messaging services as described in Annex A.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "1. Scope: The Provider shall deliver customer messaging services as described in Annex A.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "١. النطاق: يلتزم مقدم الخدمة بتقديم خدمات المراسلة للعملاء كما هو موضح في الملحق (أ).",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "١. النطاق: يلتزم مقدم الخدمة بتقديم خدمات المراسلة للعملاء كما هو موضح في الملحق (أ).",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "2. Term: Twelve (12) months starting on 1 November 2026.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "2. Term: Twelve (12) months starting on 1 November 2026.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "٢. المدة: اثنا عشر (12) شهراً تبدأ من 1 نوفمبر 2026.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "٢. المدة: اثنا عشر (12) شهراً تبدأ من 1 نوفمبر 2026.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "3. Fees: SAR 4,542.50 per month, including 15% VAT.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "3. Fees: SAR 4,542.50 per month, including 15% VAT.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "٣. الرسوم: 4,542.50 ريال شهرياً شاملة ضريبة القيمة المضافة 15%.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "٣. الرسوم: 4,542.50 ريال شهرياً شاملة ضريبة القيمة المضافة 15%.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "4. Notices: All notices shall be sent to legal@example.com.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "4. Notices: All notices shall be sent to legal@example.com.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "٤. الإشعارات: تُرسل جميع الإشعارات إلى legal@example.com.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "٤. الإشعارات: تُرسل جميع الإشعارات إلى legal@example.com.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "5. Governing law: This Agreement is governed by the laws of the Kingdom of Saudi Arabia.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "5. Governing law: This Agreement is governed by the laws of the Kingdom of Saudi Arabia.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "٥. القانون الواجب التطبيق: تخضع هذه الاتفاقية لأنظمة المملكة العربية السعودية.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "٥. القانون الواجب التطبيق: تخضع هذه الاتفاقية لأنظمة المملكة العربية السعودية.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Contact details",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Contact details",
+    "font": "Calibri",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "بيانات التواصل",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "بيانات التواصل",
+    "font": "Simplified Arabic",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "للتواصل مع فريق الدعم (Support Team) يرجى الاتصال على +966 11 234 5678 أو زيارة https://support.example.com/help خلال أوقات العمل من 9:00 إلى 17:00.",
+  "rtl": true,
+  "align": "both",
+  "runs": [
+   {
+    "text": "للتواصل مع فريق الدعم (Support Team) يرجى الاتصال على +966 11 234 5678 أو زيارة https://support.example.com/help خلال أوقات العمل من 9:00 إلى 17:00.",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "تم تحديث الأسعار بتاريخ 2026/10/21 مع خصم -10% على باقة Premium Plus (الإصدار 3.2).",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "تم تحديث الأسعار بتاريخ 2026/10/21 مع خصم -10% على باقة Premium Plus (الإصدار 3.2).",
+    "font": "Arial",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "المنتج: WA-2026 / الكود: SMS-500 / المرجع: [REF-77]",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "المنتج: WA-2026 / الكود: SMS-500 / المرجع: [REF-77]",
+    "font": "Simplified Arabic",
+    "size": 13,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "The Client’s representative, Mr. خالد العتيبي (Khalid Al-Otaibi), will sign on behalf of مؤسسة النور التجارية.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "The Client’s representative, Mr. خالد العتيبي (Khalid Al-Otaibi), will sign on behalf of مؤسسة النور التجارية.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Meeting location: Riyadh office, برج المملكة, Floor 12.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Meeting location: Riyadh office, برج المملكة, Floor 12.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Signatures",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Signatures",
+    "font": "Calibri",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "التوقيعات",
+  "rtl": true,
+  "align": "start",
+  "runs": [
+   {
+    "text": "التوقيعات",
+    "font": "Simplified Arabic",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "For the Provider / عن مقدم الخدمة",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "For the Provider / عن مقدم الخدمة",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Name / الاسم: Saad Al-Harbi",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Name / الاسم: Saad Al-Harbi",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Date / التاريخ: 21/10/2026",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Date / التاريخ: 21/10/2026",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "For the Client / عن العميل",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "For the Client / عن العميل",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Name / الاسم: Khalid Al-Otaibi",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Name / الاسم: Khalid Al-Otaibi",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "bilingual-contract",
+  "text": "Date / التاريخ: 21/10/2026",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Date / التاريخ: 21/10/2026",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Northwind Logistics - Confidential",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Northwind Logistics - Confidential",
+    "font": "Arial",
+    "size": 8,
+    "color": "7F7F7F",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Quarterly Service Report",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Quarterly Service Report",
+    "font": "Georgia",
+    "size": 28,
+    "color": "1F3864",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Prepared for Northwind Logistics, Q3 2026",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Prepared for Northwind Logistics, Q3 2026",
+    "font": "Segoe UI",
+    "size": 14,
+    "color": "7F7F7F",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Executive summary",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Executive summary",
+    "font": "Calibri",
+    "size": 13,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": true
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "This report summarises the performance of the messaging platform between July and September 2026. Overall delivery rates improved, and response times fell for the third quarter in a row.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "This report summarises the performance of the messaging platform between July and September 2026. Overall delivery rates ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "improved",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": ", and response times fell for the ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "third",
+    "font": "Calibri",
+    "size": 11,
+    "color": "C00000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " quarter in a row.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Customers sent more messages than in any previous quarter, with the largest growth in order updates and delivery notifications. The support team handled the extra volume without adding staff, mainly because the new routing rules sent simple questions to automated replies and passed complex cases straight to the right agent.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Customers sent more messages than in any previous quarter, with the largest growth in order updates and delivery notifications. The support team handled the extra volume without adding staff, mainly because the new routing rules sent simple questions to automated replies and passed complex cases straight to the right agent.",
+    "font": "Times New Roman",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Delivery rate: 98.7% | Average response: 42 seconds",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Delivery rate: 98.7% | Average response: 42 seconds",
+    "font": "Verdana",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Report ID: NW-Q3-2026-118",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Report ID: NW-Q3-2026-118",
+    "font": "Arial",
+    "size": 9,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Full statistics are available at https://dashboard.example.com/q3 or by email to reports@example.com.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Full statistics are available at ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "https://dashboard.example.com/q3",
+    "font": "Calibri",
+    "size": 11,
+    "color": "0563C1",
+    "bold": false,
+    "italic": false,
+    "link": "https://dashboard.example.com/q3",
+    "changesLetters": false
+   },
+   {
+    "text": " or by email to ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "reports@example.com",
+    "font": "Calibri",
+    "size": 11,
+    "color": "0563C1",
+    "bold": false,
+    "italic": false,
+    "link": "mailto:reports@example.com",
+    "changesLetters": false
+   },
+   {
+    "text": ".",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Carbon savings this quarter: 1.2 t CO2, ranking us 3rd in the regional green index.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Carbon savings this quarter: 1.2 t CO",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "2",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": ", ranking us 3",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "rd",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " in the regional green index.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "important notice: the September figures are provisional and may change after the final audit.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "important notice",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": true
+   },
+   {
+    "text": ": the September figures are provisional and may change after the final audit.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "C o n f i d e n t i a l / Confidential",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "C o n f i d e n t i a l",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "7F7F7F",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " / ",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "7F7F7F",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "Confidential",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "7F7F7F",
+    "bold": false,
+    "italic": false,
+    "changesLetters": true
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Metric",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Metric",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "July",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "July",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "August",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "August",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "September",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "September",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Messages sent",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Messages sent",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "120,400",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "120,400",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "131,900",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "131,900",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "140,250",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "140,250",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Delivery rate",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Delivery rate",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "98.1%",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "98.1%",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "98.5%",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "98.5%",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "98.7%",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "98.7%",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Average response",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Average response",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "55 s",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "55 s",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "47 s",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "47 s",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "42 s",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "42 s",
+    "font": "Calibri",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Figures are rounded to one decimal place.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Figures are rounded to one decimal place.",
+    "font": "Calibri",
+    "size": 8,
+    "color": "595959",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Highlight: response times improved by 24% this quarter.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Highlight: response times improved by 24% this quarter.",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "1F3864",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Next steps",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Next steps",
+    "font": "Georgia",
+    "size": 16,
+    "color": "1F3864",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Extend automated replies to returns and refunds.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Extend automated replies to returns and refunds.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Add Arabic and French message templates.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Add Arabic and French message templates.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Review agent schedules before the holiday peak.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Review agent schedules before the holiday peak.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "The holiday season usually doubles the number of delivery questions. To prepare, the team will publish clearer tracking pages, send proactive delay notices, and keep two extra agents on call during the busiest weeks.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "The holiday season usually doubles the number of delivery questions. To prepare, the team will publish clearer tracking pages, send proactive delay notices, and keep two extra agents on call during the busiest weeks.",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Risks",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Risks",
+    "font": "Calibri",
+    "size": 12,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Carrier delays outside our control.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Carrier delays outside our control.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Higher message costs from January.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Higher message costs from January.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Staff holidays overlapping with peak demand.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Staff holidays overlapping with peak demand.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Each risk has an owner and a monthly review. Where a risk becomes likely, the owner prepares a short plan with options, costs and a recommended choice, so decisions can be made quickly.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Each risk has an owner and a monthly review. Where a risk becomes likely, the owner prepares a short plan with options, costs and a recommended choice, so decisions can be made quickly.",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "english-styles",
+  "text": "Prepared by the Customer Experience team",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Prepared by the Customer Experience team",
+    "font": "Georgia",
+    "size": 10,
+    "color": "595959",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
+ }
+]

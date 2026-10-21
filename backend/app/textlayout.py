@@ -26,13 +26,16 @@ Steps:
 Coordinates are PDF points on the page as displayed (crop box and rotation applied).
 """
 
+import hashlib
 import math
 import os
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
 
 import pymupdf
+from bidi import get_display  # python-bidi, LGPL-3.0
 
 LRI, RLI, PDI = "⁦", "⁧", "⁩"
 TATWEEL = "ـ"
@@ -104,6 +107,7 @@ class Line:
     bbox: tuple[float, float, float, float]  # displayed page space
     spans: list[tuple[str, Style]] = field(default_factory=list)  # typing order
     kashida: bool = False  # stretched with tatweel glyphs (removed from the text)
+    direction_basis: str = "script"  # what decided the direction: script, column, majority, bracket, paragraph
     uncertain: bool = False  # some characters could not be confirmed
 
     def __post_init__(self):
@@ -208,10 +212,23 @@ def _is_arabic_letter(ch: str) -> bool:
     return 0x621 <= cp <= 0x64A or 0x671 <= cp <= 0x6D3 or 0xFB50 <= cp <= 0xFDFC or 0xFE70 <= cp <= 0xFEFC
 
 
-@lru_cache(maxsize=256)
+_TABLES: dict[bytes, dict[int, frozenset[str]]] = {}  # font hash -> glyph table
+
+
 def _glyph_table(font_bytes: bytes) -> dict[int, frozenset[str]]:
     """glyph id -> every character the font itself maps to that glyph. One glyph can
     serve several characters: a medial Arabic yeh and a medial Persian yeh look the same."""
+    key = hashlib.sha1(font_bytes).digest()
+    table = _TABLES.get(key)
+    if table is None:
+        table = _build_glyph_table(font_bytes)
+        if len(_TABLES) >= 256:
+            _TABLES.pop(next(iter(_TABLES)))
+        _TABLES[key] = table
+    return table
+
+
+def _build_glyph_table(font_bytes: bytes) -> dict[int, frozenset[str]]:
     try:
         font = pymupdf.Font(fontbuffer=font_bytes)
     except Exception:
@@ -226,8 +243,13 @@ def _glyph_table(font_bytes: bytes) -> dict[int, frozenset[str]]:
 
 
 def _font_tables(page: pymupdf.Page) -> dict[str, dict[int, frozenset[str]]]:
-    """Per font name on the page, the union of its subsets' glyph tables. Word embeds
-    one font several times (e.g. for Latin and for Arabic) with the same glyph ids."""
+    """Per font name on the page, its subsets' glyph tables combined.
+
+    The trace names a span's font but not which embedded copy it is. Word embeds one
+    font several times (e.g. for Latin and for Arabic) keeping the original glyph ids,
+    so the copies agree. Other programs renumber glyphs per copy: where two copies
+    map a glyph id to different characters, that id is unknown (an empty set), so it
+    is never "corrected" into a wrong letter."""
     doc = page.parent
     tables: dict[str, dict[int, frozenset[str]]] = {}
     for font in page.get_fonts(full=True):
@@ -238,10 +260,17 @@ def _font_tables(page: pymupdf.Page) -> dict[str, dict[int, frozenset[str]]]:
             buf = doc.extract_font(xref)[3]
         except Exception:
             continue
-        if buf:
-            merged = tables.setdefault(name, {})
-            for gid, chars in _glyph_table(buf).items():
-                merged[gid] = merged.get(gid, frozenset()) | chars
+        if not buf:
+            continue
+        merged = tables.setdefault(name, {})
+        for gid, chars in _glyph_table(buf).items():
+            known = merged.get(gid)
+            if known is None:
+                merged[gid] = chars
+            elif known and known & chars:
+                merged[gid] = known | chars
+            else:
+                merged[gid] = frozenset()  # the copies disagree
     return tables
 
 
@@ -250,8 +279,13 @@ def _preferred(chars: frozenset[str]) -> str:
     return min(chars, key=lambda c: (any(0x671 <= ord(x) <= 0x6FF for x in c), len(c), c))
 
 
+# Persian/Urdu letters whose joined forms look exactly like Arabic ones. When a glyph
+# serves both, the PDF's label is a guess; Arabic is preferred.
+_ARABIC_TWIN = {"ی": "ي", "ک": "ك", "ھ": "ه", "ہ": "ه"}
+
+
 def _check_glyph(g: Glyph, table: dict[int, frozenset[str]], space_gids: set[int]) -> None:
-    chars = table.get(g.gid)
+    chars = table.get(g.gid) or None  # an empty set: the font's copies disagree, unknown
     if g.base in _MIRROR:
         if chars and g.base in chars:
             g.drawn_as = g.base
@@ -278,9 +312,12 @@ def _check_glyph(g: Glyph, table: dict[int, frozenset[str]], space_gids: set[int
         return
     marks = "".join(c for c in g.text if unicodedata.combining(c))
     letters = "".join(c for c in g.text if not unicodedata.combining(c))
+    twin = "".join(_ARABIC_TWIN.get(c, c) for c in letters)
     if letters not in chars:
         g.text = _preferred(chars) + marks
         g.corrected = True
+    elif twin != letters and twin in chars:
+        g.text = twin + marks
     g.verified = True
 
 
@@ -303,6 +340,12 @@ def _read_glyphs(page: pymupdf.Page) -> list[Glyph]:
                 continue
             glyphs.append(Glyph(ch, gid, tuple(bbox), tuple(origin), style, direction, seq))
             seq += 1
+        for g in glyphs[start:]:
+            # Chrome labels a vowel-mark glyph " َّ": a space carrying the marks.
+            if len(g.text) > 1 and g.text[0].isspace() and all(unicodedata.combining(c) for c in g.text[1:]):
+                g.text = g.text[1:]
+            if "�" in g.text:  # the PDF has no character for this glyph
+                g.suspect = True
         table = tables.get(style.font, {})
         space_gids = {gid for gid, chars in table.items() if " " in chars}
         for g in glyphs[start:]:
@@ -421,53 +464,81 @@ def _rows(glyphs: list[Glyph], rules) -> list[list[Glyph]]:
 def _merge_small_pieces(pieces: list[list[Glyph]]) -> list[list[Glyph]]:
     """Superscripts, subscripts and stray vowel marks join the line they sit on."""
     pieces = [p for p in pieces if p]
-    changed = True
-    while changed:
-        changed = False
-        for i, p in enumerate(pieces):
-            only_marks = all(g.is_mark or g.is_space for g in p)
-            p_size = max(g.style.size for g in p)
-            proj = _frame(p[0].direction)
-            pu0 = min(_extent(g, proj)[0] for g in p)
-            pu1 = max(_extent(g, proj)[1] for g in p)
-            pb = _box(p)
-            for j, q in enumerate(pieces):
-                if i == j or q[0].direction != p[0].direction or len(q) < len(p):
-                    continue
-                q_size = max(g.style.size for g in q)
-                if not (only_marks or p_size < 0.85 * q_size):
-                    continue
-                qu0 = min(_extent(g, proj)[0] for g in q)
-                qu1 = max(_extent(g, proj)[1] for g in q)
-                qb = _box(q)
-                gap = max(qu0 - pu1, pu0 - qu1)
-                overlap = min(pb[3], qb[3]) - max(pb[1], qb[1])
-                if gap < 0.4 * q_size and overlap > 0.3 * (pb[3] - pb[1]):
-                    q.extend(p)
-                    pieces.pop(i)
-                    changed = True
-                    break
-            if changed:
+
+    def info(p):
+        proj = _frame(p[0].direction)
+        extents = [_extent(g, proj) for g in p]
+        return (
+            p[0].direction,
+            max(g.style.size for g in p),
+            min(e[0] for e in extents),
+            max(e[1] for e in extents),
+            _box(p),
+            all(g.is_mark or g.is_space for g in p),
+        )
+
+    facts = [info(p) for p in pieces]
+    alive = [True] * len(pieces)
+    # One pass, smallest pieces first; each joins the first bigger line it sits on.
+    for i in sorted(range(len(pieces)), key=lambda k: len(pieces[k])):
+        direction, p_size, pu0, pu1, pb, only_marks = facts[i]
+        for j, q in enumerate(pieces):
+            if i == j or not alive[j] or len(q) < len(pieces[i]):
+                continue
+            q_dir, q_size, qu0, qu1, qb, _ = facts[j]
+            if q_dir != direction or not (only_marks or p_size < 0.85 * q_size):
+                continue
+            gap = max(qu0 - pu1, pu0 - qu1)
+            overlap = min(pb[3], qb[3]) - max(pb[1], qb[1])
+            if gap < 0.4 * q_size and overlap > 0.3 * (pb[3] - pb[1]):
+                q.extend(pieces[i])
+                facts[j] = info(q)
+                alive[i] = False
                 break
-    return pieces
+    return [p for k, p in enumerate(pieces) if alive[k]]
 
 
 def _attach_marks(glyphs: list[Glyph], proj) -> list[Glyph]:
     """Put each vowel mark (a zero-width glyph drawn over a letter) into its letter."""
-    letters = [g for g in glyphs if not g.is_mark and not g.is_space]
+    # Not tatweel: a stretch glyph is removed later, and a mark over it belongs to the
+    # letter it lengthens.
+    letters = [g for g in glyphs if not g.is_mark and not g.is_space and g.base != TATWEEL]
+    stretches = [_extent(g, proj) for g in glyphs if g.base == TATWEEL]
     if not letters:
         return glyphs
     for m in (g for g in glyphs if g.is_mark):
-        # A mark has no width; its shape is painted just right of its origin, which
-        # can sit at the edge of the neighbouring letter.
-        u = proj(m.origin)[0] + 0.6
+        m0, m1 = _extent(m, proj)
+        if m1 - m0 > 0.5:  # the PDF gives the mark its painted width (Chrome): use its middle
+            u = (m0 + m1) / 2
+        else:  # no width (Word): the shape is painted just right of its origin
+            u = proj(m.origin)[0] + 0.6
         over = [b for b in letters if _extent(b, proj)[0] - 0.1 <= u <= _extent(b, proj)[1] + 0.1]
-        if over:  # several letters under it: the one drawn right after (Word), else nearest
+        after = [b for b in letters if b.seq > m.seq and min(abs(e - u) for e in _extent(b, proj)) < 3]
+        if after and any(a <= u <= b for a, b in stretches):
+            # Over a tatweel: the mark belongs to the letter the tatweel lengthens,
+            # drawn right after the mark.
+            best = min(after, key=lambda b: b.seq)
+        elif over:  # several letters under it: the one drawn right after the mark, else nearest
             best = min(over, key=lambda b: (abs(b.seq - m.seq), b.seq < m.seq))
+        elif after:  # Word and Chrome draw a mark just before its letter
+            best = min(after, key=lambda b: b.seq)
         else:
             best = min(letters, key=lambda b: min(abs(e - u) for e in _extent(b, proj)))
-        best.text += m.text
+        _add_mark(best, m.text, u, proj)
     return [g for g in glyphs if not g.is_mark]
+
+
+def _add_mark(letter: Glyph, mark: str, u: float, proj) -> None:
+    """Add a vowel mark to a glyph. On a two-letter ligature ("لا") it goes after the
+    letter it sits over: in right-to-left text the first letter is the right half."""
+    base = [i for i, c in enumerate(letter.text) if not unicodedata.combining(c)]
+    if len(base) == 2 and letter.bidi in _RTL_STRONG:
+        x0, x1 = _extent(letter, proj)
+        if u > (x0 + x1) / 2:  # over the right half: the first letter
+            cut = base[1]
+            letter.text = letter.text[:cut] + mark + letter.text[cut:]
+            return
+    letter.text += mark
 
 
 def _drop_hidden_spaces(glyphs: list[Glyph], proj) -> list[Glyph]:
@@ -494,7 +565,9 @@ def _add_gap_spaces(glyphs: list[Glyph], proj) -> list[Glyph]:
     for g in glyphs[1:]:
         start, end = _extent(g, proj)
         prev = out[-1]
-        if start - right > 0.22 * max(g.style.size, prev.style.size) and not prev.is_space and not g.is_space:
+        # Glyph boxes cover each letter's full advance, so a gap is deliberate spacing
+        # (kerning only overlaps). 0.1 em keeps a thin space: French "Où ?" from Chrome.
+        if start - right > 0.1 * max(g.style.size, prev.style.size) and not prev.is_space and not g.is_space:
             out.append(Glyph(" ", 0, prev.bbox, prev.origin, prev.style, prev.direction, prev.seq, synthetic=True))
         out.append(g)
         right = max(right, end)
@@ -522,30 +595,34 @@ def _column_bounds(pieces: list[list[Glyph]], rules) -> dict[int, tuple[float, f
     return out
 
 
-def _is_rtl(glyphs: list[Glyph], bounds=None) -> bool:
+def _is_rtl(glyphs: list[Glyph], bounds=None) -> tuple[bool, str]:
+    """(right-to-left?, what decided it). The weaker the basis, the more a wrong
+    guess is possible: "script" is certain, "column" and "majority" are guesses."""
     strong = [g for g in glyphs if g.bidi in _RTL_STRONG or g.bidi == "L"]
     rtl = sum(len(g.text) for g in strong if g.bidi in _RTL_STRONG)
     ltr = sum(len(g.text) for g in strong if g.bidi == "L")
     if not rtl:
         # Only Latin letters, but a bracket drawn mirrored: the continuation of an
         # Arabic paragraph, like "Console)" after "(Agent".
-        return any(g.drawn_as is not None and g.drawn_as != g.base for g in glyphs)
+        if any(g.drawn_as is not None and g.drawn_as != g.base for g in glyphs):
+            return True, "bracket"
+        return False, "script"
     if not ltr:
-        return True
+        return True, "script"
     left_rtl = strong[0].bidi in _RTL_STRONG
     right_rtl = strong[-1].bidi in _RTL_STRONG
     if left_rtl == right_rtl:
         # "عبر WhatsApp Business وخدمات", "Mr. خالد (Khalid)": the script at both ends decides.
-        return right_rtl
+        return right_rtl, "script"
     if bounds:
         # "الموقع: www.example.com" starts at its column's right edge.
         left, right, x0, x1 = bounds
         from_left, from_right = x0 - left, right - x1
         if from_right + 3 < from_left:
-            return True
+            return True, "column"
         if from_left + 3 < from_right:
-            return False
-    return rtl > ltr
+            return False, "column"
+    return rtl > ltr, "majority"
 
 
 # 4. Typing order ---------------------------------------------------------------------
@@ -585,8 +662,23 @@ def _with_signs(glyphs: list[Glyph], ranges: list[tuple[int, int]]) -> list[tupl
     return out
 
 
-def _order(glyphs: list[Glyph], rtl: bool) -> list[Run]:
-    """Split a line (glyphs in page order) into runs in typing order."""
+def _between_numbers(glyphs: list[Glyph], i: int) -> bool:
+    """Is glyph i a space or punctuation with a number on both sides (skipping spaces)?"""
+    def side(step):
+        k = i + step
+        while 0 <= k < len(glyphs) and glyphs[k].bidi in ("WS", "CS"):
+            k += step
+        return 0 <= k < len(glyphs) and glyphs[k].bidi in _NUMBER
+    return side(-1) and side(1)
+
+
+def _order(glyphs: list[Glyph], rtl: bool, standard: bool = False) -> list[Run]:
+    """Split a line (glyphs in page order) into runs in typing order.
+
+    Word keeps a number typed in an Arabic line in one left-to-right piece
+    ("+966 55 123 4567"). Programs that follow the Unicode bidi algorithm (Chrome,
+    for one) draw its groups in reverse order, and draw "التاريخ: 21/10/2026" in an
+    English line with the date on the left. standard=True reads lines that way."""
     n = len(glyphs)
 
     def no_bracket(i):
@@ -595,10 +687,16 @@ def _order(glyphs: list[Glyph], rtl: bool) -> list[Run]:
     if rtl:
         # Left-to-right islands: Latin words and numbers with the spaces and
         # punctuation between them: an email, "+966 55 123 4567", "Q-2026-0417".
-        kinds = [
-            "in" if g.bidi == "L" or g.bidi in _NUMBER else "glue" if g.bidi in _NEUTRAL and no_bracket(i) else "out"
-            for i, g in enumerate(glyphs)
-        ]
+        def kind(i, g):
+            if g.bidi == "L" or g.bidi in _NUMBER:
+                return "in"
+            if g.bidi in _NEUTRAL and no_bracket(i):
+                if standard and g.bidi == "WS" and _between_numbers(glyphs, i):
+                    return "out"  # separate numbers: each group is its own island
+                return "glue"
+            return "out"
+
+        kinds = [kind(i, g) for i, g in enumerate(glyphs)]
         runs, pos = [], 0
         for a, b in _with_signs(glyphs, _islands(kinds)):
             if pos < a:
@@ -619,8 +717,29 @@ def _order(glyphs: list[Glyph], rtl: bool) -> list[Run]:
         "in" if g.bidi in _RTL_STRONG else "glue" if (g.bidi in _NEUTRAL or g.bidi in _NUMBER) and no_bracket(i) else "out"
         for i, g in enumerate(glyphs)
     ]
+    islands = _islands(kinds)
+    if standard:
+        # A number after an Arabic word belongs to the Arabic run: on the page it sits
+        # to the left of the word, separated only by spaces and punctuation.
+        grown = []
+        for a, b in islands:
+            k = a
+            while True:
+                j = k
+                while j > 0 and glyphs[j - 1].bidi in ("WS", "CS", "ON") and glyphs[j - 1].base not in _MIRROR:
+                    j -= 1
+                m = j
+                while m > 0 and (glyphs[m - 1].bidi in _NUMBER or glyphs[m - 1].bidi in _NUMBER_GLUE):
+                    m -= 1
+                if m == j or not any(glyphs[x].bidi in _NUMBER for x in range(m, j)):
+                    break
+                if grown and m < grown[-1][1]:
+                    break
+                k = m
+            grown.append((k, b))
+        islands = grown
     runs, pos = [], 0
-    for a, b in _islands(kinds):
+    for a, b in islands:
         if pos < a:
             runs.append(Run(False, list(range(pos, a))))
         inner = list(range(a, b))
@@ -672,11 +791,73 @@ def _spans(line: Line) -> list[tuple[str, Style]]:
     return out
 
 
+_BRACKETS = str.maketrans({c: "|" for c in _MIRROR})
+
+
+def _mixed(glyphs: list[Glyph]) -> bool:
+    classes = {g.bidi for g in glyphs}
+    return bool(classes & _RTL_STRONG) and bool(classes & ({"L"} | _NUMBER))
+
+
+def page_order(line: Line) -> str:
+    """The line's characters as they sit on the page, left to right. Vowel marks are
+    left out; brackets become "|" (programs disagree on how mirrored ones are labelled)."""
+    out = []
+    for g in line.glyphs:
+        base = "".join(c for c in g.text if not unicodedata.combining(c))
+        out.append(base[::-1] if len(base) > 1 and g.bidi in _RTL_STRONG else base)
+    return "".join(out).translate(_BRACKETS)
+
+
+def standard_layout(text: str, rtl: bool) -> str:
+    """How the Unicode bidi algorithm (browsers, edit boxes) lays out the text, left to
+    right, in the same terms as page_order."""
+    shown = get_display(text, base_dir="R" if rtl else "L")
+    return "".join(c for c in shown if not unicodedata.combining(c) and c not in (LRI, RLI, PDI)).translate(_BRACKETS)
+
+
+def _lays_out_like_page(line: Line) -> bool:
+    return standard_layout(line.text, line.rtl) == page_order(line)
+
+
+def _awkward(text: str) -> int:
+    """Punctuation stuck to the start of a word (" :التاريخ"): a sign of the wrong reading."""
+    return len(re.findall(r"(?:^|\s)[:;,.،؛!?](?=[^\s\d])", text))
+
+
+def _line_above(lines: list[Line], line: Line) -> Line | None:
+    """The line just above in the same column, if it is close enough to be the same paragraph."""
+    x0, y0, x1, y1 = line.bbox
+    height = y1 - y0
+    above = [
+        l for l in lines
+        if l is not line and l.bbox[3] <= y0 + 0.3 * height and y0 - l.bbox[3] < 0.8 * height
+        and min(l.bbox[2], x1) - max(l.bbox[0], x0) > 0
+    ]
+    return max(above, key=lambda l: l.bbox[3]) if above else None
+
+
+def _set_direction(line: Line, rtl: bool) -> None:
+    line.rtl = rtl
+    line.direction_basis = "paragraph"
+    line.runs = _order(line.glyphs, rtl)
+    line.__post_init__()
+    line.spans = _spans(line)
+
+
 def _continue_paragraph_direction(lines: list[Line]) -> None:
     """A line without Arabic letters can still end an Arabic paragraph
     ("legal@example.com." wrapped onto its own line). It is right-to-left when the line
     just above it in the same column is right-to-left and both end at the same right edge."""
     for line in lines:
+        letters = {g.bidi for g in line.glyphs} & (_RTL_STRONG | {"L"})
+        if line.rtl and letters <= _RTL_STRONG:
+            # And the mirror case: "التجارية." ending an English sentence, aligned left.
+            prev = _line_above(lines, line)
+            x0, x1 = line.bbox[0], line.bbox[2]
+            if prev and not prev.rtl and abs(prev.bbox[0] - x0) < 2.5 and prev.bbox[2] - x1 > 2.5:
+                _set_direction(line, False)
+            continue
         if line.rtl or any(g.bidi in _RTL_STRONG for g in line.glyphs):
             continue
         x0, y0, x1, y1 = line.bbox
@@ -690,13 +871,13 @@ def _continue_paragraph_direction(lines: list[Line]) -> None:
             continue
         prev = max(above, key=lambda l: l.bbox[3])
         if prev.rtl and abs(prev.bbox[2] - x1) < 2.5 and x0 - prev.bbox[0] > 2.5:
-            line.rtl = True
-            line.runs = _order(line.glyphs, True)
-            line.__post_init__()
-            line.spans = _spans(line)
+            _set_direction(line, True)
 
 
 def page_lines(page: pymupdf.Page) -> list[Line]:
+    meta = page.parent.metadata or {}
+    made_by = f"{meta.get('creator', '')} {meta.get('producer', '')}".lower()
+    word_made = "microsoft" in made_by and "word" in made_by
     rules = _vertical_rules(page)
     pieces = _merge_small_pieces(_rows(_read_glyphs(page), rules))
     bounds = _column_bounds(pieces, rules)
@@ -721,10 +902,20 @@ def page_lines(page: pymupdf.Page) -> list[Line]:
             row.pop()
         if not row:
             continue
-        rtl = _is_rtl(row, where)
+        rtl, basis = _is_rtl(row, where)
         line = Line(id="", glyphs=row, rtl=rtl, runs=_order(row, rtl), bbox=_display_bbox(page, row))
+        if not word_made and _mixed(row):
+            # Not Word: the PDF was probably laid out with the standard bidi rules. Use
+            # the reading that lays out exactly like the page. Two readings can look the
+            # same ("Date / التاريخ: 21/10/2026"); then the one with natural punctuation wins.
+            alternative = Line(id="", glyphs=row, rtl=rtl, runs=_order(row, rtl, standard=True), bbox=line.bbox)
+            if _lays_out_like_page(alternative) and (
+                not _lays_out_like_page(line) or _awkward(alternative.text) < _awkward(line.text)
+            ):
+                line = alternative
         line.spans = _spans(line)
         line.kashida = kashida
+        line.direction_basis = basis
         # The PDF's labels proved wrong in this line and some glyphs could not be
         # checked against the font, or a glyph's real character is unknown: the text
         # may still contain mistakes.

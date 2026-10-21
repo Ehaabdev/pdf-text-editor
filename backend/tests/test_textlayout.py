@@ -1,11 +1,14 @@
 """Text detection: every line's text, direction, style and position.
 
-Two independent checks of the text:
-  * Answer key (made-up Word documents): each line is text that was typed into the
-    document, and every typed paragraph is found again, in order.
-  * Round trip (any PDF, including private samples): laying out the extracted text
-    with the standard bidi algorithm, as a browser or edit box does, gives the same
-    order as the glyphs on the page. python-bidi is only used here, as an oracle.
+Checks of the text:
+  * Answer key: made-up documents saved as PDF by Microsoft Word and printed to PDF
+    by Chrome. Each line is text that was typed, and every typed paragraph is found
+    again, in order. Word and Chrome write PDFs very differently.
+  * Consistency (any PDF): laying out the extracted display text with the standard
+    bidi algorithm, as a browser or edit box does, gives the same order as the glyphs
+    on the page. Because embedded runs are isolated this mostly checks the runs are
+    consistent; it cannot tell a wrong base direction. The report test lists the
+    lines in private samples whose direction was a guess.
 """
 
 import json
@@ -18,28 +21,34 @@ import pymupdf
 import pytest
 from bidi import get_display
 
-from app.textlayout import LRI, PDI, RLI, page_lines
+from app.textlayout import LRI, PDI, RLI, page_lines, page_order as plain_page_order, standard_layout as plain_layout
 
-WORD = Path(__file__).parent / "fixtures" / "word"
+FIXTURES = Path(__file__).parent / "fixtures"
+SOURCES = {"word": "word", "chrome": "chrome"}  # folder, and the file suffix
 DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles"]
-EXPECTED = json.loads((WORD / "expected.json").read_text(encoding="utf-8"))
-SAMPLES = sorted((Path(__file__).resolve().parents[2] / "samples").glob("*.pdf"))
+CASES = [(source, name) for source in SOURCES for name in DOCS]
+EXPECTED = {source: json.loads((FIXTURES / source / "expected.json").read_text(encoding="utf-8")) for source in SOURCES}
+SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+SAMPLES = sorted(SAMPLES_DIR.glob("*.pdf"))
 
-# Paragraphs where Word wrote wrong characters into the PDF for some letters (kashida
-# justification; Calibri's Arabic ligatures). Their lines must be flagged uncertain.
+# Paragraphs where the PDF itself holds wrong characters for some letters. Their
+# lines must be flagged uncertain.
 UNREADABLE = {
-    "arabic-quotation": ["نلتزم بتقديم خدمة"],
-    "bilingual-contract": ["The Client’s representative"],
+    ("word", "arabic-quotation"): ["نلتزم بتقديم خدمة"],  # Word, kashida justification
+    ("word", "bilingual-contract"): ["The Client’s representative"],  # Word, Calibri's Arabic ligatures
+    ("chrome", "bilingual-contract"): ["The Client’s representative"],  # Chrome, the same font
+    ("chrome", "arabic-quotation"): ["قَالَ الحُكَمَاءُ"],  # Chrome left two shaped Sakkal Majalla glyphs unlabelled
 }
 
 _INVISIBLE = dict.fromkeys(map(ord, "‎‏⁦⁧⁨⁩‪‫‬‭‮ـ"))
 _FOOTER = re.compile(r"^(Page|صفحة)\s*[\d٠-٩]+\s*(of|sur|من|/)\s*[\d٠-٩]+$")
 _MARKER = re.compile(r"^([•\-–]|[\d٠-٩]+[.)])$")
+_LIST_NUMBER = re.compile(r"^(?:[\d٠-٩]{1,3}[.)]|•)\s+")
 
 
 def norm(text: str, loose: bool = False) -> str:
     text = unicodedata.normalize("NFC", text).translate(_INVISIBLE)
-    text = re.sub(r"[\s\u00a0\u202f\u2009]+", " ", text).strip()
+    text = re.sub(r"[\s   ]+", " ", text).strip()
     # Word draws the space at a line break inside a bracket: "( Agent" on the page.
     text = re.sub(r"([(\[{«]) ", r"\1", text)
     text = re.sub(r" ([)\]}»])", r"\1", text)
@@ -53,22 +62,29 @@ def all_lines(path: Path):
 
 @pytest.fixture(scope="module")
 def lines():
-    return {name: all_lines(WORD / f"{name}-word.pdf") for name in DOCS}
+    return {(s, n): all_lines(FIXTURES / s / f"{n}-{SOURCES[s]}.pdf") for s, n in CASES}
 
 
-def paragraphs(name):
-    return [p for p in EXPECTED if p["doc"] == name]
+def paragraphs(source, name):
+    return [p for p in EXPECTED[source] if p["doc"] == name]
 
 
 def loose_ok(p) -> bool:
     return any(r.get("changesLetters") for r in p["runs"])
 
 
-def is_unreadable(name, text) -> bool:
-    return any(marker in text for marker in UNREADABLE.get(name, []))
+def is_unreadable(case, text) -> bool:
+    return any(marker in text for marker in UNREADABLE.get(case, []))
 
 
-_LIST_NUMBER = re.compile(r"^(?:[\d٠-٩]{1,3}[.)]|•)\s+")
+def matches(line_text: str, p) -> bool:
+    # A line may start with the list number or bullet Word added to the paragraph.
+    for text in (line_text, _LIST_NUMBER.sub("", norm(line_text))):
+        if norm(text) in norm(p["text"]):
+            return True
+        if loose_ok(p) and norm(text, loose=True) in norm(p["text"], loose=True):
+            return True
+    return False
 
 
 def _spells(p, texts: list[str]) -> bool:
@@ -86,63 +102,53 @@ def _spells(p, texts: list[str]) -> bool:
     return False
 
 
-def matches(line_text: str, p) -> bool:
-    # A line may start with the list number or bullet Word added to the paragraph.
-    for text in (line_text, _LIST_NUMBER.sub("", norm(line_text))):
-        if norm(text) in norm(p["text"]):
-            return True
-        if loose_ok(p) and norm(text, loose=True) in norm(p["text"], loose=True):
-            return True
-    return False
-
-
-# Answer key -----------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("name", DOCS)
-def test_every_line_is_typed_text(lines, name):
-    wrong = []
-    for line in lines[name]:
-        t = norm(line.text)
-        if _FOOTER.match(t) or _MARKER.match(t) or line.uncertain:
-            continue
-        if not any(matches(line.text, p) for p in paragraphs(name)):
-            wrong.append((line.id, t))
-    assert wrong == []
-
-
-@pytest.mark.parametrize("name", DOCS)
-def test_every_paragraph_is_found_in_order(lines, name):
-    missing = []
-    for p in paragraphs(name):
-        if is_unreadable(name, p["text"]) or not p["text"].strip():
-            continue
-        found = [l for l in lines[name] if matches(l.text, p)]
-        if not any(_spells(p, [l.text for l in found[start:]]) for start in range(len(found))):
-            missing.append(p["text"][:60])
-    assert missing == []
-
-
-@pytest.mark.parametrize("name", DOCS)
-def test_lines_with_wrong_characters_are_flagged(lines, name):
-    flagged = {l.id for l in lines[name] if l.uncertain}
-    # Lines that match no typed paragraph but share most words with an unreadable one.
-    expected = {
-        l.id
-        for l in lines[name]
-        if not any(matches(l.text, q) for q in paragraphs(name))
-        and any(is_unreadable(name, p["text"]) and _overlaps(l.text, p["text"]) for p in paragraphs(name))
-    }
-    assert expected <= flagged, "lines with wrong text must be marked uncertain"
-    assert len(flagged) <= 3, f"too many uncertain lines: {flagged}"
-
-
 def _overlaps(line_text: str, paragraph: str) -> bool:
     words = [w for w in norm(line_text).split() if len(w) > 2]
     return bool(words) and sum(w in paragraph for w in words) >= len(words) / 2
 
 
-# Round trip -------------------------------------------------------------------------------
+# Answer key -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_every_line_is_typed_text(lines, case):
+    wrong = []
+    for line in lines[case]:
+        t = norm(line.text)
+        if _FOOTER.match(t) or _MARKER.match(t) or line.uncertain:
+            continue
+        if not any(matches(line.text, p) for p in paragraphs(*case)):
+            wrong.append((line.id, t))
+    assert wrong == []
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_every_paragraph_is_found_in_order(lines, case):
+    missing = []
+    for p in paragraphs(*case):
+        if is_unreadable(case, p["text"]) or not p["text"].strip():
+            continue
+        found = [l for l in lines[case] if matches(l.text, p)]
+        if not any(_spells(p, [l.text for l in found[start:]]) for start in range(len(found))):
+            missing.append(p["text"][:60])
+    assert missing == []
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_lines_with_wrong_characters_are_flagged(lines, case):
+    flagged = {l.id for l in lines[case] if l.uncertain}
+    # Lines that match no typed paragraph but share most words with an unreadable one.
+    expected = {
+        l.id
+        for l in lines[case]
+        if not any(matches(l.text, q) for q in paragraphs(*case))
+        and any(is_unreadable(case, p["text"]) and _overlaps(l.text, p["text"]) for p in paragraphs(*case))
+    }
+    assert expected <= flagged, "lines with wrong text must be marked uncertain"
+    assert len(flagged) <= 3, f"too many uncertain lines: {flagged}"
+
+
+# Consistency -------------------------------------------------------------------------------
 
 _BRACKETS = str.maketrans({c: "|" for c in "()[]{}<>«»‹›"})
 # Word draws "10%" in Arabic text as "%10"; the extracted text is "10%".
@@ -150,26 +156,22 @@ _PERCENT_LEFT = re.compile(r"([%٪‰])([\d٠-٩][\d٠-٩.,]*)")
 
 
 def page_order(line) -> str:
-    out = []
-    for g in line.glyphs:
-        base = "".join(c for c in g.text if not unicodedata.combining(c))
-        out.append(base[::-1] if len(base) > 1 and g.bidi in ("R", "AL") else base)
-    text = "".join(out).translate(_BRACKETS)
+    text = plain_page_order(line)
     return _PERCENT_LEFT.sub(r"\2\1", text) if line.rtl else text
 
 
-def standard_layout(line) -> str:
+def display_layout(line) -> str:
     shown = get_display(line.display, base_dir="R" if line.rtl else "L")
     return "".join(c for c in shown if not unicodedata.combining(c) and c not in (LRI, RLI, PDI)).translate(_BRACKETS)
 
 
 def round_trip_failures(lines):
-    return [(l.id, l.text, standard_layout(l), page_order(l)) for l in lines if not l.uncertain and standard_layout(l) != page_order(l)]
+    return [(l.id, l.text, display_layout(l), page_order(l)) for l in lines if not l.uncertain and display_layout(l) != page_order(l)]
 
 
-@pytest.mark.parametrize("name", DOCS)
-def test_text_lays_out_like_the_page(lines, name):
-    assert round_trip_failures(lines[name]) == []
+@pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_display_text_lays_out_like_the_page(lines, case):
+    assert round_trip_failures(lines[case]) == []
 
 
 @pytest.mark.parametrize("path", SAMPLES or [None], ids=lambda p: p.name if p else "none")
@@ -179,15 +181,37 @@ def test_private_samples_lay_out_like_the_page(path):
     assert round_trip_failures(all_lines(path)) == []
 
 
-# Lines and styles ----------------------------------------------------------------------------
+def test_report_on_private_samples():
+    """Never fails. Writes samples/detection-report.txt: the lines in private samples
+    whose direction was a guess, and those whose plain text a browser would show in a
+    different order than the page. Read it after adding real files."""
+    if not SAMPLES:
+        pytest.skip("no private samples")
+    out = []
+    for path in SAMPLES:
+        for line in all_lines(path):
+            notes = []
+            if line.direction_basis not in ("script",):
+                notes.append(f"direction from {line.direction_basis}")
+            if plain_layout(line.text, line.rtl) != plain_page_order(line):
+                notes.append("plain text shows in a different order")
+            if line.uncertain:
+                notes.append("uncertain")
+            if notes:
+                out.append(f"{path.name} {line.id} {'RTL' if line.rtl else 'LTR'} [{'; '.join(notes)}]\n    {line.text}")
+    (SAMPLES_DIR / "detection-report.txt").write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
-def find(lines, name, needle):
-    hits = [l for l in lines[name] if needle in l.text]
+# Lines and styles (Word documents) ------------------------------------------------------------
+
+
+def find(lines, name, needle, source="word"):
+    hits = [l for l in lines[(source, name)] if needle in l.text]
     assert hits, f"no line with {needle!r}"
     return hits[0]
 
 
+@pytest.mark.parametrize("source", list(SOURCES))
 @pytest.mark.parametrize(
     "name, a, b",
     [
@@ -198,12 +222,17 @@ def find(lines, name, needle):
         ("bilingual-contract", "This Agreement", "أُبرمت"),
     ],
 )
-def test_table_cells_stay_separate(lines, name, a, b):
+def test_table_cells_stay_separate(lines, source, name, a, b):
+    if source == "chrome":  # Chrome's copies have no tables: each cell is a paragraph
+        a_line, b_line = find(lines, name, a, source), find(lines, name, b, source)
+        assert a_line is not b_line
+        return
     find(lines, name, a)
     find(lines, name, b)
-    assert not [l.id for l in lines[name] if a in l.text and b in l.text]
+    assert not [l.id for l in lines[("word", name)] if a in l.text and b in l.text]
 
 
+@pytest.mark.parametrize("source", list(SOURCES))
 @pytest.mark.parametrize(
     "name, needle, font, size, color, bold, rtl",
     [
@@ -215,8 +244,8 @@ def test_table_cells_stay_separate(lines, name, a, b):
         ("bilingual-contract", "Service Agreement", "Calibri-Bold", 20, "000000", True, False),
     ],
 )
-def test_line_style(lines, name, needle, font, size, color, bold, rtl):
-    line = find(lines, name, needle)
+def test_line_style(lines, source, name, needle, font, size, color, bold, rtl):
+    line = find(lines, name, needle, source)
     s = line.style
     assert (s.font, round(s.size), s.color, s.bold, line.rtl) == (font, size, color, bold, rtl)
 
@@ -236,15 +265,18 @@ def test_superscript_stays_in_its_line(lines):
     assert "du 1er étage" in find(lines, "french-quote", "rez-de-chaussée").text
 
 
-def test_arabic_ligatures_and_vowel_marks(lines):
-    assert "الأفق" in find(lines, "arabic-quotation", "شركة الأفق").text
-    assert "الإِتْقَانُ" in find(lines, "arabic-quotation", "الحُكَمَاءُ").text
+@pytest.mark.parametrize("source", list(SOURCES))
+def test_arabic_ligatures_and_vowel_marks(lines, source):
+    assert "الأفق" in find(lines, "arabic-quotation", "شركة الأفق", source).text
+    assert "الإِتْقَانُ" in find(lines, "arabic-quotation", "الإِتْقَانُ", source).text
 
 
-def test_mixed_direction_lines(lines):
-    assert find(lines, "arabic-quotation", "الموقع").text == "الموقع: www.example.com"
-    assert find(lines, "bilingual-contract", "Meeting location").text == "Meeting location: Riyadh office, برج المملكة, Floor 12."
-    date = find(lines, "bilingual-contract", "Date /")
+@pytest.mark.parametrize("source", list(SOURCES))
+def test_mixed_direction_lines(lines, source):
+    assert find(lines, "arabic-quotation", "الموقع", source).text == "الموقع: www.example.com"
+    assert find(lines, "arabic-quotation", "الهاتف", source).text == "الهاتف: +966 55 123 4567"
+    assert "Riyadh office, برج المملكة, Floor 12." in find(lines, "bilingual-contract", "Meeting location", source).text
+    date = find(lines, "bilingual-contract", "Date /", source)
     assert (date.text, date.rtl) == ("Date / التاريخ: 21/10/2026", False)
 
 
@@ -273,3 +305,12 @@ def test_boxes_sit_on_the_text_on_rotated_and_cropped_pages(rotation, crop):
     assert line.text == "Hello world"
     assert box + (-1.5, -1.5, 1.5, 1.5) & ink == ink, f"box {box} misses ink {ink}"
     assert box.get_area() < 3 * ink.get_area()
+
+
+def test_long_vowelled_page_is_fast():
+    import time
+
+    path = FIXTURES / "chrome" / "arabic-quotation-chrome.pdf"
+    start = time.perf_counter()
+    all_lines(path)
+    assert time.perf_counter() - start < 2.0

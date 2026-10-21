@@ -30,9 +30,9 @@ Word sometimes stores wrong characters in the PDF:
 
 Each glyph is checked against the font's own character table and corrected where it can be. Lines that still can't be trusted are marked *uncertain* instead of shown as fact.
 
-`backend/tests/test_textlayout.py` checks this two ways:
-- against the answer key of the made-up Word documents
-- for any PDF, including private samples: laid out with the standard bidi rules a browser uses, the extracted text must come out in the same order as on the page
+Files not made by Word are read the way the standard Unicode bidi rules lay text out (Chrome, for one, draws a phone number in an Arabic sentence with its groups reversed). For those, the reading chosen is the one that, laid out by those rules, matches the page exactly.
+
+`backend/tests/test_textlayout.py` checks against an answer key, the made-up documents saved as PDF by Word and printed to PDF by Chrome. Every line must be typed text, and every paragraph must be found again in order. A consistency check also runs on any PDF. It confirms the display text lays out like the page, but it can't catch a wrong direction. So for private samples, a report (`samples/detection-report.txt`) lists every line whose direction was a guess.
 
 ## Edit accuracy
 
@@ -101,13 +101,14 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 | `bilingual-contract` | English and Arabic side by side, Arabic sentences with English words, phone numbers and URLs, and the reverse |
 | `english-styles` | Many fonts and sizes, style changes mid-sentence, links, shading, text box, small caps, two columns |
 
-`expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. To rebuild them (Windows with Microsoft Word, Word closed):
+`expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them (Windows with Microsoft Word and Chrome; close Word first):
 
 ```powershell
 cd tools	est-documents
 npm install
 node make.js
 powershell -ExecutionPolicy Bypass -File export.ps1
+python print_chrome.py
 ```
 
 ## Settings (environment variables)
