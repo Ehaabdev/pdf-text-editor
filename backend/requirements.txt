@@ -3,3 +3,8 @@ fastapi
 uvicorn[standard]
 python-multipart
 python-bidi
+pikepdf
+uharfbuzz
+fonttools
+numpy
+pypdfium2

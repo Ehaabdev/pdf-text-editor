@@ -17,3 +17,6 @@ CLEANUP_INTERVAL_SECONDS = 300
 MIN_RENDER_WIDTH = 200
 MAX_RENDER_WIDTH = 3200
 MAX_RENDER_PIXELS = 20_000_000
+
+# Cached data that can be rebuilt (font index).
+CACHE_DIR = Path(os.environ.get("PDFEDIT_CACHE_DIR", BASE_DIR / ".cache"))

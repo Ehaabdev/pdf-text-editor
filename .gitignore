@@ -12,6 +12,8 @@ __pycache__/
 
 # Uploaded documents at runtime
 backend/data/
+backend/.cache/
+backend/fonts/
 
 # Frontend
 frontend/node_modules/
