@@ -11,6 +11,9 @@
   --aurora-c: rgba(255, 160, 110, 0.42);
   --aurora-d: rgba(120, 170, 255, 0.4);
   --grain: 0.05;
+  --sheen: rgba(255, 255, 255, 0.6);
+  --rim: rgba(255, 255, 255, 1);
+  --cursor-glow: rgba(110, 170, 255, 0.35);
 
   --glass: rgba(255, 255, 255, 0.52);
   --glass-strong: rgba(250, 252, 255, 0.86);
@@ -65,6 +68,9 @@
     --aurora-c: rgba(255, 120, 60, 0.26);
     --aurora-d: rgba(60, 130, 255, 0.4);
     --grain: 0.07;
+    --sheen: rgba(255, 255, 255, 0.11);
+    --rim: rgba(255, 255, 255, 0.6);
+    --cursor-glow: rgba(70, 130, 255, 0.28);
 
     --glass: rgba(14, 18, 28, 0.46);
     --glass-strong: rgba(14, 18, 28, 0.88);
@@ -108,6 +114,9 @@
   --aurora-c: rgba(255, 120, 60, 0.26);
   --aurora-d: rgba(60, 130, 255, 0.4);
   --grain: 0.07;
+  --sheen: rgba(255, 255, 255, 0.11);
+  --rim: rgba(255, 255, 255, 0.6);
+  --cursor-glow: rgba(70, 130, 255, 0.28);
 
   --glass: rgba(14, 18, 28, 0.46);
   --glass-strong: rgba(14, 18, 28, 0.88);
@@ -2003,6 +2012,67 @@ html.theme-switching::view-transition-new(root) {
 @media (max-width: 1023.98px) {
   .dock > .check-panel {
     max-height: 82dvh;
+  }
+}
+
+/* Light that follows the mouse ------------------------------------------------
+   Lit glass gets the pointer's position (--lx, --ly, set from pointerLight.ts): a soft
+   sheen behind its content, and a brighter rim near the pointer. These properties don't
+   inherit, so only the lit surfaces restyle when the mouse moves. */
+@property --lx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --ly {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --cx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --cy {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.bar, .dock > .panel, .landing-bar, .dropzone, .canvas-zoom .zoom-group, .tool, .facts li) {
+    position: relative;
+    background-image: radial-gradient(340px circle at var(--lx) var(--ly), var(--sheen), transparent 70%);
+  }
+
+  :is(.bar, .dock > .panel, .landing-bar, .dropzone, .canvas-zoom .zoom-group, .tool, .facts li)::before {
+    --lx: inherit;
+    --ly: inherit;
+    content: "";
+    position: absolute;
+    inset: -1px;
+    padding: 1px;
+    border-radius: inherit;
+    background: radial-gradient(180px circle at var(--lx) var(--ly), var(--rim), transparent 75%);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* A scrolling panel would clip a rim drawn outside it: draw it on its edge instead. */
+  .dock > .panel::before {
+    inset: 0;
+  }
+
+  .aurora--live {
+    background: radial-gradient(560px circle at var(--cx) var(--cy), var(--cursor-glow), transparent 70%), var(--bg);
   }
 }
 
