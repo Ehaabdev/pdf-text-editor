@@ -216,3 +216,55 @@ def test_adding_on_turned_and_cropped_pages(rotation, crop):
     page_no, ref = find(src, "Ligne française")
     result = add_line(src, page_no, "Une nouvelle ligne.", ref.id, ref.text)
     added(src, result.pdf, page_no, "Une nouvelle ligne.")
+
+
+# Adding at a tapped spot ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("source", ADDITIONS)
+def test_text_in_an_empty_table_cell_lines_up_with_its_row_and_column(source):
+    src = ADDITIONS[source]
+    page_no, planning = find(src, "Planning")
+    _, status = find(src, "Status")
+    tap = (status.bbox[0] + 3, (planning.bbox[1] + planning.bbox[3]) / 2 + 1)  # a little off, as a finger is
+    result = add_line(src, page_no, "In progress", planning.id, planning.text, at=tap)
+    new = added(src, result.pdf, page_no, "In progress")
+    assert abs(baseline(result.pdf, page_no, new) - baseline(src, page_no, planning)) < 0.01  # the row's baseline
+    assert abs(new.bbox[0] - status.bbox[0]) < 0.5  # the column's edge
+    assert (new.style.font, new.style.color) == (planning.style.font, planning.style.color)
+
+
+@pytest.mark.parametrize("source", ADDITIONS)
+def test_arabic_text_runs_left_from_the_tap(source):
+    src = ADDITIONS[source]
+    page_no, note = find(src, "ملاحظة")
+    tap = (note.bbox[2] - 30, note.bbox[3] + 40)  # free space, away from any edge to snap to
+    result = add_line(src, page_no, "تم الاعتماد", note.id, note.text, at=tap)
+    new = added(src, result.pdf, page_no, "تم الاعتماد")
+    assert new.rtl and abs(new.bbox[2] - tap[0]) < 0.5
+    assert abs((new.bbox[1] + new.bbox[3]) / 2 - tap[1]) < 0.5 * (new.bbox[3] - new.bbox[1])
+
+
+def test_tapping_on_text_is_refused():
+    src = ADDITIONS["word"]
+    page_no, line = find(src, "Planning")
+    middle = ((line.bbox[0] + line.bbox[2]) / 2, (line.bbox[1] + line.bbox[3]) / 2)
+    with pytest.raises(EditRejected, match="Tap an empty spot"):
+        add_line(src, page_no, "Overlapping", line.id, line.text, at=middle)
+
+
+@pytest.mark.parametrize("rotation", [90, 180])
+def test_tapping_on_a_turned_page(rotation):
+    doc = pymupdf.open(FIXTURES / "additions" / "additions-word.pdf")
+    doc[0].set_rotation(rotation)
+    src = doc.tobytes()
+    page_no, planning = find(src, "Planning")
+    _, status = find(src, "Status")
+    # The cell right of "Planning", as it shows on the turned page: across from it, under "Status".
+    cell = pymupdf.Rect(planning.bbox)
+    if rotation == 90:  # the page reads top to bottom: the next column is lower down
+        tap = ((cell.x0 + cell.x1) / 2, status.bbox[1] + 3)
+    else:  # upside down: further left
+        tap = (status.bbox[2] - 3, (cell.y0 + cell.y1) / 2)
+    result = add_line(src, page_no, "In progress", planning.id, planning.text, at=tap)
+    added(src, result.pdf, page_no, "In progress")

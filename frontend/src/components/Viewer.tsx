@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, deleteLines, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type PickedLine, type TextLine } from "../api";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView from "./PageView";
+import AddTextPanel, { type Spot } from "./AddTextPanel";
 import SelectionPanel from "./SelectionPanel";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
@@ -23,6 +24,7 @@ const PLUS = "M10 4v12M4 10h12";
 const MINUS = "M4 10h12";
 const BOXES = "M3 5h9M3 10h14M3 15h11";
 const UNDO = "M7.5 5.5L4 9l3.5 3.5M4.5 9H12a4 4 0 010 8h-2";
+const ADD_TEXT = "M3 4.5h8M7 4.5V15M12.5 12.5h5M15 10v5";
 
 function useWidth(ref: React.RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(0);
@@ -104,6 +106,14 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   // every tap adds or removes a line; with a mouse, Shift or Ctrl does the same.
   const [picked, setPicked] = useState<PickedLine[]>([]);
   const [adding, setAdding] = useState(false);
+  // Adding text: tap a spot on a page, then type.
+  const [placing, setPlacing] = useState(false);
+  const [spot, setSpot] = useState<Spot | null>(null);
+
+  function stopPlacing() {
+    setPlacing(false);
+    setSpot(null);
+  }
   const zoom = ZOOMS[zoomStep];
 
   function clearSelection() {
@@ -138,7 +148,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const onKey = (e: KeyboardEvent) => {
       // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
       const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .line-panel");
-      if (e.key === "Escape") clearSelection();
+      if (e.key === "Escape") {
+        clearSelection();
+        stopPlacing();
+      }
       else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length) {
         e.preventDefault();
         void remove(picked);
@@ -152,7 +165,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     Math.max(200, Math.min(available - 2 * GUTTER, ptWidth * CSS_PX_PER_PT)) * zoom;
 
   return (
-    <div className={`desk viewer${showText ? " viewer--show-text" : ""}`}>
+    <div className={`desk viewer${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}`}>
       <header className="topbar">
         <button className="btn btn-ghost" onClick={onClose} aria-label="Close this PDF and open another">
           <Icon d={CLOSE} />
@@ -197,6 +210,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 width={pageWidth(p.width)}
                 selectedIds={new Set(picked.filter((p) => p.page === i).map((p) => p.line.id))}
                 onSelect={(line, more) => select(i, line, more)}
+                placing={placing}
+                spot={spot?.page === i ? spot : null}
+                onPlace={(x, y) => setSpot({ page: i, x, y })}
               />
             ))}
         </div>
@@ -204,6 +220,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
       <div className="viewer-bottom">
       <div className="view-controls" role="toolbar" aria-label="View">
+        <button
+          className="btn btn-control"
+          aria-pressed={placing}
+          onClick={() => {
+            if (placing) stopPlacing();
+            else {
+              clearSelection();
+              setPlacing(true);
+            }
+          }}
+          title={placing ? "Stop adding text" : "Add text anywhere on the page"}
+          aria-label={placing ? "Stop adding text" : "Add text anywhere on the page"}
+        >
+          <Icon d={ADD_TEXT} />
+        </button>
         <button
           className="btn btn-control"
           aria-pressed={showText}
@@ -244,7 +275,30 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </button>
         </div>
       )}
-      {picked.length === 1 && !adding ? (
+      {placing ? (
+        spot ? (
+          <AddTextPanel
+            doc={doc}
+            spot={spot}
+            onClose={stopPlacing}
+            onAdded={(outcome) => {
+              stopPlacing();
+              onChange(outcome.document);
+              report("Text added.", outcome);
+            }}
+          />
+        ) : (
+          <section className="line-panel" aria-label="Add text">
+            <div className="line-panel-head">
+              <h2>Add text</h2>
+              <button className="btn btn-ghost btn-icon" onClick={stopPlacing} aria-label="Stop adding text">
+                <Icon d={CLOSE} size={18} />
+              </button>
+            </div>
+            <p className="edit-note">Tap the page where the new text should start.</p>
+          </section>
+        )
+      ) : picked.length === 1 && !adding ? (
         <LinePanel
           doc={doc}
           line={picked[0].line}

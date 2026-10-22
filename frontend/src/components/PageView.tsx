@@ -12,9 +12,13 @@ type Props = {
   selectedIds: Set<string>;
   /** A line was clicked; `more` when it should be added to the selection (Shift or Ctrl). */
   onSelect: (line: TextLine | null, more: boolean) => void;
+  /** Adding text: a tap anywhere on the page puts the mark there (page points, as displayed). */
+  placing: boolean;
+  spot: { x: number; y: number } | null;
+  onPlace: (x: number, y: number) => void;
 };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect }: Props) {
+export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace }: Props) {
   const size = doc.pages[index];
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -43,6 +47,11 @@ export default function PageView({ doc, index, width, selectedIds, onSelect }: P
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
         onClick={(e) => {
+          if (placing) {
+            const r = e.currentTarget.getBoundingClientRect();
+            onPlace(((e.clientX - r.left) / r.width) * size.width, ((e.clientY - r.top) / r.height) * size.height);
+            return;
+          }
           if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null, false);
         }}
       >
@@ -86,6 +95,9 @@ export default function PageView({ doc, index, width, selectedIds, onSelect }: P
               );
             })}
           </div>
+        )}
+        {spot && (
+          <span className="spot" style={{ left: pct(spot.x, size.width), top: pct(spot.y, size.height) }} aria-hidden="true" />
         )}
         {state === "failed" && (
           <div className="page-failed">

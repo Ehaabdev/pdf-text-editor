@@ -173,6 +173,8 @@ class AdditionRequest(BaseModel):
     oldText: str = Field(max_length=5000)
     text: str = Field(min_length=1, max_length=2000)
     where: str = Field(default="below", pattern="^(below|above)$")
+    # Or a point on the page as displayed, in points: the text starts there.
+    at: tuple[float, float] | None = None
 
 
 class RevisionRequest(BaseModel):
@@ -224,7 +226,7 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
 
 @app.post("/api/documents/{doc_id}/additions")
 async def add_document_line(doc_id: str, body: AdditionRequest):
-    """Add a new line below or above a line, in its style."""
+    """Add a new line below or above a line, in its style, or at a point on the page."""
     meta = _get_meta(doc_id)
     if meta.revision != body.revision:
         raise HTTPException(409, _STALE)
@@ -232,7 +234,7 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
         raise HTTPException(422, "Add one line at a time.")
     src = store.current_path(meta).read_bytes()
     try:
-        result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where)
+        result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
     except EditRejected as e:
         raise HTTPException(422, str(e))
     try:

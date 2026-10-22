@@ -12,8 +12,8 @@ Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public 
 | 2 | Detect every text line with its font, size, color and position | Done |
 | 3 | Edit text in place, matching the original style | Done |
 | 4 | Delete lines, with their underlines and links | Done |
-| 5 | Add new text | Next |
-| 6 | Undo, before/after view, several edits | |
+| 5 | Add new text, in the style of text on the page | Done |
+| 6 | Undo, before/after view, several edits | Next |
 | 7 | Public launch: limits, password PDFs, deploy | |
 
 ## Text detection
@@ -90,6 +90,41 @@ On the website: click a line and choose Delete line. To delete several, Shift-cl
 
 Deleting every line of every test document and private sample, one at a time, succeeds for all 635, with no warnings.
 
+## Adding text
+
+`backend/app/adding.py` adds one line of new text, in the style of a line already on the page: its font, size, color and text state. Its letters are shaped as for an edit, so the same font rules apply. There are two ways to place it.
+
+**Below or above a line** (the line panel's "Add a line"):
+- **Spacing:** one line spacing away. It's measured in the line's paragraph; failing that, it's the page's most common spacing for that font; failing that, the font's own line height, which Word uses for single spacing.
+- **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
+- **Lists:** a new "4." goes where the numbers are, in the list's own number font, with its text at the item's tab. A bullet is copied as drawn. Plain text under an item lines up with the item's text.
+
+**At a tapped spot** (the "Add text" button, then tap the page):
+- **Position:** the text starts at the mark. English runs right from it, Arabic runs left.
+- **Snapping:** it lines up with text already on that row (an empty table cell next to a filled one), or with the edge of text just above or below, if it's close.
+- **Style:** you choose from the styles on that page; the nearest is chosen first.
+
+New text is drawn after the page's own drawing, with the page's state restored. The page's own instructions are kept byte for byte. Nothing moves to make room, so the new line is refused, with the reason, where it would:
+- touch other text, a picture, a form field or a line;
+- cross a border out of its table cell;
+- sit half a row off nearby text;
+- go past the page or its margins.
+
+Before it is accepted:
+- every glyph already on the page is drawn exactly as before;
+- the new line reads back as typed (our reader), and the other lines read as before;
+- PDFium sees its letters;
+- nothing outside it changes by a single pixel (MuPDF and PDFium);
+- MuPDF sees the same shapes and links, and no other page changes.
+
+Adding a line under every line of every test document and private sample (656 lines): 161 are added. The rest are refused before anything is written, almost all for lack of room in the middle of paragraphs. None fails a check.
+
+Known limits:
+- one line at a time;
+- the style comes from a line on the same page;
+- rotated text can't be a style;
+- Chrome draws list bullets as shapes, and those aren't copied for a new item.
+
 ### Edit accuracy
 
 `backend/tests/test_edit_fidelity.py` measures edits independently of the editor, with MuPDF's own text extraction and pixels in MuPDF and PDFium. `backend/tests/test_editing.py` runs 20 realistic edits on the Word and Chrome test documents, and pins the ones that must be refused. It also runs many edits in a row on the same file, and edits words with superscripts, subscripts and small capitals.
@@ -151,6 +186,8 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 | `bilingual-contract` | English and Arabic side by side, Arabic sentences with English words, phone numbers and URLs, and the reverse |
 | `english-styles` | Many fonts and sizes, style changes mid-sentence, links, shading, text box, small caps, two columns |
 
+`backend/tests/fixtures/additions/` has lists (numbered and bulleted, English and Arabic), a centered title, a justified paragraph, a right-aligned line and a table with an empty cell, with free space after each, for adding text. It is saved by Word and printed by Chrome.
+
 `backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
 
 `expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them all (Windows with Microsoft Word and Chrome; close Word first):
@@ -160,6 +197,7 @@ cd tools\test-documents
 npm install
 node make.js
 node decorations.js
+node additions.js
 powershell -ExecutionPolicy Bypass -File export.ps1
 python print_chrome.py
 ```
