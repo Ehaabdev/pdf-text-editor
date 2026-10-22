@@ -378,15 +378,6 @@ body {
   }
 }
 
-.quiet-link {
-  color: var(--muted);
-  text-underline-offset: 3px;
-}
-
-.quiet-link:hover {
-  color: var(--text);
-}
-
 .count {
   display: inline-grid;
   place-items: center;
@@ -435,6 +426,25 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The source code link: there, but barely noticed. */
+.landing-foot {
+  padding: 0 16px max(10px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 0.6875rem;
+}
+
+.fine-link {
+  color: var(--muted);
+  opacity: 0.7;
+  text-decoration: none;
+}
+
+.fine-link:hover,
+.fine-link:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 /* Changing screens (start screen and editor): the old one softly recedes, the new one

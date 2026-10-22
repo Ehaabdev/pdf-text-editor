@@ -1,5 +1,4 @@
 import type { DocInfo } from "../api";
-import { SOURCE_URL } from "../config";
 import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon, MAGNIFIER } from "./Icon";
 
 type Props = {
@@ -99,9 +98,6 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
 
       <footer className="panel-foot">
         <p>Your file is deleted an hour after you last use it.</p>
-        <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
-          Source code
-        </a>
       </footer>
     </section>
   );
