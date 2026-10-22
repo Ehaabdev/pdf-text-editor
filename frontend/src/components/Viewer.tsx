@@ -16,11 +16,14 @@ import ChangesPanel from "./ChangesPanel";
 import CheckPanel from "./CheckPanel";
 import CloseDialog from "./CloseDialog";
 import HomePanel from "./HomePanel";
-import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, MAGNIFIER, Mark, MINUS, PLUS, REDO, UNDO } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PLUS, REDO, UNDO } from "./Icon";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
+import PagesPanel from "./PagesPanel";
 import ThemeSwitch from "./ThemeSwitch";
+import Thumbnails from "./Thumbnails";
+import Tour, { editorSteps, type Step } from "./Tour";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
 const CSS_PX_PER_PT = 1.45;
@@ -47,6 +50,23 @@ type HistoryEntry = DocInfo["history"][number];
 // Every change the server accepts has passed its checks, among them that nothing outside
 // the changed lines differs by a single pixel.
 const CHECKED = "Checked: nothing else on the page changed.";
+
+// The Help button's "New here?" bubble shows until the tour is opened or a line is picked.
+const HELP_SEEN = "pdfedit.helpSeen";
+function helpSeen() {
+  try {
+    return localStorage.getItem(HELP_SEEN) === "1";
+  } catch {
+    return true;
+  }
+}
+function markHelpSeen() {
+  try {
+    localStorage.setItem(HELP_SEEN, "1");
+  } catch {
+    // Storage can be unavailable (private mode): the bubble shows again next time.
+  }
+}
 
 export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClose: () => void; onChange: (d: DocInfo) => void }) {
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -183,6 +203,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   // Adding text: tap a spot on a page, then type.
   const [placing, setPlacing] = useState(false);
   const [spot, setSpot] = useState<Spot | null>(null);
+  // Pages: the list beside the pages (wide screens), or a panel of them (from the page chip).
+  const [showPages, setShowPages] = useState(false);
+  const [current, setCurrent] = useState(0);
+  // The guided tour (Help), and the first-time bubble pointing at it.
+  const [tour, setTour] = useState<Step[] | null>(null);
+  const [hint, setHint] = useState(() => !helpSeen());
 
   function stopPlacing() {
     setPlacing(false);
@@ -249,11 +275,23 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const el = scroller.current;
     const figure = document.getElementById(`page-${page}`);
     if (!el || !figure) return;
-    const img = figure.querySelector(".page") as HTMLElement | null;
-    const box = img ?? figure;
+    const box = (figure.querySelector(".page") as HTMLElement | null) ?? figure;
     const size = doc.pages[page];
-    el.scrollTop = box.offsetTop + (y / size.height) * box.offsetHeight - el.clientHeight / 3;
-    el.scrollLeft = box.offsetLeft + (x / size.width) * box.offsetWidth - el.clientWidth / 2;
+    // Measured on screen: the page's place within the scrolled pages, whatever its parents.
+    const area = el.getBoundingClientRect();
+    const r = box.getBoundingClientRect();
+    el.scrollTop += r.top - area.top + (y / size.height) * r.height - el.clientHeight / 3;
+    el.scrollLeft += r.left - area.left + (x / size.width) * r.width - el.clientWidth / 2;
+  }
+
+  /** Bring a page's top into view (from the pages list). */
+  function jumpTo(page: number) {
+    const el = scroller.current;
+    const figure = document.getElementById(`page-${page}`);
+    if (!el || !figure) return;
+    const top = el.scrollTop + figure.getBoundingClientRect().top - el.getBoundingClientRect().top - 16;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top, behavior: still ? "auto" : "smooth" });
   }
 
   function show(index: number) {
@@ -270,11 +308,63 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       if (!adding) setPicked([]);
       return;
     }
+    setShowPages(false);
     setPicked((current) => {
       const has = current.some((p) => p.page === page && p.line.id === line.id);
       if (more || adding) return has ? current.filter((p) => !(p.page === page && p.line.id === line.id)) : [...current, { page, line }];
       return has && current.length === 1 ? [] : [{ page, line }];
     });
+  }
+
+  // Which page is in view: the last one whose top has passed a third of the way down.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let queued = false;
+    const measure = () => {
+      queued = false;
+      const line = el.getBoundingClientRect().top + el.clientHeight / 3;
+      let page = 0;
+      for (let i = 0; i < doc.pageCount; i++) {
+        const figure = document.getElementById(`page-${i}`);
+        if (!figure || figure.getBoundingClientRect().top > line) break;
+        page = i;
+      }
+      setCurrent(page);
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(measure);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    measure();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [doc.pageCount]);
+
+  // Once a line is picked, the user has found their way: no more "New here?" bubble.
+  useEffect(() => {
+    if (hint && picked.length) {
+      setHint(false);
+      markHelpSeen();
+    }
+  }, [hint, picked.length]);
+
+  function startTour() {
+    clearSelection();
+    stopPlacing();
+    setShowChanges(false);
+    setShowPages(false);
+    setChecking(null);
+    setCompare(null);
+    setHint(false);
+    markHelpSeen();
+    setTour(editorSteps(window.matchMedia?.("(max-width: 1023.98px)").matches ?? false));
+  }
+
+  function openChanges(open: boolean) {
+    setShowPages(false);
+    setShowChanges(open);
   }
 
   // Keep the middle of the view in place when zooming.
@@ -290,6 +380,17 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes, as in Word (Cmd on a Mac). In a text box
+      // they undo typing instead. The key's place is used, so other keyboard layouts work too.
+      const inText = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], dialog");
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !inText && (e.code === "KeyZ" || e.code === "KeyY")) {
+        const again = e.code === "KeyY" || e.shiftKey;
+        if (again ? doc.canRedo : doc.canUndo) {
+          e.preventDefault();
+          if (!busy) void (again ? redo() : undo());
+        }
+        return;
+      }
       // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
       const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .dock, dialog");
       if (e.key === "Escape") {
@@ -383,6 +484,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         onCompare={() => (compare ? setCompare(null) : startComparing())}
         onGoTo={(v) => void goTo(v)}
       />
+    ) : showPages ? (
+      <PagesPanel
+        doc={doc}
+        version={shownVersion}
+        current={current}
+        onClose={() => setShowPages(false)}
+        onJump={(page) => {
+          jumpTo(page);
+          // On phones the panel covers the pages: close it to show the page.
+          if (window.matchMedia?.("(max-width: 1023.98px)").matches) setShowPages(false);
+        }}
+      />
     ) : compare ? null : placing ? (
       spot ? (
         <AddTextPanel
@@ -455,6 +568,16 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </span>
         </div>
         <div className="bar-actions">
+          <span className="help-wrap">
+            <button className="btn btn-ghost btn-icon" onClick={startTour} aria-label="How it works" title="How it works">
+              <Icon d={HELP} />
+            </button>
+            {hint && (
+              <button className="help-hint" onClick={startTour}>
+                New here? See how it works
+              </button>
+            )}
+          </span>
           <button
             className="btn btn-ghost btn-icon"
             onClick={() => void undo()}
@@ -478,7 +601,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           <button
             className="btn btn-secondary wide-only"
             aria-pressed={showChanges}
-            onClick={() => setShowChanges((v) => !v)}
+            onClick={() => openChanges(!showChanges)}
             disabled={doc.history.length === 0}
             aria-label={`Changes (${applied})`}
           >
@@ -498,7 +621,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         </div>
       </header>
 
-      <div className="workspace">
+      <div className={`workspace${doc.pageCount > 1 ? " workspace--rail" : ""}`}>
+        {doc.pageCount > 1 && (
+          <nav className="page-rail" aria-label="Pages">
+            <Thumbnails doc={doc} version={shownVersion} current={current} onJump={jumpTo} />
+          </nav>
+        )}
         <section className="canvas" aria-label="Pages">
           {doc.isSigned && (
             <p className="banner" role="status">
@@ -545,6 +673,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             </div>
           </main>
 
+          {doc.pageCount > 1 && (
+            <button
+              className="page-chip"
+              aria-pressed={showPages}
+              onClick={() => {
+                setShowChanges(false);
+                setShowPages((v) => !v);
+              }}
+              aria-label={`Pages: page ${current + 1} of ${doc.pageCount}`}
+            >
+              <Icon d={PAGES} size={16} />
+              {current + 1} / {doc.pageCount}
+            </button>
+          )}
+
           <div className="canvas-zoom">{zoomControls}</div>
         </section>
 
@@ -571,7 +714,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 comparing={compare !== null}
                 onAddText={togglePlacing}
                 onToggleText={() => setShowText((v) => !v)}
-                onShowChanges={() => setShowChanges(true)}
+                onShowChanges={() => openChanges(true)}
                 onCompare={() => (compare ? setCompare(null) : startComparing())}
               />
               <nav className="toolbar" aria-label="Tools">
@@ -589,7 +732,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 )}
                 <button
                   className="toolbar-item"
-                  onClick={() => setShowChanges(true)}
+                  onClick={() => openChanges(true)}
                   disabled={doc.history.length === 0}
                   aria-label={`Changes (${applied})`}
                 >
@@ -620,6 +763,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           onCancel={() => setAskClose(false)}
         />
       )}
+
+      {tour && <Tour steps={tour} onClose={() => setTour(null)} />}
     </div>
   );
 }

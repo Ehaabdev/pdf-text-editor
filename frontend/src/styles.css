@@ -53,6 +53,7 @@
   --radius: 14px;
   --radius-sm: 10px;
   --dock: 360px;
+  --rail: 128px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   color-scheme: light;
@@ -967,6 +968,9 @@ html.theme-switching::view-transition-new(root) {
 }
 
 .bar {
+  /* Above the pages and panels, so the Help bubble under it shows in full. */
+  position: relative;
+  z-index: 10;
   flex: none;
   display: flex;
   align-items: center;
@@ -2298,6 +2302,309 @@ html.theme-switching::view-transition-new(root) {
   .dock > .check-panel {
     max-height: 82dvh;
   }
+}
+
+/* Pages: a list beside the pages (wide screens), or a chip that opens a panel of them. --- */
+.page-rail {
+  display: none;
+}
+
+/* Wide enough: a list of the pages beside them, for files with more than one. */
+@media (min-width: 1280px) {
+  .workspace--rail {
+    grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock);
+  }
+  .workspace--rail .page-rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+  }
+  /* The list is there: the chip isn't needed. */
+  .workspace--rail .page-chip {
+    display: none;
+  }
+}
+
+.thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 18px;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.thumbs--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 14px;
+  padding: 2px;
+  overflow: visible;
+}
+
+.thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 8px 18px -10px rgba(0, 0, 0, 0.45);
+  transition:
+    box-shadow 200ms ease-out,
+    transform 250ms var(--spring);
+}
+
+.thumb:hover img {
+  transform: translateY(-2px);
+}
+
+.thumb[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.thumb[aria-current="page"] img {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 6px var(--accent-wash),
+    0 10px 24px -8px var(--accent-glow);
+}
+
+/* The chip over the pages: which page is in view, and the way to the others. Nearly solid,
+   since it floats over a page. */
+.page-chip {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 16px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow), var(--float);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.page-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .page-chip {
+    min-height: 40px;
+  }
+}
+
+/* Help: the button's first-time bubble, and the guided tour. ------------------------------ */
+.help-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.help-hint {
+  position: absolute;
+  top: calc(100% + 12px);
+  inset-inline-end: -8px;
+  z-index: 30;
+  width: max-content;
+  max-width: 220px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: start;
+  box-shadow: 0 12px 30px -10px var(--accent-glow);
+  cursor: pointer;
+  animation:
+    hint-in 500ms var(--spring) 600ms both,
+    hint-bob 2.4s ease-in-out 1.2s infinite;
+}
+
+/* The bubble's little pointer, aimed at the button. */
+.help-hint::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  inset-inline-end: 22px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px 0 0 0;
+  background: var(--accent-top);
+  transform: rotate(45deg);
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.9);
+  }
+}
+
+@keyframes hint-bob {
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+/* The tour: the whole screen, with one part lit and a glass card explaining it. */
+.tour {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.tour::backdrop {
+  background: transparent;
+}
+
+/* The lit part: everything around it is dimmed by its huge shadow. */
+.tour-spot {
+  position: absolute;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 40px 4px var(--accent-glow),
+    0 0 0 200vmax rgba(3, 6, 14, 0.62);
+  pointer-events: none;
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    width 450ms var(--ease),
+    height 450ms var(--ease);
+}
+
+.tour-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(360px, calc(100vw - 24px));
+  padding: 20px 20px 16px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow), var(--float);
+  opacity: 0;
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    opacity 250ms ease-out;
+}
+
+.tour-card--placed {
+  opacity: 1;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  box-shadow: inset 0 0 0 1px var(--glass-edge);
+  transition:
+    width 300ms var(--ease),
+    background-color 300ms ease-out;
+}
+
+.tour-dot--on {
+  width: 20px;
+  background: linear-gradient(90deg, var(--accent-top), var(--accent-bottom));
+}
+
+.tour-title {
+  margin: 0 0 6px;
+  padding-inline-end: 28px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.tour-text {
+  margin: 0 0 16px;
+  color: var(--text-soft);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tour-count {
+  margin-inline-end: auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tour-close {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 10px;
 }
 
 /* Light that follows the mouse ------------------------------------------------
