@@ -1,4 +1,5 @@
 import type { DocInfo } from "../api";
+import { CLOSE, Icon } from "./Icon";
 
 type Props = {
   doc: DocInfo;
@@ -18,13 +19,11 @@ export default function ChangesPanel({ doc, busy, comparing, onClose, onShow, on
   const changes = doc.history;
   const undone = changes.filter((c) => !c.applied).length;
   return (
-    <section className="line-panel changes-panel" aria-label="Changes">
-      <div className="line-panel-head">
-        <h2>{changes.length === 0 ? "No changes yet" : changes.length === 1 ? "1 change" : `${changes.length} changes`}</h2>
+    <section className="panel changes-panel" aria-label="Changes">
+      <div className="panel-head">
+        <h2 className="panel-title">{changes.length === 0 ? "No changes yet" : changes.length === 1 ? "1 change" : `${changes.length} changes`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 

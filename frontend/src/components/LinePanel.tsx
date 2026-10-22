@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, addLine, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
+import { CLOSE, Icon } from "./Icon";
 
 type Look = Pick<TextSpan, "font" | "size" | "color" | "bold" | "italic">;
 
@@ -82,13 +83,11 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
 
   return (
-    <section className="line-panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
-      <div className="line-panel-head">
-        <h2>{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
+    <section className="panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
+      <div className="panel-head">
+        <h2 className="panel-title">{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 

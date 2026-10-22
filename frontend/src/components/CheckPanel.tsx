@@ -1,4 +1,5 @@
 import { areaImageUrl, type DocInfo } from "../api";
+import { CLOSE, Icon } from "./Icon";
 
 type Props = {
   doc: DocInfo;
@@ -23,13 +24,11 @@ export default function CheckPanel({ doc, index, busy, onClose, onUndo }: Props)
   const lookalikes = change.lookalikes ?? [];
 
   return (
-    <section className="line-panel check-panel" aria-label="Check the change">
-      <div className="line-panel-head">
-        <h2>Check the change</h2>
+    <section className="panel check-panel" aria-label="Check the change">
+      <div className="panel-head">
+        <h2 className="panel-title">Check the change</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 

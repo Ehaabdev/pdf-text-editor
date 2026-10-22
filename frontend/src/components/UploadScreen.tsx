@@ -133,7 +133,7 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
                 {status.message}
               </p>
             )}
-            {status.kind === "idle" && notice && <p className="notice">{notice}</p>}
+            {status.kind === "idle" && notice && <p className="notice-text">{notice}</p>}
           </div>
 
           <p className="fine-print">

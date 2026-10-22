@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, addTextAt, getLines, type DocInfo, type EditOutcome, type TextLine } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
+import { CLOSE, Icon } from "./Icon";
 
 export type Spot = { page: number; x: number; y: number }; // page points, as displayed
 
@@ -87,13 +88,11 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
   const shown = !open ? (chosen ? [chosen] : []) : more ? styles : styles.slice(0, SHOWN);
 
   return (
-    <section className="line-panel" aria-label="Add text here">
-      <div className="line-panel-head">
-        <h2>Add text here</h2>
+    <section className="panel" aria-label="Add text here">
+      <div className="panel-head">
+        <h2 className="panel-title">Add text here</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Stop adding text">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 

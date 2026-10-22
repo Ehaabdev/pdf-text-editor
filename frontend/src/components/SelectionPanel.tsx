@@ -1,4 +1,5 @@
 import type { PickedLine } from "../api";
+import { CLOSE, Icon } from "./Icon";
 
 type Props = {
   picked: PickedLine[];
@@ -14,13 +15,11 @@ export default function SelectionPanel({ picked, deleting, onDelete, onClose }: 
   const n = picked.length;
   const pages = new Set(picked.map((p) => p.page));
   return (
-    <section className="line-panel" aria-label="Selected lines">
-      <div className="line-panel-head">
-        <h2>{n === 0 ? "Select lines" : n === 1 ? "1 line selected" : `${n} lines selected`}</h2>
+    <section className="panel" aria-label="Selected lines">
+      <div className="panel-head">
+        <h2 className="panel-title">{n === 0 ? "Select lines" : n === 1 ? "1 line selected" : `${n} lines selected`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Clear the selection">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 
