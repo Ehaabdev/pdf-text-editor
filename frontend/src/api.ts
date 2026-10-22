@@ -1,5 +1,18 @@
 export type PageSize = { width: number; height: number };
 
+/** One change, as listed: what it was and where (page, x0, y0, x1, y1 in points). */
+export type Change = {
+  kind: "edit" | "delete" | "add";
+  summary: string;
+  pages: number[];
+  areas: [number, number, number, number, number][];
+  /** The same changes drawn tight (the old and new lines), for outlining on the page. */
+  marks?: [number, number, number, number, number][];
+  warnings: string[];
+  /** False once undone (it can be redone until the next change). */
+  applied: boolean;
+};
+
 export type DocInfo = {
   id: string;
   name: string;
@@ -7,6 +20,10 @@ export type DocInfo = {
   revision: number;
   edited: boolean;
   canUndo: boolean;
+  canRedo: boolean;
+  /** Which stored version is current: 0 is the original, k the one after history[k-1]. */
+  version: number;
+  history: Change[];
   pageCount: number;
   pages: PageSize[];
   isSigned: boolean;
@@ -65,9 +82,19 @@ export async function deleteDocument(id: string): Promise<void> {
   await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function pageImageUrl(doc: DocInfo, pageNo: number, width: number): string {
-  // The revision makes each URL unique per change, so browsers can cache images safely.
-  return `/api/documents/${doc.id}/pages/${pageNo}/image?width=${width}&r=${doc.revision}`;
+/** The page as an image: the current version, or a stored one (0 is the original). */
+export function pageImageUrl(doc: DocInfo, pageNo: number, width: number, version?: number): string {
+  const base = `/api/documents/${doc.id}/pages/${pageNo}/image?width=${width}`;
+  // The original never changes. Other URLs carry the revision, which every change bumps,
+  // so browsers can cache images safely (a version number is reused after an undo).
+  if (version === 0) return `${base}&version=0`;
+  return `${base}&r=${doc.revision}` + (version === undefined ? "" : `&version=${version}`);
+}
+
+/** Part of a page (points, as displayed) in a given version, for a close look. */
+export function areaImageUrl(doc: DocInfo, pageNo: number, version: number, area: number[], width: number): string {
+  const clip = area.map((v) => v.toFixed(2)).join(",");
+  return `${pageImageUrl(doc, pageNo, width, version)}&clip=${clip}`;
 }
 
 export type TextSpan = {
@@ -177,6 +204,15 @@ export function deleteLines(doc: DocInfo, lines: PickedLine[]): Promise<EditOutc
 
 export function undoEdit(doc: DocInfo): Promise<DocInfo> {
   return postJson(`/api/documents/${doc.id}/undo`, { revision: doc.revision });
+}
+
+export function redoEdit(doc: DocInfo): Promise<DocInfo> {
+  return postJson(`/api/documents/${doc.id}/redo`, { revision: doc.revision });
+}
+
+/** Make a stored version current: 0 is the original. Later ones can still be redone. */
+export function goToVersion(doc: DocInfo, version: number): Promise<DocInfo> {
+  return postJson(`/api/documents/${doc.id}/versions/${version}`, { revision: doc.revision });
 }
 
 export function downloadUrl(doc: DocInfo): string {

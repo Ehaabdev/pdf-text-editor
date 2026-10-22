@@ -16,7 +16,7 @@ from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
-from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NothingToUndo, StaleRevision
+from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NoSuchVersion, NothingToUndo, StaleRevision
 from .textlayout import line_json, lines_for
 
 # Arabic and other non-Latin text must never crash logging on a Windows console.
@@ -87,6 +87,11 @@ def _document_json(meta: DocumentMeta, info) -> dict:
         "revision": meta.revision,
         "edited": meta.version > 0,
         "canUndo": meta.version > 0,
+        "canRedo": meta.version < len(meta.history),
+        "version": meta.version,
+        # Every change, in order; those after the current version were undone (and can
+        # be redone until the next change).
+        "history": [{**entry, "applied": k < meta.version} for k, entry in enumerate(meta.history)],
         "pageCount": info.page_count,
         "pages": [{"width": p.width, "height": p.height} for p in info.pages],
         "isSigned": info.is_signed,
@@ -124,12 +129,28 @@ def get_document(doc_id: str):
 
 
 @app.get("/api/documents/{doc_id}/pages/{page_no}/image")
-def page_image(doc_id: str, page_no: int, width: int = Query(1200)):
+def page_image(doc_id: str, page_no: int, width: int = Query(1200), version: int | None = None, clip: str | None = None):
+    """The page as an image: the current version, or any stored one (0 is the original);
+    the whole page, or only `clip` ("x0,y0,x1,y1" in points, as displayed)."""
     meta = _get_meta(doc_id)
     try:
-        png = render_page_png(store.current_path(meta), page_no, width)
+        path = store.current_path(meta) if version is None else store.version_path(meta, version)
+    except NoSuchVersion:
+        raise HTTPException(404, "That version doesn't exist.")
+    area = None
+    if clip is not None:
+        try:
+            area = tuple(float(v) for v in clip.split(","))
+            if len(area) != 4:
+                raise ValueError
+        except ValueError:
+            raise HTTPException(400, "clip must be four numbers: x0,y0,x1,y1.")
+    try:
+        png = render_page_png(path, page_no, width, area)
     except IndexError:
         raise HTTPException(404, "That page doesn't exist.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     # Image URLs carry the document revision, so a given URL never changes.
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
@@ -184,6 +205,23 @@ class RevisionRequest(BaseModel):
 _STALE = "This document changed in another tab or window. Reload the page to see the latest version."
 
 
+def _short(text: str, n: int = 40) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def _entry(kind: str, summary: str, result) -> dict:
+    """What a change was, for the list of changes and the before/after view."""
+    return {
+        "kind": kind,
+        "summary": summary,
+        "pages": sorted({a[0] for a in result.areas}),
+        "areas": [[round(v, 2) for v in a] for a in result.areas],  # [page, x0, y0, x1, y1]
+        "marks": [[round(v, 2) for v in a] for a in result.marks],  # the same, drawn tight
+        "warnings": result.warnings,
+    }
+
+
 @app.post("/api/documents/{doc_id}/edits")
 async def edit_line(doc_id: str, edit: EditRequest):
     meta = _get_meta(doc_id)
@@ -198,8 +236,12 @@ async def edit_line(doc_id: str, edit: EditRequest):
         raise HTTPException(422, str(e))
     if result.pdf == src:
         return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+    if edit.newText.strip():
+        entry = _entry("edit", f"Changed “{_short(edit.oldText)}” to “{_short(result.text)}”", result)
+    else:
+        entry = _entry("delete", f"Deleted “{_short(edit.oldText)}”", result)
     try:
-        meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf)
+        meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
@@ -217,8 +259,10 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
         result = await run_in_threadpool(delete_lines, src, targets)
     except EditRejected as e:
         raise HTTPException(422, str(e))
+    n = len(body.lines)
+    entry = _entry("delete", f"Deleted “{_short(body.lines[0].oldText)}”" if n == 1 else f"Deleted {n} lines", result)
     try:
-        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf)
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
@@ -237,8 +281,9 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
         result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
     except EditRejected as e:
         raise HTTPException(422, str(e))
+    entry = _entry("add", f"Added “{_short(result.text)}”", result)
     try:
-        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf)
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
@@ -253,6 +298,32 @@ def undo_edit(doc_id: str, body: RevisionRequest):
         raise HTTPException(409, _STALE)
     except NothingToUndo:
         raise HTTPException(409, "There is nothing to undo.")
+    return _document_json(meta, describe_file(store.current_path(meta)))
+
+
+@app.post("/api/documents/{doc_id}/redo")
+def redo_edit(doc_id: str, body: RevisionRequest):
+    _get_meta(doc_id)
+    try:
+        meta = store.redo(doc_id, body.revision)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    except NoSuchVersion:
+        raise HTTPException(409, "There is nothing to redo.")
+    return _document_json(meta, describe_file(store.current_path(meta)))
+
+
+@app.post("/api/documents/{doc_id}/versions/{version}")
+def go_to_version(doc_id: str, version: int, body: RevisionRequest):
+    """Make a stored version current: 0 is the original ("start over"). Later versions
+    are kept, so this can be redone."""
+    _get_meta(doc_id)
+    try:
+        meta = store.go_to(doc_id, body.revision, version)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    except NoSuchVersion:
+        raise HTTPException(404, "That version doesn't exist.")
     return _document_json(meta, describe_file(store.current_path(meta)))
 
 

@@ -76,6 +76,11 @@ class EditResult:
     pdf: bytes
     warnings: list[str] = field(default_factory=list)
     text: str = ""
+    # Where the page may have changed: (page, x0, y0, x1, y1) as displayed. Exactly the
+    # areas the change's own check proved that nothing outside of changed.
+    areas: list[tuple[int, float, float, float, float]] = field(default_factory=list)
+    # The same, drawn tight for people to see: the old and new lines' boxes.
+    marks: list[tuple[int, float, float, float, float]] = field(default_factory=list)
 
 
 def clean_text(text: str) -> str:
@@ -1014,8 +1019,8 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         x0, y0, x1, y1 = rp.paths[c.path].bbox
         boxes += [(x0, y0, x1, y1)] + [(a, y0, b, y1) for a, b in c.spans]
     drawn = "".join(w.text for w in visual if w.is_new)
-    _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes)
-    return EditResult(result, warnings, new_text)
+    area, mark = _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes)
+    return EditResult(result, warnings, new_text, [(page_no, *area)], [(page_no, *mark)])
 
 
 def _spaces(line: Line, rp: Replay, visual: list[Word], untouched: set[int], joined: list[bool]) -> list[PlacedRun]:
@@ -1118,7 +1123,9 @@ def _link_changes(pdf, page_no, rp, line, visual, remove, warnings) -> list[Link
 
 
 def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_text: str, boxes, drawn: str,
-            rp: Replay, path_changes: list[PathChange], link_changes: list[LinkChange]) -> None:
+            rp: Replay, path_changes: list[PathChange], link_changes: list[LinkChange]) -> tuple[tuple, tuple]:
+    """Check the edit; return the area (as displayed) outside which nothing changed, and
+    the old and new lines' boxes together, to show people."""
     new_doc = pymupdf.open("pdf", new_bytes)
     page = new_doc[page_no]
     try:
@@ -1148,7 +1155,8 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
 
     # The line reads back as typed.
     cands = [l for l in page_lines(page) if pymupdf.Rect(l.bbox).intersects(area)]
-    if not any(comparable(l.text) == comparable(new_text) for l in cands):
+    mine = [l for l in cands if comparable(l.text) == comparable(new_text)]
+    if not mine:
         got = " | ".join(l.text for l in cands)
         fail(f"it read back as “{got}”")
     # An independent reader (PDFium) finds the same characters there.
@@ -1170,3 +1178,7 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
     check_drawings(old_page, page, path_changes, rp)
     check_links(old_page, page, link_changes)
     check_other_pages(old_bytes, new_bytes, {page_no})
+    mark = pymupdf.Rect(line.bbox) | pymupdf.Rect(mine[0].bbox)
+    for c in path_changes:  # an underline or highlight that moved
+        mark |= to_display(page, rp.paths[c.path].bbox)
+    return tuple(area), tuple(mark)

@@ -2,9 +2,12 @@
 
 Each document lives in its own folder named by an unguessable id:
 
-    data/<id>/meta.json   name, timestamps, version count
+    data/<id>/meta.json   name, timestamps, current version, history of changes
     data/<id>/v0.pdf      the original upload
-    data/<id>/v1.pdf ...  one file per saved edit (later steps), newest is current
+    data/<id>/v1.pdf ...  one file per change; `version` says which is current
+
+Undo, redo and "start over" move `version` between the files: a change that was undone
+is kept (and can be redone) until a new change is made.
 
 Folders are deleted once they have not been used for DOC_TTL_SECONDS.
 """
@@ -15,7 +18,7 @@ import secrets
 import shutil
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import config
@@ -35,6 +38,10 @@ class NothingToUndo(Exception):
     pass
 
 
+class NoSuchVersion(Exception):
+    pass
+
+
 @dataclass
 class DocumentMeta:
     id: str
@@ -43,6 +50,9 @@ class DocumentMeta:
     last_access: float
     version: int  # index of the current vN.pdf (goes back down on undo)
     revision: int = 0  # bumped on every change and never reused; keys cached page images
+    # One entry per change: history[k] made v{k+1}.pdf from v{k}.pdf. What it was, and
+    # where on which pages it changed anything (see EditResult.areas).
+    history: list[dict] = field(default_factory=list)
 
 
 class DocumentStore:
@@ -92,9 +102,17 @@ class DocumentStore:
     def current_path(self, meta: DocumentMeta) -> Path:
         return self._dir(meta.id) / f"v{meta.version}.pdf"
 
-    def save_version(self, doc_id: str, expected_revision: int, data: bytes) -> DocumentMeta:
-        """Store an edited copy as the new current version. Versions after the current
-        one (undone edits) are dropped. Fails if someone changed the document meanwhile."""
+    def version_path(self, meta: DocumentMeta, version: int) -> Path:
+        """Any stored version: 0 is the original."""
+        path = self._dir(meta.id) / f"v{version}.pdf"
+        if version < 0 or not path.exists():
+            raise NoSuchVersion(version)
+        return path
+
+    def save_version(self, doc_id: str, expected_revision: int, data: bytes, entry: dict | None = None) -> DocumentMeta:
+        """Store an edited copy as the new current version, with what the change was.
+        Versions after the current one (undone changes) are dropped, files and history
+        together. Fails if someone changed the document meanwhile."""
         with self._lock:
             meta = self._read_meta(doc_id)
             if meta.revision != expected_revision:
@@ -103,6 +121,7 @@ class DocumentStore:
             for old in folder.glob("v*.pdf"):
                 if int(old.stem[1:]) > meta.version:
                     old.unlink(missing_ok=True)
+            meta.history = meta.history[: meta.version] + [entry or {}]
             meta.version += 1
             meta.revision += 1
             meta.last_access = time.time()
@@ -110,19 +129,38 @@ class DocumentStore:
             self._write_meta(meta)
             return meta
 
-    def undo(self, doc_id: str, expected_revision: int) -> DocumentMeta:
-        """Go back to the previous version. The undone version is kept until a new edit."""
+    def go_to(self, doc_id: str, expected_revision: int, version: int) -> DocumentMeta:
+        """Make a stored version current: an earlier one (undo, start over) or a later
+        one that was undone (redo). Nothing is deleted."""
         with self._lock:
             meta = self._read_meta(doc_id)
             if meta.revision != expected_revision:
                 raise StaleRevision(doc_id)
-            if meta.version == 0:
-                raise NothingToUndo(doc_id)
-            meta.version -= 1
+            self.version_path(meta, version)
+            meta.version = version
             meta.revision += 1
             meta.last_access = time.time()
             self._write_meta(meta)
             return meta
+
+    def undo(self, doc_id: str, expected_revision: int) -> DocumentMeta:
+        """Go back to the previous version. The undone version is kept until a new edit."""
+        meta = self._read_meta(doc_id)
+        if meta.version == 0:
+            if meta.revision != expected_revision:
+                raise StaleRevision(doc_id)
+            raise NothingToUndo(doc_id)
+        return self.go_to(doc_id, expected_revision, meta.version - 1)
+
+    def redo(self, doc_id: str, expected_revision: int) -> DocumentMeta:
+        """Bring back the change undone last."""
+        meta = self._read_meta(doc_id)
+        try:
+            return self.go_to(doc_id, expected_revision, meta.version + 1)
+        except NoSuchVersion:
+            if meta.revision != expected_revision:
+                raise StaleRevision(doc_id)
+            raise
 
     def delete(self, doc_id: str) -> None:
         folder = self._dir(doc_id)

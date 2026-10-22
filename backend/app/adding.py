@@ -444,8 +444,8 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
     result = out.getvalue()
 
     added = sum(len(r.glyphs) for r in runs)
-    _verify(src, result, page_no, rp, all_lines, expected, new_box, added)
-    return EditResult(result, list(dict.fromkeys(fonts.warnings)), expected)
+    area, mark = _verify(src, result, page_no, rp, all_lines, expected, new_box, added)
+    return EditResult(result, list(dict.fromkeys(fonts.warnings)), expected, [(page_no, *area)], [(page_no, *mark)])
 
 
 def _lines_below(ref: Line, lines: list[Line]) -> list[Line]:
@@ -654,7 +654,9 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
             raise EditRejected(f"{no_room}: it would cross a line or a shape on the page.")
 
 
-def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines: list[Line], text: str, box: pymupdf.Rect, added: int) -> None:
+def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines: list[Line], text: str, box: pymupdf.Rect, added: int) -> tuple:
+    """Check the addition; return the area (as displayed) outside which nothing changed,
+    and the new line's box, to show people."""
     old_doc, new_doc = pymupdf.open("pdf", old_bytes), pymupdf.open("pdf", new_bytes)
     old_page, page = old_doc[page_no], new_doc[page_no]
     try:
@@ -710,3 +712,4 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     check_drawings(old_page, page, [], rp)
     check_links(old_page, page, [])
     check_other_pages(old_bytes, new_bytes, {page_no})
+    return tuple(area), tuple(mine[0].bbox)

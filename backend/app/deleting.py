@@ -97,10 +97,11 @@ def delete_lines(src: bytes, targets: list[tuple[int, str, str]]) -> EditResult:
     out = io.BytesIO()
     pdf.save(out)
     result = out.getvalue()
-    _verify(src, result, plans)
+    areas = _verify(src, result, plans)
+    marks = [(page_no, *l.bbox) for page_no, (chosen, *_rest) in plans.items() for l in chosen]
     if _left_behind(result, plans):
         warnings.append("Something drawn under the deleted text (a line or a colored box) is still there. Check the page.")
-    return EditResult(result, list(dict.fromkeys(warnings)), "")
+    return EditResult(result, list(dict.fromkeys(warnings)), "", areas, marks)
 
 
 def _left_behind(new_bytes: bytes, plans: dict) -> bool:
@@ -128,7 +129,9 @@ def _left_behind(new_bytes: bytes, plans: dict) -> bool:
     return False
 
 
-def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> None:
+def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> list[tuple]:
+    """Check the deletion; return the areas (page, as displayed) outside which nothing changed."""
+    areas = []
     old_doc, new_doc = pymupdf.open("pdf", old_bytes), pymupdf.open("pdf", new_bytes)
     new_pdf = pikepdf.open(io.BytesIO(new_bytes))
     for page_no, (chosen, lines, rp, remove, path_changes, link_changes) in plans.items():
@@ -159,6 +162,7 @@ def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> None:
         boxes = [pymupdf.Rect(l.bbox) + _margin(l) for l in chosen]
         boxes += [to_display(old_page, ink_box(rp, l.members)) + (-1, -1, 1, 1) for l in chosen]
         boxes += [to_display(old_page, rp.paths[c.path].bbox) + (-3, -3, 3, 3) for c in path_changes]
+        areas += [(page_no, *tuple(b)) for b in boxes]
         old_mu, old_pf = render(old_bytes, page_no)
         new_mu, new_pf = render(new_bytes, page_no)
         if outside(old_mu, new_mu, [tuple(b) for b in boxes], 2.0, 0) or outside(old_pf, new_pf, [tuple(b) for b in boxes], 2.0, 1):
@@ -185,6 +189,7 @@ def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> None:
         check_drawings(old_page, new_page, path_changes, rp)
         check_links(old_page, new_page, link_changes)
     check_other_pages(old_bytes, new_bytes, set(plans))
+    return areas
 
 
 def _margin(line: Line) -> tuple[float, float, float, float]:
