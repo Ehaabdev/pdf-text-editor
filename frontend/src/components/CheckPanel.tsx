@@ -37,7 +37,7 @@ export default function CheckPanel({ doc, index, busy, onClose, onUndo }: Props)
       {lookalikes.map((l, k) => (
         <p key={k} className="line-warning">
           {l.font} isn’t available here, so the new words use {l.substitute}
-          {l.sameWidths ? ", a look-alike with the same letter widths." : ", a similar font. Its letters are a little different."} Does
+          {l.sameWidths ? ", a look-alike with nearly the same letter widths." : ", a similar font. Its letters are a little different."} Does
           it look right?
         </p>
       ))}

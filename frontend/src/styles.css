@@ -995,3 +995,26 @@ body {
   border: 1px solid var(--rule);
   border-radius: 4px;
 }
+
+/* Phones: the top bar holds Close, Undo, Redo, Changes and Download; the file's name
+   needs the rest of the room. */
+@media (max-width: 480px) {
+  .topbar {
+    gap: 4px;
+  }
+
+  .topbar .download-label,
+  .doc-pages {
+    display: none;
+  }
+}
+
+/* Checking a change is the task at hand: room for both images and the buttons. */
+.line-panel.check-panel {
+  max-height: 82dvh;
+}
+
+.check-shot img {
+  max-height: 110px;
+  object-fit: contain;
+}

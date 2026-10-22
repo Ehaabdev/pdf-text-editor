@@ -259,7 +259,7 @@ def add_line(
     else:
         words, visual = _visual_order_standard(words, rtl)
 
-    fonts = Fonts(pdf, page_no, rp, word_made, ref)
+    fonts = Fonts(pdf, page_no, rp, word_made, ref, all_lines)
     ratios: dict[str, float] = {}
     for w in visual:
         if getattr(w, "clone", None):

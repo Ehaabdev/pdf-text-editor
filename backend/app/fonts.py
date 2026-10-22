@@ -78,7 +78,10 @@ def _names(tt: TTFont) -> tuple[str, str, bool, bool, str]:
 
 class FontLibrary:
     def __init__(self, dirs: list[Path] | None = None):
-        self.dirs = dirs if dirs is not None else font_dirs()
+        # The bundled look-alikes are always among the installed fonts: a word drawn in
+        # Carlito by an earlier edit is in Carlito, exactly (and so are LibreOffice's).
+        bundled = Path(__file__).resolve().parent.parent / "lookalikes"
+        self.dirs = (dirs if dirs is not None else font_dirs()) + [bundled]
         self.entries: list[FontEntry] = self._load()
         self.by_ps = {e.ps_name.lower(): e for e in self.entries}
         self.by_full = {e.full_name.lower(): e for e in self.entries if e.full_name}
@@ -425,7 +428,7 @@ def _font_bytes(full: FullFont) -> bytes:
 # When a PDF's font isn't installed and its embedded copy can't draw the new letters, a
 # free font that looks like it can stand in, and the user is asked to check the result.
 # The files ship with the code (lookalikes/, with their licences and MANIFEST.json), so a
-# server has them whatever is installed. Latin look-alikes have the same letter widths as
+# server has them whatever is installed. Latin look-alikes have nearly the same letter widths as
 # the fonts they replace; Arabic ones were chosen by eye and don't. Arabic look-alikes must
 # draw each letter as one glyph: fonts that split letters into a base and separate dots
 # (Noto Naskh Arabic, for one) give glyphs whose labels can't be right.

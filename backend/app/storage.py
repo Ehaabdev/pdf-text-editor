@@ -121,7 +121,10 @@ class DocumentStore:
             for old in folder.glob("v*.pdf"):
                 if int(old.stem[1:]) > meta.version:
                     old.unlink(missing_ok=True)
-            meta.history = meta.history[: meta.version] + [entry or {}]
+            # Documents saved before changes were listed have no entries for their versions.
+            known = meta.history[: meta.version]
+            known += [{}] * (meta.version - len(known))
+            meta.history = known + [entry or {}]
             meta.version += 1
             meta.revision += 1
             meta.last_access = time.time()

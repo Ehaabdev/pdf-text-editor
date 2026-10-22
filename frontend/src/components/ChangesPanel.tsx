@@ -35,19 +35,23 @@ export default function ChangesPanel({ doc, busy, comparing, onClose, onShow, on
           {changes.map((c, k) => (
             <li key={k} className={c.applied ? undefined : "change--undone"}>
               <div className="change-text">
-                <span>{c.summary}</span>
+                <span>{c.summary ?? "An earlier change"}</span>
                 <span className="change-meta">
-                  {c.pages.length === 1 ? `Page ${c.pages[0] + 1}` : `Pages ${c.pages.map((p) => p + 1).join(", ")}`}
+                  {(c.pages ?? []).length === 0
+                    ? ""
+                    : c.pages.length === 1
+                      ? `Page ${c.pages[0] + 1}`
+                      : `Pages ${c.pages.map((p) => p + 1).join(", ")}`}
                   {c.applied ? "" : ", undone"}
                   {c.lookalikes?.length ? ", look-alike font" : ""}
                 </span>
               </div>
-              {c.applied && (
+              {c.applied && c.areas?.length > 0 && (
                 <button className="btn btn-ghost" onClick={() => onCheck(k)} disabled={busy}>
                   Check
                 </button>
               )}
-              {c.applied && (
+              {c.applied && c.areas?.length > 0 && (
                 <button className="btn btn-ghost" onClick={() => onShow(k)} disabled={busy}>
                   Show
                 </button>

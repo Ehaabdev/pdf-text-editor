@@ -376,8 +376,9 @@ def _base_name_from(font_name: str) -> str:
 
 
 class Fonts:
-    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line):
+    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line, lines: list[Line] | None = None):
         self.pdf, self.page_index, self.rp, self.word_made, self.line = pdf, page_index, rp, word_made, line
+        self.lines = lines or [line]  # the page's lines, to measure a font's size on
         self.embedded: dict[str, fontlib.EmbeddedFont] = {}
         self.warnings: list[str] = []
         self.checked: set[str] = set()
@@ -491,7 +492,7 @@ class Fonts:
             self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths}
             if sub.same_widths:
                 self.warnings.append(
-                    f"{shown} isn't available here, so the changed words use {sub.name}, a look-alike with the same letter widths. Check that it looks right."
+                    f"{shown} isn't available here, so the changed words use {sub.name}, a look-alike with nearly the same letter widths. Check that it looks right."
                 )
             else:
                 self.warnings.append(
@@ -500,9 +501,51 @@ class Fonts:
         return True
 
     def _size_match(self, font_name: str, full: "fontlib.FullFont") -> float:
-        """How big the look-alike must be drawn to match the original's letters: the
-        height of the tall Arabic letters (alef, lam, kaf, ta) in the PDF's own copy of
-        the font against the look-alike's, the middle of the ratios."""
+        """How big the look-alike must be drawn to match the original's letters. Best:
+        the line's own Arabic words in that font, as wide as the look-alike sets them
+        (how people judge size along a line). Else (a stretched kashida line, too few
+        letters): the height of the tall letters (alef, lam, kaf, ta) in the PDF's own
+        copy of the font against the look-alike's, the middle of the ratios."""
+        by_width = self._width_ratio(font_name, full)
+        if by_width is not None:
+            return min(1.4, max(0.6, by_width))
+        return self._height_ratio(font_name, full)
+
+    def _width_ratio(self, font_name: str, full: "fontlib.FullFont") -> float | None:
+        """Measured on the line itself, else on the page's other lines in that font too
+        (a heading of one word); never on lines stretched with kashida."""
+        actual = shaped = 0.0
+        chars = 0
+        others = [l for l in self.lines if l is not self.line and any(g.style.font == font_name for g in l.glyphs)]
+        for line in [self.line, *others]:
+            if chars >= 6 and line is not self.line:
+                break
+            if line.kashida:
+                continue
+            a, s, c = self._widths_on(line, font_name, full)
+            actual, shaped, chars = actual + a, shaped + s, chars + c
+        if chars < 6 or shaped <= 0:
+            return None
+        return actual / shaped
+
+    def _widths_on(self, line: Line, font_name: str, full: "fontlib.FullFont") -> tuple[float, float, int]:
+        """The line's Arabic words in this font: their width on the page, and set in `full`."""
+        actual = shaped = 0.0
+        chars = 0
+        for w in _old_words(line, self.rp):
+            if w.script != "R" or _style_of(line, w) != font_name or len(_looks(w, line, self.rp)[1]) > 1:
+                continue
+            p = self.rp.glyphs[w.traces[0]].paint
+            em = p.size * p.Tz * p.trm2[0] / 1000
+            glyphs = full.shape(w.text, True, latin_ligatures=not self.word_made, kerning=not self.word_made)
+            if any(g[0] == 0 for g in glyphs):
+                continue
+            actual += w.u1 - w.u0
+            shaped += sum(g[2] for g in glyphs) * em
+            chars += len(w.text)
+        return actual, shaped, chars
+
+    def _height_ratio(self, font_name: str, full: "fontlib.FullFont") -> float:
         tall = "الكطظ"
         ratios = []
         cmap = full.tt.getBestCmap() or {}
@@ -898,7 +941,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         visual = _visual_order(words, line.rtl)
     else:
         words, visual = _visual_order_standard(words, line.rtl)
-    fonts = Fonts(pdf, page_no, rp, word_made, line)
+    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines)
     tracking: dict[str, float] = {}
     for w in visual:
         if w.is_new:

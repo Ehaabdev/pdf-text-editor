@@ -186,3 +186,28 @@ def test_arabic_look_alikes_draw_each_letter_as_one_glyph(font):
     shaped = full.shape(text, True, latin_ligatures=False, kerning=False)
     assert not [g for g in shaped if g[2] == 0], "letters split into parts"
     assert len(shaped) <= len(text)
+
+
+@needs_fonts
+@pytest.mark.parametrize(
+    "path, needle, first, second, hidden",
+    [
+        # Calibri Italic hidden: "jazzy" needs letters its copy lacks, so Carlito draws them.
+        ("word/english-styles-word.pdf", "Figures are rounded", ("one decimal place", "jazzy quick waves"), ("jazzy", "fuzzy"), "Calibri*"),
+        # Traditional Arabic hidden: Amiri, drawn at the matching size.
+        ("word/arabic-quotation-word.pdf", "الطلبات في أسرع وقت ممكن", ("أسرع", "أقرب"), ("أقرب", "أفضل"), "traditionalarabic*"),
+    ],
+)
+def test_a_word_in_a_look_alike_can_be_edited_again(hide, path, needle, first, second, hidden):
+    """The look-alike is now that word's font: a second edit draws with it exactly, at
+    the size the first edit gave it, and needs no look-alike."""
+    src = (FIXTURES / path).read_bytes()
+    hide(hidden)
+    page_no, line = find(src, needle)
+    once = replace_line(src, page_no, line.id, line.text, line.text.replace(*first))
+    assert once.lookalikes
+    page_no, line = find(once.pdf, line.text.replace(*first))
+    twice = replace_line(once.pdf, page_no, line.id, line.text, line.text.replace(*second))
+    assert twice.lookalikes == []
+    _, new = find(twice.pdf, line.text.replace(*second))
+    assert abs((new.bbox[3] - new.bbox[1]) - (line.bbox[3] - line.bbox[1])) < 0.5  # same size: not scaled twice

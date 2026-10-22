@@ -77,16 +77,16 @@ Known limits:
 
 | Font in the PDF | Look-alike | Letter widths |
 |---|---|---|
-| Calibri | Carlito | the same |
-| Cambria | Caladea | the same |
-| Arial, Helvetica | Liberation Sans | the same |
-| Times New Roman, Times | Liberation Serif | the same |
-| Courier New, Courier | Liberation Mono | the same |
+| Calibri | Carlito | nearly the same |
+| Cambria | Caladea | nearly the same |
+| Arial, Helvetica | Liberation Sans | nearly the same |
+| Times New Roman, Times | Liberation Serif | nearly the same |
+| Courier New, Courier | Liberation Mono | nearly the same |
 | Traditional Arabic, Sakkal Majalla, Arabic Typesetting | Amiri | different |
 | Simplified Arabic; the Arabic letters of Arial and Times New Roman | Markazi Text | different |
 | Tahoma, Segoe UI (Arabic letters) | IBM Plex Sans Arabic | different |
 
-The Arabic look-alikes were chosen by eye, side by side with the real fonts. They must draw each letter as one glyph: fonts that split a letter into a base and separate dots (Noto Naskh Arabic, for one) can't be given correct copy and search labels. Each is drawn at the size that matches the original's letter height, measured against the tall letters in the PDF's own copy of the font. A bold or italic original gets the look-alike's bold or italic; where the look-alike has none, or for fonts with no free look-alike (Aptos, Georgia, Verdana, the Latin letters of Tahoma), the edit is refused.
+The Arabic look-alikes were chosen by eye, side by side with the real fonts. They must draw each letter as one glyph: fonts that split a letter into a base and separate dots (Noto Naskh Arabic, for one) can't be given correct copy and search labels. Each is drawn at the size that matches the original: the page's own Arabic words in that font, against the same words set in the look-alike (for a line stretched with kashida, the height of the tall letters in the PDF's own copy of the font). Vowelled text drawn in a look-alike can be refused, when a mark would read back on the wrong letter. A bold or italic original gets the look-alike's bold or italic; where the look-alike has none, or for fonts with no free look-alike (Aptos, Georgia, Verdana, the Latin letters of Tahoma), the edit is refused.
 
 After a change that used a look-alike, the website shows a close before/after of the spot and asks whether it looks right: keep it, or undo it.
 

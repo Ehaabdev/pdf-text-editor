@@ -185,7 +185,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   function show(index: number) {
     const change = doc.history[index];
-    const [page, x0, y0, x1, y1] = (change.marks ?? change.areas)[0];
+    const where = (change.marks ?? change.areas ?? [])[0];
+    if (!where) return;
+    const [page, x0, y0, x1, y1] = where;
     startComparing("now");
     requestAnimationFrame(() => scrollTo(page, (x0 + x1) / 2, (y0 + y1) / 2));
   }
@@ -237,7 +239,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const shownVersion = compare === "original" ? 0 : compare === "now" ? doc.version : undefined;
   const outlines = (page: number) =>
     compare
-      ? doc.history.filter((c) => c.applied).flatMap((c) => (c.marks ?? c.areas).filter((a) => a[0] === page).map((a) => a.slice(1)))
+      ? doc.history.filter((c) => c.applied).flatMap((c) => (c.marks ?? c.areas ?? []).filter((a) => a[0] === page).map((a) => a.slice(1)))
       : [];
   const applied = doc.history.filter((c) => c.applied).length;
 
@@ -282,9 +284,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             <span className="count">{applied}</span>
           </button>
         )}
-        <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name}>
+        <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name} aria-label="Download PDF">
           <Icon d={DOWNLOAD} />
-          <span>
+          <span className="download-label">
             Download<span className="wide-only"> PDF</span>
           </span>
         </a>
@@ -394,7 +396,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </button>
         </div>
       )}
-      {checking !== null && doc.history[checking] ? (
+      {checking !== null && doc.history[checking]?.areas?.length ? (
         <CheckPanel doc={doc} index={checking} busy={busy} onClose={() => setChecking(null)} onUndo={() => void undo()} />
       ) : showChanges ? (
         <ChangesPanel
