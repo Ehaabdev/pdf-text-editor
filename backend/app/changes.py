@@ -208,12 +208,13 @@ def outside(a, b, boxes, zoom, tolerance_px):
 
 
 def ink(img, box, zoom) -> int:
-    """Pixels in the box clearly darker than its background."""
+    """Pixels in the box clearly unlike their background: darker, or lighter (white
+    text in a dark table header)."""
     x0, y0, x1, y1 = (int(v * zoom) for v in box)
     region = img[max(0, y0) : y1 + 1, max(0, x0) : x1 + 1].astype(int)
     if region.size == 0:
         return 0
-    return int((region < np.median(region) - 60).sum())
+    return int((abs(region - np.median(region)) > 60).sum())
 
 
 def ink_box(rp: Replay, traces) -> tuple[float, float, float, float]:

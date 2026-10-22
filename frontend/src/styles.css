@@ -690,6 +690,39 @@ body {
   outline-offset: 0;
 }
 
+.where {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.where-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.where-option--on {
+  border-color: var(--pencil);
+  background: var(--npb-wash);
+}
+
+.where-option input {
+  accent-color: var(--pencil);
+  margin: 0;
+}
+
+.where-option:has(input:focus-visible) {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
 .picked-list {
   margin: 0 0 8px;
   padding: 0;

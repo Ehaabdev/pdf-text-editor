@@ -450,6 +450,7 @@ def _rows(glyphs: list[Glyph], rules) -> list[list[Glyph]]:
             v = proj(row[0].origin)[1]
             # Gaps are measured between visible glyphs only: Word draws spaces (and
             # end-of-cell marks) that straddle table borders.
+            row_pieces, cuts = [], []  # cuts[k]: the gap after row_pieces[k], and whether a rule is in it
             piece, last = [], None
             for g in row:
                 if g.is_space or g.is_mark:
@@ -460,19 +461,45 @@ def _rows(glyphs: list[Glyph], rules) -> list[list[Glyph]]:
                     right = max(_extent(h, proj)[1] for h in piece if not (h.is_space or h.is_mark))
                     gap = start - right
                     size = max(g.style.size, last.style.size)
-                    split = False
+                    split = ruled = False
                     if gap > 0.5 and direction == (1.0, 0.0):
                         y0, y1 = min(last.bbox[1], g.bbox[1]), max(last.bbox[3], g.bbox[3])
-                        split = any(right < x < start and ry0 < y1 and ry1 > y0 for x, ry0, ry1 in rules)
+                        split = ruled = any(right < x < start and ry0 < y1 and ry1 > y0 for x, ry0, ry1 in rules)
                     if not split and gap > 1.0 * size:
                         split = not bridged(v, size, right, start)
                     if split:
-                        pieces.append(piece)
+                        row_pieces.append(piece)
+                        cuts.append((gap, size, ruled))
                         piece = []
                 piece.append(g)
                 last = g
-            pieces.append(piece)
+            row_pieces.append(piece)
+            # A list item's marker ("•", "1.", in an Arabic line ".1") sits a tab away from
+            # its text, often further than a word gap: it belongs to the same line.
+            merged = [row_pieces[0]]
+            for p, (gap, size, ruled) in zip(row_pieces[1:], cuts):
+                if not ruled and gap < 4 * size and (_is_marker(merged[-1], proj, size) or _is_marker(p, proj, size)):
+                    merged[-1] = merged[-1] + p
+                else:
+                    merged.append(p)
+            pieces += merged
     return [p for p in pieces if any(not g.is_space for g in p)]
+
+
+_LIST_MARKER = re.compile(r"^(?:[(.]?\d{1,3}[.)]?|[.)]\d{1,3}|[ivxIVX]{1,4}[.)]|[.)][ivxIVX]{1,4}|[a-zA-Z][.)]|[.)][a-zA-Z]|[•●▪◦■○◆►✓·*\-–—])$")
+
+
+def _is_marker(piece: list[Glyph], proj, size: float) -> bool:
+    """A short piece that is a list's bullet or number, as drawn (left to right)."""
+    ink = [g for g in piece if not (g.is_space or g.is_mark)]
+    if not ink or len(ink) > 4:
+        return False
+    width = _extent(ink[-1], proj)[1] - _extent(ink[0], proj)[0]
+    text = "".join(g.text for g in ink)
+    if len(text) == 1 and text in "•●▪◦■○◆►✓·":
+        return True  # a bullet, whatever its width
+    # A bare number ("12") is a table's column, not a list's number.
+    return width < 2.5 * size and bool(_LIST_MARKER.match(text)) and not text.isdigit()
 
 
 def _merge_small_pieces(pieces: list[list[Glyph]]) -> list[list[Glyph]]:

@@ -218,6 +218,11 @@ class Replay:
     # For each instruction index, the CTM in effect (only recorded for text objects' ET).
     et_after: dict[int, int] = field(default_factory=dict)  # text-showing op -> index of its ET
     paths: list[DrawnPath] = field(default_factory=list)  # in drawing order
+    # How the instructions end: saved states still open, a Q with nothing to restore,
+    # a text object left open. Anything added at the end must know.
+    open_states: int = 0
+    stray_restore: bool = False
+    open_text: bool = False
 
 
 def _number(x) -> float:
@@ -246,6 +251,7 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
     et_after: dict[int, int] = {}
     paths: list[DrawnPath] = []
     path_start, subpaths, clip = None, [], False  # the path being built
+    stray_restore = in_text = False
 
     for k, ins in enumerate(instructions):
         if isinstance(ins, pikepdf.ContentStreamInlineImage):
@@ -286,6 +292,8 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
         elif op == "Q":
             if stack:
                 ctm, st = stack.pop()
+            else:
+                stray_restore = True
         elif op == "cm":
             ctm = mul(tuple(_number(x) for x in operands), ctm)
         elif op == "gs":
@@ -305,7 +313,9 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
         elif op == "BT":
             tm = tlm = IDENTITY
             open_text_ops = []
+            in_text = True
         elif op == "ET":
+            in_text = False
             for t in open_text_ops:
                 et_after[t] = k
             open_text_ops = []
@@ -361,7 +371,7 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
                     adv = font.width(code) + (1000 * (st["Tc"] + tw) / fs if fs else 0.0)
                     glyphs.append(DrawnGlyph(k, item_index, pos, code, (trm[4], trm[5]), adv, paint, ctm))
                     tm = mul((1, 0, 0, 1, adv / 1000 * fs * th, 0), tm)
-    return Replay(instructions, glyphs, fonts, et_after, paths)
+    return Replay(instructions, glyphs, fonts, et_after, paths, len(stack), stray_restore, in_text)
 
 
 def _has_text(xobject) -> bool:

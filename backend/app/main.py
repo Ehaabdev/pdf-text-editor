@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
+from .adding import add_line
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NothingToUndo, StaleRevision
@@ -165,6 +166,15 @@ class DeletionRequest(BaseModel):
     lines: list[LineRef] = Field(min_length=1, max_length=500)
 
 
+class AdditionRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)  # the line whose style and place the new line follows
+    oldText: str = Field(max_length=5000)
+    text: str = Field(min_length=1, max_length=2000)
+    where: str = Field(default="below", pattern="^(below|above)$")
+
+
 class RevisionRequest(BaseModel):
     revision: int
 
@@ -203,6 +213,26 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
     targets = [(l.page, l.lineId, l.oldText) for l in body.lines]
     try:
         result = await run_in_threadpool(delete_lines, src, targets)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+
+
+@app.post("/api/documents/{doc_id}/additions")
+async def add_document_line(doc_id: str, body: AdditionRequest):
+    """Add a new line below or above a line, in its style."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    if any(c in body.text for c in ("\n", "\r", "\u2028", "\u2029")):
+        raise HTTPException(422, "Add one line at a time.")
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where)
     except EditRejected as e:
         raise HTTPException(422, str(e))
     try:

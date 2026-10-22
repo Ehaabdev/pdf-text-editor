@@ -107,11 +107,13 @@ def main():
     (OUT / "expected.json").write_text(json.dumps(expected, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
-def print_decorations():
-    """decorations.html (underlines, strikethroughs, highlights) -> fixtures/decorations."""
-    out = ROOT / "backend" / "tests" / "fixtures" / "decorations" / "decorations-chrome.pdf"
+def print_page(name: str):
+    """<name>.html, written by hand, -> fixtures/<name>/<name>-chrome.pdf. For the
+    decorations document (underlines, strikethroughs, highlights) and the additions
+    document (lists and free space for adding text)."""
+    out = ROOT / "backend" / "tests" / "fixtures" / name / f"{name}-chrome.pdf"
     out.parent.mkdir(parents=True, exist_ok=True)
-    page = Path(__file__).resolve().parent / "decorations.html"
+    page = Path(__file__).resolve().parent / f"{name}.html"
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(
             [browser(), "--headless=new", "--disable-gpu", "--no-pdf-header-footer", f"--user-data-dir={tmp}\\profile",
@@ -121,10 +123,14 @@ def print_decorations():
     print(f"saved {out.name}")
 
 
+HAND_WRITTEN = ["decorations", "additions"]
+
 if __name__ == "__main__":
-    # python print_chrome.py decorations   -> only the decorations document
-    if sys.argv[1:] == ["decorations"]:
-        print_decorations()
+    # python print_chrome.py decorations   -> only that document
+    if sys.argv[1:] and all(a in HAND_WRITTEN for a in sys.argv[1:]):
+        for name in sys.argv[1:]:
+            print_page(name)
     else:
         main()
-        print_decorations()
+        for name in HAND_WRITTEN:
+            print_page(name)

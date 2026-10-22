@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, deleteLines, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type PickedLine, type TextLine } from "../api";
-import LinePanel from "./LinePanel";
+import LinePanel, { type Change } from "./LinePanel";
 import PageView from "./PageView";
 import SelectionPanel from "./SelectionPanel";
 
@@ -58,10 +58,13 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     );
   }
 
-  function edited(outcome: EditOutcome, deleted: boolean) {
+  function edited(outcome: EditOutcome, change: Change) {
     clearSelection();
     onChange(outcome.document);
-    report(deleted ? "Line deleted. The space it used stays empty." : "Line changed.", outcome);
+    report(
+      change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
+      outcome,
+    );
   }
 
   const [deleting, setDeleting] = useState(false);
