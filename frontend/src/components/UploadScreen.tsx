@@ -3,6 +3,7 @@ import { uploadPdf, type DocInfo } from "../api";
 import { APP_NAME, SOURCE_URL } from "../config";
 import Demo from "./Demo";
 import { Icon, Mark, UPLOAD } from "./Icon";
+import ThemeSwitch from "./ThemeSwitch";
 
 const MAX_MB = 20;
 
@@ -87,9 +88,12 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
           <Mark size={28} />
           {APP_NAME}
         </span>
-        <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
-          Source code
-        </a>
+        <span className="landing-bar-end">
+          <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
+            Source code
+          </a>
+          <ThemeSwitch />
+        </span>
       </header>
 
       <main className="landing-main">

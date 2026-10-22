@@ -55,8 +55,10 @@
   color-scheme: light;
 }
 
+/* Dark: when the system asks for it (unless switched to light here), or when switched to
+   dark here. The switch sets data-theme on <html>. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #04060b;
     --aurora-a: rgba(40, 110, 255, 0.7);
     --aurora-b: rgba(16, 190, 175, 0.42);
@@ -97,6 +99,48 @@
     --float: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #04060b;
+  --aurora-a: rgba(40, 110, 255, 0.7);
+  --aurora-b: rgba(16, 190, 175, 0.42);
+  --aurora-c: rgba(255, 120, 60, 0.26);
+  --aurora-d: rgba(60, 130, 255, 0.4);
+  --grain: 0.07;
+
+  --glass: rgba(14, 18, 28, 0.46);
+  --glass-strong: rgba(14, 18, 28, 0.88);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --glass-shine: rgba(255, 255, 255, 0.1);
+  --glass-shadow: inset 0 1px 0 var(--glass-shine), 0 24px 60px -24px rgba(0, 0, 0, 0.85);
+  --blur: blur(28px) saturate(160%);
+
+  --text: #eef2fa;
+  --text-soft: #cdd5e3;
+  --muted: #9aa5b9;
+  --line: rgba(255, 255, 255, 0.08);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill-hover: rgba(255, 255, 255, 0.11);
+  --input: rgba(0, 0, 0, 0.3);
+
+  --accent: #6ea2ff;
+  --accent-glow: rgba(70, 130, 255, 0.55);
+  --accent-wash: rgba(90, 150, 255, 0.16);
+
+  --positive: #4ade80;
+  --danger: #ff8077;
+  --danger-wash: rgba(255, 90, 80, 0.14);
+  --caution-bg: #33290f;
+  --caution-edge: #8f6c1c;
+  --caution-ink: #ffdc8f;
+  --error-bg: #3a1513;
+  --error-edge: #8a2e27;
+  --error-ink: #ffb8b0;
+
+  --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 40px 80px -30px rgba(0, 0, 0, 0.9);
+  --float: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
 }
 
 /* Base -------------------------------------------------------------------- */
@@ -375,6 +419,32 @@ body {
   margin: max(12px, env(safe-area-inset-top)) auto 0;
   padding: 10px 18px 10px 12px;
   border-radius: 18px;
+}
+
+.landing-bar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Switching light and dark: the new look is revealed in a growing circle (set from the
+   script); the usual cross-fade is off for this one. */
+html.theme-switching::view-transition-old(root),
+html.theme-switching::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html.theme-switching::view-transition-new(root) {
+  z-index: 1;
+}
+
+.theme-switch .icon {
+  transition: transform 500ms var(--spring);
+}
+
+.theme-switch:hover .icon {
+  transform: rotate(-20deg) scale(1.1);
 }
 
 .brand {
@@ -1943,5 +2013,10 @@ body {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

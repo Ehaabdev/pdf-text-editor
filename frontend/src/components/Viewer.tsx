@@ -19,6 +19,7 @@ import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, Mark, MINUS, PLUS, RED
 import LinePanel, { type Change } from "./LinePanel";
 import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
+import ThemeSwitch from "./ThemeSwitch";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
 const CSS_PX_PER_PT = 1.45;
@@ -400,6 +401,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           >
             <Icon d={REDO} />
           </button>
+          <ThemeSwitch className="wide-only" />
           <span className="bar-divider wide-only" aria-hidden="true" />
           <button
             className="btn btn-secondary wide-only"

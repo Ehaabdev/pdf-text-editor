@@ -4,10 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="Edit the text in a PDF: change, add or remove words while keeping the original font, size and color." />
-    <meta name="theme-color" content="#dce2e7" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#161b20" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#e8edf5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#04060b" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>%VITE_APP_NAME%</title>
+    <script>
+      // A light or dark choice made with the switch, applied before anything is drawn.
+      try {
+        var theme = localStorage.getItem("pdfedit.theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (e) {
+        // Storage can be unavailable (private mode): the system's choice applies.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
