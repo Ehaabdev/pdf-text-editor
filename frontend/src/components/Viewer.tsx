@@ -124,7 +124,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     clearSelection();
     // Saved as it already was: the server made no new version, so there's nothing to light up.
     if (outcome.document.revision === doc.revision) {
-      setNotice({ text: "Nothing changed: the text is the same as before.", tone: "done" });
+      const text = "Nothing changed: the text is the same as before.";
+      setNotice(outcome.warnings.length ? { text: `${text} ${outcome.warnings.join(" ")}`, tone: "warning" } : { text, tone: "done" });
       return;
     }
     onChange(outcome.document);
