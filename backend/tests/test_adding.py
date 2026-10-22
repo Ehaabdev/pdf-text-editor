@@ -127,19 +127,22 @@ def test_a_new_line_keeps_its_paragraphs_alignment(source, needle, text, edge):
 
 
 @pytest.mark.parametrize("source", ADDITIONS)
-@pytest.mark.parametrize(
-    "needle, why",
-    [
-        ("Project Kickoff", "overlap other text"),  # the list is right under the title
-        ("Planning", "table cell"),  # the table's border is under it
-        ("2. Share", "overlap other text"),  # the next item is under it
-    ],
-)
-def test_no_room_is_refused_with_the_reason(source, needle, why):
+def test_a_full_table_cell_is_refused_with_the_reason(source):
+    """The table's border is right under "Planning", and cells don't grow (yet)."""
+    src = ADDITIONS[source]
+    page_no, ref = find(src, "Planning")
+    with pytest.raises(EditRejected, match="table cell"):
+        add_line(src, page_no, "Some new text", ref.id, ref.text)
+
+
+@pytest.mark.parametrize("source", ADDITIONS)
+@pytest.mark.parametrize("needle", ["Project Kickoff", "2. Share"])  # with text right under them
+def test_adding_inside_text_makes_room(source, needle):
     src = ADDITIONS[source]
     page_no, ref = find(src, needle)
-    with pytest.raises(EditRejected, match=why):
-        add_line(src, page_no, "Some new text", ref.id, ref.text)
+    result = add_line(src, page_no, "Some new text", ref.id, ref.text)
+    assert result.moved > 0
+    added(src, result.pdf, page_no, "Some new text")
 
 
 def test_too_long_is_refused():
@@ -150,11 +153,15 @@ def test_too_long_is_refused():
 
 
 def test_a_line_above():
+    """The new line takes the line's place, and the line moves down one line spacing."""
     src = ADDITIONS["word"]
     page_no, ref = find(src, "ملاحظة")
     result = add_line(src, page_no, "ملاحظات إضافية", ref.id, ref.text, where="above")
     new = added(src, result.pdf, page_no, "ملاحظات إضافية")
-    assert new.bbox[3] < ref.bbox[1] and abs(new.bbox[2] - ref.bbox[2]) < 0.5
+    _, moved = find(result.pdf, "ملاحظة")
+    assert result.moved == 1
+    assert abs(baseline(result.pdf, page_no, new) - baseline(src, page_no, ref)) < 0.01
+    assert moved.bbox[1] > new.bbox[3] and abs(new.bbox[2] - ref.bbox[2]) < 0.5
 
 
 # The other test documents -------------------------------------------------------------------
@@ -179,10 +186,12 @@ def test_adding_after_the_last_line_of_a_paragraph(path, needle, text):
 
 
 def test_the_page_is_otherwise_untouched():
-    """The page's own instructions are kept byte for byte; the new line comes after them."""
+    """With nothing below to move, the page's own instructions are kept byte for byte; the
+    new line comes after them."""
     src = ADDITIONS["word"]
-    page_no, ref = find(src, "Prepared by")
-    result = add_line(src, page_no, "Reviewed by the steering group", ref.id, ref.text)
+    page_no, ref = find(src, "ملاحظة")  # the page's last line
+    result = add_line(src, page_no, "ملاحظات إضافية", ref.id, ref.text)
+    assert result.moved == 0
     with pikepdf.open(io.BytesIO(src)) as pdf:
         before = pdf.pages[page_no].obj.Contents.read_bytes()
     with pikepdf.open(io.BytesIO(result.pdf)) as pdf:

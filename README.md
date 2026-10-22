@@ -110,7 +110,9 @@ A test makes changes, undoes and redoes one, then checks that every pixel differ
 
 ## Deleting
 
-`backend/app/deleting.py` deletes whole lines, on one page or several, as one change: one Undo brings them all back. A line's glyphs are taken out, each replaced by an equal spacing number so nothing else moves. Its underlines, strikethroughs and highlights go with it, and so do links that only cover deleted text. The lines below don't move up, as in other PDF editors.
+`backend/app/deleting.py` deletes whole lines, on one page or several, as one change: one Undo brings them all back. A line's glyphs are taken out, each replaced by an equal spacing number so nothing else moves. Its underlines, strikethroughs and highlights go with it, and so do links that only cover deleted text.
+
+Then the text below moves up into the space, as a second, separately checked step (see [Moving text](#moving-text)). The next line takes the deleted line's place. After a paragraph's last line, the next paragraph moves up by one line instead, so the gap between paragraphs stays. Where moving can't be done exactly (deleted lines that aren't next to each other, a box around the text), the space stays and the website says why; the delete itself is never refused for that. Deleting whole numbered list items counts the items after them down.
 
 Deleting needs no fonts and no layout, so lines that can't be edited (rotated text, unreadable letters, fonts not on the server) can still be deleted. Before a delete is accepted:
 - every other glyph on the page is drawn exactly as before;
@@ -128,17 +130,18 @@ Deleting every line of every test document and private sample, one at a time, su
 
 `backend/app/adding.py` adds one line of new text, in the style of a line already on the page: its font, size, color and text state. Its letters are shaped as for an edit, so the same font rules apply. There are two ways to place it.
 
-**Below or above a line** (the line panel's "Add a line"):
+**Below or above a line** (the line panel's "Add line below" and "Add line above"):
+- **Making room:** first the text below (adding above: the line itself and the text below it) moves down one line spacing, as in a word processor (see [Moving text](#moving-text)); then the new line goes into the room made. Where the text can't move, the line still goes in if there's room for it at full line spacing; squeezed in, it's refused with the reason.
 - **Spacing:** one line spacing away. It's measured in the line's paragraph; failing that, it's the page's most common spacing for that font; failing that, the font's own line height, which Word uses for single spacing.
 - **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
-- **Lists:** a new "4." goes where the numbers are, in the list's own number font, with its text at the item's tab. A bullet is copied as drawn. Plain text under an item lines up with the item's text.
+- **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Unticked, text under an item lines up with the item's text.
 
-**At a tapped spot** (the "Add text" button, then tap the page):
+**At a tapped spot** (the "Add text anywhere" button, then tap the page):
 - **Position:** the text starts at the mark. English runs right from it, Arabic runs left.
 - **Snapping:** it lines up with text already on that row (an empty table cell next to a filled one), or with the edge of text just above or below, if it's close.
 - **Style:** you choose from the styles on that page; the nearest is chosen first.
 
-New text is drawn after the page's own drawing, with the page's state restored. The page's own instructions are kept byte for byte. Nothing moves to make room, so the new line is refused, with the reason, where it would:
+New text is drawn after the page's own drawing, with the page's state restored. Where nothing had to move, the page's own instructions are kept byte for byte. At a tapped spot nothing moves to make room, and in either case the new line is refused, with the reason, where it would:
 - touch other text, a picture, a form field or a line;
 - cross a border out of its table cell;
 - sit half a row off nearby text;
@@ -165,6 +168,28 @@ Known limits:
 `backend/tests/test_edit_fidelity.py` measures edits independently of the editor, with MuPDF's own text extraction and pixels in MuPDF and PDFium. `backend/tests/test_editing.py` runs 20 realistic edits on the Word and Chrome test documents, and pins the ones that must be refused. It also runs many edits in a row on the same file, and edits words with superscripts, subscripts and small capitals.
 
 Redrawing every word of every line with its own text, as a stress test, gives a median ink agreement of 0.93 with the original (1 px slack). Arabic lines score lowest. Their letters come out slightly differently spaced than Word's, though the text stays correct; short lines also score low from sub-pixel shifts alone. Normal edits redraw only the changed words.
+
+## Moving text
+
+`backend/app/moving.py` moves the text below a spot down (to make room for a new line) or up (into a deleted line's space), as a word processor would.
+
+What moves is everything drawn in the spot's column below it: text, underlines and highlights, shapes, pictures and links. The column is the page's width, or a table cell between its side borders. It goes down to the first thing that has to stay:
+- a footer or page number: text repeated at the same place on the pages around (digits aside), or inside the bottom margin;
+- a table border between rows;
+- anything only partly in the column.
+
+Nothing goes onto another page or into the bottom margin. The margin is taken from the evidence, the lowest body text on the pages around; failing that, it's as wide as the narrower side margin. A picture or color behind the whole page stays behind it, and Chrome's page-sized clips that cut the gaps in an underline move with it.
+
+Each moved text object, shape and picture keeps its own instructions: a translation is put just before it and undone just after it. Drawing order, clipping, and later edits of the moved lines are as before.
+
+It's refused, with the reason, where it can't be done exactly: a box or line drawn across the spot, text drawn together with the text above it, a column beside other text, a color gradient, a form field in the way, or no room left before the bottom of the page or the cell (table cells don't grow yet).
+
+Before it is accepted:
+- every glyph, shape, picture and link is where it was, or exactly as far lower (or higher);
+- nothing outside the block's old and new places changes by a single pixel (MuPDF and PDFium);
+- drawn on its own, the block looks the same at its new place, pixel for pixel. It's rendered at a zoom that moves it by a whole number of pixels, so every glyph lands on the same fraction of a pixel. PDFium, which rounds glyph positions to whole pixels, gets one pixel of slack;
+- every line on the page reads the same, the moved ones at their new place;
+- no other page changes.
 
 ## The website
 

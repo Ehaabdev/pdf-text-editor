@@ -128,6 +128,9 @@ export type TextLine = {
   spans: TextSpan[];
   /** The PDF's own text for this line is partly wrong (a known Word problem). */
   uncertain: boolean;
+  /** In a list: the marker ("4.", "•") a new item gets below the line (its item's last
+   *  line) or above it (its item's first line). */
+  item?: { below: string | null; above: string | null } | null;
 };
 
 export type PageLines = { width: number; height: number; lines: TextLine[] };
@@ -148,7 +151,8 @@ export function getLines(doc: DocInfo, pageNo: number): Promise<PageLines> {
   return p;
 }
 
-export type EditOutcome = { document: DocInfo; warnings: string[]; lookalikes?: Lookalike[] };
+/** `moved`: lines that moved down to make room, or up into a deleted line's space. */
+export type EditOutcome = { document: DocInfo; warnings: string[]; lookalikes?: Lookalike[]; moved?: number };
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   let res: Response;
@@ -173,7 +177,9 @@ export function editLine(doc: DocInfo, page: number, line: TextLine, newText: st
 }
 
 /** Add a new line below or above a line, in that line's font, size and color. */
-export function addLine(doc: DocInfo, page: number, line: TextLine, text: string, where: "below" | "above"): Promise<EditOutcome> {
+/** Add a line below or above a line. With `item`, as a new item of the line's list:
+ *  numbered on, the items after it renumbered. */
+export function addLine(doc: DocInfo, page: number, line: TextLine, text: string, where: "below" | "above", item = false): Promise<EditOutcome> {
   return postJson(`/api/documents/${doc.id}/additions`, {
     revision: doc.revision,
     page,
@@ -181,6 +187,7 @@ export function addLine(doc: DocInfo, page: number, line: TextLine, text: string
     oldText: line.text,
     text,
     where,
+    item,
   });
 }
 

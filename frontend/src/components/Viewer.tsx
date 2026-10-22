@@ -50,6 +50,9 @@ type HistoryEntry = DocInfo["history"][number];
 // Every change the server accepts has passed its checks, among them that nothing outside
 // the changed lines differs by a single pixel.
 const CHECKED = "Checked: nothing else on the page changed.";
+// When text moved to make room (or into a deleted line's space), it was also checked to
+// look exactly the same at its new place.
+const CHECKED_MOVED = "Checked: the text that moved looks exactly the same, and nothing else changed.";
 
 // The Help button's "New here?" bubble shows until the tour is opened or a line is picked.
 const HELP_SEEN = "pdfedit.helpSeen";
@@ -111,7 +114,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const subs = (outcome.lookalikes ?? []).map((l) => l.substitute);
     const warnings = outcome.warnings.filter((w) => !subs.some((s) => w.includes(s)));
     setNotice(
-      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done", detail: CHECKED },
+      warnings.length
+        ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" }
+        : { text: what, tone: "done", detail: outcome.moved ? CHECKED_MOVED : CHECKED },
     );
   }
 
@@ -131,8 +136,13 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     onChange(outcome.document);
     lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
+    const moved = (outcome.moved ?? 0) > 0;
     report(
-      change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
+      change === "deleted"
+        ? moved ? "Line deleted. The text below moved up." : "Line deleted."
+        : change === "added"
+          ? moved ? "Line added. The text below moved down to make room." : "Line added."
+          : "Line changed.",
       outcome,
     );
   }
@@ -161,7 +171,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       clearSelection();
       onChange(outcome.document);
       lightUp(outcome.document, outcome.document.history.at(-1));
-      report(lines.length === 1 ? "Line deleted. The space it used stays empty." : `${lines.length} lines deleted. The space they used stays empty.`, outcome);
+      const moved = (outcome.moved ?? 0) > 0 ? " The text below moved up." : "";
+      report(lines.length === 1 ? `Line deleted.${moved}` : `${lines.length} lines deleted.${moved}`, outcome);
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't delete. Try again.", tone: "error" });
     } finally {

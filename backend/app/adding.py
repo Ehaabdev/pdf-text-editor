@@ -29,7 +29,7 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
-from . import decorations
+from . import decorations, moving
 from . import fonts as fontlib
 from .changes import (
     EditRejected,
@@ -189,9 +189,18 @@ def _item_of(line: Line, rp: Replay, lines: list[Line] | None = None) -> _Item |
 
 
 def add_line(
-    src: bytes, page_no: int, text: str, ref_id: str, ref_text: str, where: str = "below", at: tuple[float, float] | None = None
+    src: bytes,
+    page_no: int,
+    text: str,
+    ref_id: str,
+    ref_text: str,
+    where: str = "below",
+    at: tuple[float, float] | None = None,
+    make_room: bool = True,
 ) -> EditResult:
-    """Add `text` as a new line below (or above) the line `ref_id`, in its style. With
+    """Add `text` as a new line below (or above) the line `ref_id`, in its style. The text
+    below it (from the line itself, adding above) first moves down one line spacing to
+    make room, as in a word processor (moving.py), when that can be done exactly. With
     `at`, a point on the page as displayed (in points), the text goes there instead: it
     starts at the point (English runs right from it, Arabic left) with its middle at the
     point's height, lined up with text already on that row or edge if it's close."""
@@ -296,6 +305,21 @@ def add_line(
 
     # Where it goes: one line spacing from the reference, aligned as its paragraph is.
     spacing = _line_spacing(ref, all_lines, rp, style, paint, word_made)
+    refusal = None
+    if make_room:
+        # First the text below moves down by that spacing; then the line goes in the room made.
+        line_base = _baseline(ref, rp)
+        cut = line_base - 0.3 * spacing if where == "below" else line_base + 0.7 * spacing
+        try:
+            made = moving.shift_below(src, page_no, tuple(_pdf_rect(ref.bbox, page)), ref.style.size, cut, spacing)
+        except moving.MoveRefused as e:
+            made, refusal = None, str(e)
+        if made is not None:
+            moved_src, areas, count, shift = made
+            result = add_line(moved_src, page_no, text, _moved_line_id(moved_src, page_no, ref, shift, page), ref_text, where, make_room=False)
+            result.areas = areas + result.areas
+            result.moved = count
+            return result
     baseline = base - spacing if where == "below" else base + spacing
     column = _column(ref, old, page)
     neighbours = _paragraph_edges(ref, all_lines, page)
@@ -341,8 +365,45 @@ def add_line(
         raise EditRejected("The new text is too long for one line. Shorten it, or add it as two lines.")
     ref_box = _pdf_rect(ref.bbox, page)
     new_box = pymupdf.Rect(x0, baseline - (base - ref_box.y0), x1, baseline + (ref_box.y1 - base))
-    _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, f"{where} this one")
-    return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts)
+    if refusal is not None:
+        # The text below couldn't move. The line still goes in if there's room for it at
+        # full line spacing, as before; squeezed in, it isn't.
+        why = f"There's no room for a new line {where} this one: {refusal}."
+        if _crowded(baseline, new_box, ref, all_lines, rp, page, spacing):
+            raise EditRejected(why)
+        try:
+            _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, f"{where} this one")
+        except EditRejected:
+            raise EditRejected(why)
+    else:
+        _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, f"{where} this one")
+    marker_base = base + (_baseline(item_line, rp) - _baseline(ref, rp)) if new_marker else None
+    return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base, {id(w) for w in new_marker})
+
+
+def _moved_line_id(moved_src: bytes, page_no: int, ref: Line, shift, page: pymupdf.Page) -> str:
+    """The reference line's id once the text has moved (ids follow reading order)."""
+    r = _pdf_rect(ref.bbox, page)
+    if ref.id in shift.lines:
+        r = pymupdf.Rect(r.x0, r.y0 - shift.dy, r.x1, r.y1 - shift.dy)
+    expected = to_display(page, tuple(r))
+    for l in page_lines(pymupdf.open("pdf", moved_src)[page_no]):
+        if comparable(l.text) == comparable(ref.text) and all(abs(a - b) <= 0.5 for a, b in zip(l.bbox, expected)):
+            return l.id
+    raise EditRejected("The change couldn't be made exactly (the line moved out of place), so nothing was changed.")
+
+
+def _crowded(baseline: float, box: pymupdf.Rect, ref: Line, lines: list[Line], rp: Replay, page: pymupdf.Page, spacing: float) -> bool:
+    """Would the new line sit closer than a line spacing to a line above or below it?"""
+    for l in lines:
+        if l is ref:
+            continue
+        r = _pdf_rect(l.bbox, page)
+        if min(r.x1, box.x1) <= max(r.x0, box.x0):
+            continue
+        if abs(_baseline(l, rp) - baseline) < 0.98 * spacing:
+            return True
+    return False
 
 
 def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joined, base, rtl, expected, fonts) -> EditResult:
@@ -397,8 +458,11 @@ def _text_area(page: pymupdf.Page, lines: list[Line]) -> tuple[float, float]:
     return min(left, paper.x0 + (paper.x1 - right)), max(right, paper.x1 - (left - paper.x0))
 
 
-def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts) -> EditResult:
-    """Draw the new words (and the reference line's own space glyph in the gaps), then check."""
+def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base=None, markers=frozenset()) -> EditResult:
+    """Draw the new words (and the reference line's own space glyph in the gaps), then check.
+    A list marker copied from its item sits as far off the new baseline as off its own
+    item's (marker_base): the item's first line, not always the reference line."""
+    marker_base = base if marker_base is None else marker_base
     runs: list[PlacedRun] = []
     embed_cache: dict = {}
     new_fonts: dict = {}
@@ -414,7 +478,7 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
             dx = w.x - min(x.u0 for x in w.clone)
             for t in (t for x in w.clone for t in x.traces):
                 g = rp.glyphs[t]
-                place = (g.origin[0] + dx, baseline + (g.origin[1] - base))
+                place = (g.origin[0] + dx, baseline + (g.origin[1] - marker_base))
                 runs.append(PlacedRun(g.paint.font, rp.fonts[g.paint.font], g.paint, [PlacedGlyph(g.code, place)]))
             continue
         p = rp.glyphs[w.source.traces[0]]
@@ -425,7 +489,8 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
         draw_paint = Paint(resource, size, wp.Tz, wp.Tr, wp.trm2, wp.fill, wp.stroke, wp.extgstates)
         em_x = size * wp.Tz * wp.trm2[0] / 1000
         em_y = size * wp.trm2[3] / 1000
-        rise = p.origin[1] - base  # a list number may sit a little off the text's baseline
+        # A list number may sit a little off the text's baseline.
+        rise = p.origin[1] - (marker_base if id(w) in markers else base)
         pen, placed = 0.0, []
         for (gid, cl, adv, dx, dy), code in zip(w.shaped, w.choice.codes):
             placed.append(PlacedGlyph(code, (w.x + (pen + dx) * em_x, baseline + rise + dy * em_y)))
@@ -610,11 +675,8 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
             # Vowel marks reach above and below the font's height.
             r += (0, -0.3 * l.style.size, 0, 0.35 * l.style.size)
         if r.intersects(tight):
-            hint = (
-                "Tap an empty spot." if ref_box is None
-                else "Text doesn't move down to make room, so add it after the last line of a paragraph."
-            )
-            raise EditRejected(f"{no_room}: it would overlap other text. {hint}")
+            hint = " Tap an empty spot." if ref_box is None else ""
+            raise EditRejected(f"{no_room}: it would overlap other text.{hint}")
         overlap = min(r.y1, box.y1) - max(r.y0, box.y0)
         if overlap <= 0.3 * height:
             continue

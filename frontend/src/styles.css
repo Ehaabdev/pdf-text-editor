@@ -2162,6 +2162,19 @@ html.theme-switching::view-transition-new(root) {
   min-width: 0;
 }
 
+/* "Make it item 4.": a new line in a list joins it. */
+.item-option {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.item-note {
+  flex-basis: 100%;
+  padding-left: 26px;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
 .style-option-sample {
   font-size: 0.8125rem;
   color: var(--muted);
