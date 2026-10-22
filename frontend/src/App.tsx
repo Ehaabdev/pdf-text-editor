@@ -52,7 +52,17 @@ export default function App() {
     setDoc(null);
   }
 
-  if (restoring) return <div className="desk" aria-busy="true" />;
-  if (doc) return <Viewer doc={doc} onClose={close} onChange={setDoc} />;
-  return <UploadScreen onOpen={open} notice={notice} />;
+  return (
+    <>
+      {/* The glowing background everything floats on. It drifts only on the start screen. */}
+      <div className={`aurora${doc || restoring ? "" : " aurora--live"}`} aria-hidden="true" />
+      {restoring ? (
+        <div className="desk" aria-busy="true" />
+      ) : doc ? (
+        <Viewer doc={doc} onClose={close} onChange={setDoc} />
+      ) : (
+        <UploadScreen onOpen={open} notice={notice} />
+      )}
+    </>
+  );
 }

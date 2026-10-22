@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 /** One outline icon set: 20px grid, drawn with the current text color. */
 export function Icon({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -18,13 +20,22 @@ export const ADD_TEXT = "M3 4.5h8M7 4.5V15M12.5 12.5h5M15 10v5";
 export const CHANGES = "M7 5h10M7 10h10M7 15h10M3.5 5h.01M3.5 10h.01M3.5 15h.01";
 export const COMPARE = "M10 3v14M3.5 5.5h4v9h-4zM12.5 5.5h4v9h-4z";
 
-/** The product's mark: a line of text being retyped, with the caret in the editing blue. */
+/** The product's mark: a line of text being retyped, the caret in it, on a glass-blue tile. */
 export function Mark({ size = 24 }: { size?: number }) {
+  const fill = useId();
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="mark">
-      <rect width="24" height="24" rx="6" className="mark-tile" />
-      <path d="M6 8.5h12M6 12.5h6.5" className="mark-lines" strokeWidth="2" strokeLinecap="round" />
-      <path d="M15.5 10v6.5" className="mark-caret" strokeWidth="2" strokeLinecap="round" />
+      <defs>
+        <linearGradient id={fill} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#6fb3ff" />
+          <stop offset="1" stopColor="#2b62f0" />
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="7" fill={`url(#${fill})`} />
+      <rect x="0.5" y="0.5" width="23" height="23" rx="6.5" fill="none" stroke="#ffffff" strokeOpacity="0.35" />
+      <path d="M6 8.5h12M6 13h6" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+      <path d="M15 10.5v6.5" stroke="#bff3ff" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
+export const UPLOAD = "M10 13V3.5m0 0L6.5 7M10 3.5L13.5 7M4 12.5V16h12v-3.5";

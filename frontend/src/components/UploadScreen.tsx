@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { uploadPdf, type DocInfo } from "../api";
 import { APP_NAME, SOURCE_URL } from "../config";
+import Demo from "./Demo";
+import { Icon, Mark, UPLOAD } from "./Icon";
 
 const MAX_MB = 20;
 
@@ -79,67 +81,85 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
   });
 
   return (
-    <div className="desk upload">
-      <header className="topbar topbar--plain">
-        <span className="brand">{APP_NAME}</span>
+    <div className={`landing${dragging ? " landing--dragging" : ""}`}>
+      <header className="landing-bar glass">
+        <span className="brand">
+          <Mark size={28} />
+          {APP_NAME}
+        </span>
         <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
           Source code
         </a>
       </header>
 
-      <main className="upload-main">
-        <section className={`sheet${dragging ? " sheet--dragging" : ""}`} aria-labelledby="upload-title">
-          <h1 id="upload-title" className="sheet-title">
-            <span className="selection">
-              Edit the text in your PDF
-              <span className="caret" aria-hidden="true" />
-            </span>
-          </h1>
-          <p className="lede">Change, add or remove words. Your edits keep the original font, size and color.</p>
+      <main className="landing-main">
+        <section className="hero" aria-labelledby="upload-title">
+          <div className="hero-copy">
+            <h1 id="upload-title" className="hero-title">
+              Edit the text in{" "}
+              <span className="selection">
+                your PDF
+                <span className="caret" aria-hidden="true" />
+              </span>
+            </h1>
+            <p className="hero-lede">
+              Change, add or remove words. Your edits keep the original font, size and color, and each change is
+              checked so nothing else on the page moves.
+            </p>
 
-          <div className="upload-actions">
-            <button className="btn btn-primary btn-large" onClick={() => input.current?.click()} disabled={busy}>
-              {busy ? "Opening your PDF…" : "Choose a PDF"}
-            </button>
-            <span className="hint">{dragging ? "Drop it to open" : "or drop it on this page"}</span>
-          </div>
-          <input
-            ref={input}
-            type="file"
-            accept="application/pdf,.pdf"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) void start(file);
-            }}
-          />
+            <div className="dropzone glass">
+              <button className="btn btn-primary btn-large" onClick={() => input.current?.click()} disabled={busy}>
+                <Icon d={UPLOAD} size={20} />
+                {busy ? "Opening your PDF…" : "Choose a PDF"}
+              </button>
+              <span className="hint">{dragging ? "Drop it to open" : "or drop it anywhere on this page"}</span>
+              <input
+                ref={input}
+                type="file"
+                accept="application/pdf,.pdf"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void start(file);
+                }}
+              />
 
-          <div className="upload-status" aria-live="polite">
-            {status.kind === "uploading" && (
-              <div className="progress">
-                <div className="progress-bar" style={{ width: `${Math.round(status.progress * 100)}%` }} />
-                <span className="progress-label">Uploading… {Math.round(status.progress * 100)}%</span>
+              <div className="upload-status" aria-live="polite">
+                {status.kind === "uploading" && (
+                  <div className="progress">
+                    <div className="progress-bar" style={{ width: `${Math.round(status.progress * 100)}%` }} />
+                    <span className="progress-label">Uploading… {Math.round(status.progress * 100)}%</span>
+                  </div>
+                )}
+                {status.kind === "opening" && (
+                  <div className="progress">
+                    <div className="progress-bar progress-bar--full" />
+                    <span className="progress-label">Reading the pages…</span>
+                  </div>
+                )}
+                {status.kind === "error" && (
+                  <p className="error" role="alert">
+                    {status.message}
+                  </p>
+                )}
+                {status.kind === "idle" && notice && <p className="notice-text">{notice}</p>}
               </div>
-            )}
-            {status.kind === "opening" && (
-              <div className="progress">
-                <div className="progress-bar progress-bar--full" />
-                <span className="progress-label">Reading the pages…</span>
-              </div>
-            )}
-            {status.kind === "error" && (
-              <p className="error" role="alert">
-                {status.message}
-              </p>
-            )}
-            {status.kind === "idle" && notice && <p className="notice-text">{notice}</p>}
+            </div>
+
+            <ul className="facts">
+              <li>
+                English, Français,{" "}
+                <span lang="ar" dir="rtl">
+                  العربية
+                </span>
+              </li>
+              <li>Free, no account</li>
+              <li>Deleted an hour after you last use it</li>
+            </ul>
           </div>
 
-          <p className="fine-print">
-            Works with English, French and Arabic. Free, with no account. Files are deleted an hour after you last
-            use them.
-          </p>
+          <Demo />
         </section>
       </main>
     </div>

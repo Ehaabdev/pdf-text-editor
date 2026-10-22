@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, addLine, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 import { CLOSE, Icon } from "./Icon";
+import Loupe from "./Loupe";
 
 type Look = Pick<TextSpan, "font" | "size" | "color" | "bold" | "italic">;
 
@@ -90,6 +91,8 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           <Icon d={CLOSE} />
         </button>
       </div>
+
+      <Loupe doc={doc} page={page} line={line} />
 
       {mode !== "view" ? (
         <form
