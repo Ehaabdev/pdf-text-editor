@@ -86,6 +86,12 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
     const y = e.clientY - r.top;
     // Like a phone's text magnifier, the lens sits just above the pointer, so the spot
     // being clicked stays in view.
+    // The large image is fetched only for the page under the mouse, not for every page.
+    const src = `url("${pageImageUrl(doc, index, lensWidth, version)}")`;
+    if (el.dataset.src !== src) {
+      el.dataset.src = src;
+      el.style.backgroundImage = src;
+    }
     el.style.transform = `translate(${x - LENS}px, ${y - 2 * LENS - 20}px)`;
     el.style.backgroundPosition = `${LENS - x * MAG}px ${LENS - y * MAG}px`;
     el.classList.add("lens--on");
@@ -201,7 +207,6 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
           style={{
             width: 2 * LENS,
             height: 2 * LENS,
-            backgroundImage: `url(${pageImageUrl(doc, index, lensWidth, version)})`,
             backgroundSize: `${width * MAG}px auto`,
           }}
           aria-hidden="true"

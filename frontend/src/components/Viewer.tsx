@@ -237,7 +237,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         clearSelection();
         stopPlacing();
         setCompare(null);
-      } else if (e.key.toLowerCase() === "m" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      } else if ((e.code === "KeyM" || e.key.toLowerCase() === "m") && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setMagnifier((v) => !v);
       } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length && !compare) {
         e.preventDefault();
