@@ -20,7 +20,7 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
-from .pdfcontent import Matrix, Replay, inverse, mul, remove_glyphs
+from .pdfcontent import Matrix, Replay, inverse, mul, page_matrix, remove_glyphs
 
 
 class EditRejected(Exception):
@@ -216,15 +216,31 @@ def ink(img, box, zoom) -> int:
     return int((region < np.median(region) - 60).sum())
 
 
+def ink_box(rp: Replay, traces) -> tuple[float, float, float, float]:
+    """Where these glyphs can leave ink (PDF space), from their own size and text matrix:
+    from below the descent to above the ascent, with room for overhangs. MuPDF's boxes
+    can be smaller: a glyph squeezed to half width is reported at half its height."""
+    xs, ys = [], []
+    for t in traces:
+        g = rp.glyphs[t]
+        p = g.paint
+        a, b, c, d = p.trm2
+        width = g.advance / 1000 * p.Tz
+        for u, v in ((-0.3, -0.4), (width + 0.3, -0.4), (-0.3, 1.2), (width + 0.3, 1.2)):
+            xs.append(g.origin[0] + p.size * (u * a + v * c))
+            ys.append(g.origin[1] + p.size * (u * b + v * d))
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
 def to_display(page: pymupdf.Page, bbox) -> pymupdf.Rect:
     """PDF user space -> displayed page space (what renders and readers use)."""
-    r = pymupdf.Rect(bbox) * page.transformation_matrix * page.rotation_matrix
+    r = pymupdf.Rect(bbox) * page_matrix(page) * page.rotation_matrix
     r.normalize()
     return r
 
 
 def to_pdf(page: pymupdf.Page, rect) -> tuple[float, float, float, float]:
-    r = pymupdf.Rect(rect) * (page.derotation_matrix * ~page.transformation_matrix)
+    r = pymupdf.Rect(rect) * (page.derotation_matrix * ~page_matrix(page))
     r.normalize()
     return (r.x0, r.y0, r.x1, r.y1)
 
@@ -234,11 +250,15 @@ def _round(color):
 
 
 def _drawings(page: pymupdf.Page) -> list[tuple[tuple, tuple]]:
-    """MuPDF's own list of the page's shapes: (look, rect in PDF space)."""
-    return [
-        ((d["type"], _round(d.get("fill")), _round(d.get("color")), round(d.get("width") or 0, 2)), to_pdf(page, d["rect"]))
-        for d in page.get_drawings()
-    ]
+    """MuPDF's own list of the page's shapes: (look, rect in PDF space). MuPDF gives
+    shapes in unrotated space (links, on the other hand, as displayed)."""
+    out = []
+    for d in page.get_drawings():
+        r = pymupdf.Rect(d["rect"]) * ~page_matrix(page)
+        r.normalize()
+        look = (d["type"], _round(d.get("fill")), _round(d.get("color")), round(d.get("width") or 0, 2))
+        out.append((look, (r.x0, r.y0, r.x1, r.y1)))
+    return out
 
 
 def _same_rect(a, b, tolerance=0.15) -> bool:

@@ -10,7 +10,7 @@ import pytest
 
 from app.editing import EditRejected, comparable, replace_line
 from app.fonts import library
-from app.pdfcontent import matches_trace, replay
+from app.pdfcontent import matches_trace, page_matrix, replay
 from app.textlayout import page_lines
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -62,7 +62,7 @@ def test_replay_agrees_with_mupdf_on_every_shape(path):
         theirs = page.get_drawings()
         assert len(ours) == len(theirs), f"page {i + 1}"
         for p, d in zip(ours, theirs):
-            r = pymupdf.Rect(p.bbox) * page.transformation_matrix * page.rotation_matrix
+            r = pymupdf.Rect(p.bbox) * page_matrix(page)  # MuPDF gives shapes unrotated
             r.normalize()
             assert all(abs(a - b) <= 0.25 for a, b in zip(r, d["rect"])), f"page {i + 1}: {r} vs {d['rect']}"
 

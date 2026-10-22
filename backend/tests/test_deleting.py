@@ -215,3 +215,104 @@ def test_delete_edit_delete_on_one_page():
     assert "Annual Service Report" in texts
     assert not any("Report ID" in t or "reports@example.com" in t or "Quarterly" in t for t in texts)
     assert "mailto:reports@example.com" not in [l.get("uri") for l in pymupdf.open("pdf", pdf)[page_no].get_links()]
+
+
+# Rotated and cropped pages ------------------------------------------------------------------
+#
+# Every check converts between the PDF's own coordinates, what's displayed, MuPDF's shapes
+# and links, and PDFium's letter boxes. These pages make each of those conversions matter.
+
+
+def _turned(rotation: int, crop=None) -> bytes:
+    if crop == "shifted":
+        # A media box that doesn't start at 0,0 (the content moves with it).
+        pdf = pikepdf.open(DECORATED["word"])
+        page = pdf.pages[0]
+        page.obj.Contents = pdf.make_stream(b"q 1 0 0 1 100 200 cm " + page.obj.Contents.read_bytes() + b" Q")
+        for a in page.obj.get("/Annots") or []:
+            x0, y0, x1, y1 = (float(v) for v in a.Rect)
+            a.Rect = pikepdf.Array([x0 + 100, y0 + 200, x1 + 100, y1 + 200])
+            if "/QuadPoints" in a:
+                a.QuadPoints = pikepdf.Array([float(v) + (100 if i % 2 == 0 else 200) for i, v in enumerate(a.QuadPoints)])
+        page.obj.MediaBox = pikepdf.Array([100, 200, 695.32, 1041.92])
+        page.obj.Rotate = rotation
+        out = io.BytesIO()
+        pdf.save(out)
+        return out.getvalue()
+    doc = pymupdf.open(DECORATED["word"])
+    page = doc[0]
+    if crop:
+        page.set_cropbox(pymupdf.Rect(crop))
+    if rotation:
+        page.set_rotation(rotation)
+    return doc.tobytes()
+
+
+CROP = (40, 40, 560, 500)
+PAGES = [(90, None), (180, None), (270, None), (0, CROP), (90, CROP), (270, CROP), (0, "shifted"), (90, "shifted")]
+
+
+@pytest.mark.parametrize("rotation, crop", PAGES)
+def test_pdfium_letters_land_on_our_lines(rotation, crop):
+    """The mapping the delete check relies on: PDFium's letter boxes, shown on the page,
+    fall inside the lines we found."""
+    import pypdfium2 as pdfium
+
+    from app.changes import to_display
+
+    src = _turned(rotation, crop)
+    page = pymupdf.open("pdf", src)[0]
+    boxes = [pymupdf.Rect(l.bbox) + (-1, -1, 1, 1) for l in page_lines(page)]
+    doc = pdfium.PdfDocument(src)
+    tp = doc[0].get_textpage()
+    inside = total = 0
+    for i in range(tp.count_chars()):
+        if not tp.get_text_range(i, 1).isalnum():
+            continue
+        r = to_display(page, tp.get_charbox(i))
+        point = pymupdf.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+        if not page.rect.contains(point):
+            continue  # cropped away
+        total += 1
+        inside += any(point in b for b in boxes)
+    doc.close()
+    assert total > 100 and inside >= 0.98 * total, f"{inside} of {total}"
+
+
+@pytest.mark.parametrize("rotation, crop", PAGES)
+def test_deleting_on_rotated_and_cropped_pages(rotation, crop):
+    src = _turned(rotation, crop)
+    page_no, line = find(src, "Plain line with an")
+    before = pymupdf.open("pdf", src)[0]
+    result = delete_lines(src, [(page_no, line.id, line.text)])
+    after = pymupdf.open("pdf", result.pdf)[0]
+    assert find(result.pdf, "Plain line with an") is None
+    assert len(after.get_drawings()) == len(before.get_drawings()) - 1  # its underline
+
+
+@needs_fonts
+@pytest.mark.parametrize("rotation, crop", PAGES)
+def test_editing_on_rotated_and_cropped_pages(rotation, crop):
+    src = _turned(rotation, crop)
+    page_no, line = find(src, "Plain line with an")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("underlined phrase", "underlined words here"))
+    assert _decoration_under(result.pdf, page_no, "underlined words here") is not None
+    page_no, line = find(src, "Write to")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("help@example.com", "support@example.org"))
+    assert "mailto:support@example.org" in [l.get("uri") for l in pymupdf.open("pdf", result.pdf)[0].get_links()]
+
+
+@needs_fonts
+def test_rotated_text_can_be_deleted():
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    arial = library().find("ArialMT").path
+    page.insert_text((100, 300), "Upright line of text", fontname="F1", fontfile=arial, fontsize=12)
+    page.insert_text((300, 500), "Sideways label", fontname="F1", fontfile=arial, fontsize=12, rotate=90)
+    src = doc.tobytes()
+    page_no, line = find(src, "Sideways label")
+    with pytest.raises(EditRejected, match="Rotated"):
+        replace_line(src, page_no, line.id, line.text, "Sideways sign")
+    result = delete_lines(src, [(page_no, line.id, line.text)])
+    assert find(result.pdf, "Sideways label") is None
+    assert find(result.pdf, "Upright line of text") is not None

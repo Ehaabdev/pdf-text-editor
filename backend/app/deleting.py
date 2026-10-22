@@ -28,6 +28,7 @@ from .changes import (
     check_links,
     check_other_pages,
     fail,
+    ink_box,
     outside,
     page_links,
     render,
@@ -97,7 +98,34 @@ def delete_lines(src: bytes, targets: list[tuple[int, str, str]]) -> EditResult:
     pdf.save(out)
     result = out.getvalue()
     _verify(src, result, plans)
+    if _left_behind(result, plans):
+        warnings.append("Something drawn under the deleted text (a line or a colored box) is still there. Check the page.")
     return EditResult(result, list(dict.fromkeys(warnings)), "")
+
+
+def _left_behind(new_bytes: bytes, plans: dict) -> bool:
+    """A shape right under or over a deleted line that touches no other text: perhaps
+    an underline or highlight not recognized as the text's own. Only a warning: it may
+    belong to the page (a rule under a full-width line)."""
+    doc = pymupdf.open("pdf", new_bytes)
+    for page_no, (chosen, lines, *_rest) in plans.items():
+        page = doc[page_no]
+        chosen_ids = {l.id for l in chosen}
+        remaining = [pymupdf.Rect(l.bbox) for l in lines if l.id not in chosen_ids]
+        for d in page.get_drawings():
+            # MuPDF gives shapes unrotated; line boxes are as displayed.
+            r = pymupdf.Rect(d["rect"]) * page.rotation_matrix
+            r.normalize()
+            if r.width < 2.5 and r.height > 4:
+                continue  # a table's vertical border
+            for l in chosen:
+                box = pymupdf.Rect(l.bbox)
+                size = l.style.size
+                # Tight above (the footnote separator sits just above its text), roomier below.
+                band = pymupdf.Rect(box.x0 - 1, box.y0 - 0.15 * size, box.x1 + 1, box.y1 + 0.3 * size)
+                if band.contains(r) and not any(r.intersects(o) for o in remaining):
+                    return True
+    return False
 
 
 def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> None:
@@ -127,7 +155,9 @@ def _verify(old_bytes: bytes, new_bytes: bytes, plans: dict) -> None:
 
         # Nothing outside the deleted lines (and their decorations) changes, in two engines.
         # Vowel marks can reach a little past the font's height: a third of the size.
+        # And the glyphs' own size and text matrix: MuPDF's box can be too small.
         boxes = [pymupdf.Rect(l.bbox) + _margin(l) for l in chosen]
+        boxes += [to_display(old_page, ink_box(rp, l.members)) + (-1, -1, 1, 1) for l in chosen]
         boxes += [to_display(old_page, rp.paths[c.path].bbox) + (-3, -3, 3, 3) for c in path_changes]
         old_mu, old_pf = render(old_bytes, page_no)
         new_mu, new_pf = render(new_bytes, page_no)

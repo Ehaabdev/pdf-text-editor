@@ -374,9 +374,19 @@ def _has_text(xobject) -> bool:
     return False
 
 
+def page_matrix(page: pymupdf.Page) -> pymupdf.Matrix:
+    """PDF user space -> MuPDF's unrotated page space, where MuPDF puts glyphs and
+    shapes (its displayed space is this times page.rotation_matrix). PyMuPDF's own
+    page.transformation_matrix is off on rotated pages whose crop or media box doesn't
+    start at 0,0. page.cropbox has its left edge in PDF units and its top measured
+    down from the media box's top."""
+    crop, media = page.cropbox, page.mediabox
+    return pymupdf.Matrix(1, 0, 0, -1, -crop.x0, media.y1 - crop.y0)
+
+
 def trace_origins(page: pymupdf.Page) -> list[tuple[float, float]]:
     """MuPDF's glyph origins in drawing order, in PDF user space."""
-    to_pdf = ~page.transformation_matrix
+    to_pdf = ~page_matrix(page)
     return [tuple(pymupdf.Point(c[2]) * to_pdf) for s in page.get_texttrace() for c in s["chars"] if c[1] != -1]
 
 

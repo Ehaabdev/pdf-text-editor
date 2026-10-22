@@ -41,6 +41,7 @@ from .changes import (
     check_other_pages,
     fail,
     ink,
+    ink_box,
     new_target,
     outside,
     page_links,
@@ -59,6 +60,7 @@ from .pdfcontent import (
     Unsupported,
     draw_block,
     matches_trace,
+    page_matrix,
     replay,
 )
 from .textlayout import Line, made_by_word, page_lines
@@ -623,7 +625,7 @@ def _visual_order_standard(words: list[Word], rtl: bool) -> list[Word]:
 
 def _pdf_rect(bbox, page: pymupdf.Page) -> pymupdf.Rect:
     """A rectangle in displayed page space, in PDF coordinates (x as in the content stream)."""
-    r = pymupdf.Rect(bbox) * (page.derotation_matrix * ~page.transformation_matrix)
+    r = pymupdf.Rect(bbox) * (page.derotation_matrix * ~page_matrix(page))
     r.normalize()
     return r
 
@@ -635,7 +637,10 @@ def _room(line: Line, lines: list[Line], page: pymupdf.Page, column, u0: float, 
     as in most documents, so a short line can still grow."""
     left, right = column
     paper = _pdf_rect(page.rect, page)
-    edges = [_pdf_rect((l.column[0], l.bbox[1], l.column[1], l.bbox[3]), page) for l in lines if l.column]
+    # Columns are measured as the page was written, before its rotation.
+    edges = [pymupdf.Rect(l.column[0], l.written[1], l.column[1], l.written[3]) * ~page_matrix(page) for l in lines if l.column]
+    for r in edges:
+        r.normalize()
     if edges:
         text_left, text_right = min(r.x0 for r in edges), max(r.x1 for r in edges)
         if right > text_right - 0.5:
@@ -664,7 +669,7 @@ def _collides(line: Line, lines: list[Line], page: pymupdf.Page, old: tuple[floa
 def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
     """Left and right ink edges (PDF x) of the nearby lines in the same column: the
     lines just above and below that overlap this one, i.e. probably its paragraph."""
-    to_pdf = page.derotation_matrix * ~page.transformation_matrix
+    to_pdf = page.derotation_matrix * ~page_matrix(page)
     def edges(l):
         r = pymupdf.Rect(l.bbox) * to_pdf
         r.normalize()
@@ -754,7 +759,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     if not old:
         raise EditRejected("This line has no text to change.")
     old_visual = sorted(old, key=lambda w: w.u0)
-    to_pdf = ~page.transformation_matrix
+    to_pdf = ~page_matrix(page)
     if line.column:
         a, b = pymupdf.Point(line.column[0], 0) * to_pdf, pymupdf.Point(line.column[1], 0) * to_pdf
         column = (min(a.x, b.x), max(a.x, b.x))
@@ -1124,7 +1129,7 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
         fail("the edited page can't be read back")
 
     # Everything outside the old and new line (and its decorations) is unchanged, in two engines.
-    area = pymupdf.Rect(line.bbox)
+    area = pymupdf.Rect(line.bbox) | to_display(page, ink_box(rp, line.members))
     for b in boxes:
         area |= to_display(page, b)
     # Vowel marks can reach a little past the font's height: a third of the size.
@@ -1150,7 +1155,7 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
     doc = pdfium.PdfDocument(new_bytes)
     try:
         tp = doc[page_no].get_textpage()
-        pr = pymupdf.Rect(area) * page.derotation_matrix * ~page.transformation_matrix
+        pr = pymupdf.Rect(area) * page.derotation_matrix * ~page_matrix(page)
         pr.normalize()
         found = tp.get_text_bounded(left=pr.x0, bottom=pr.y0, right=pr.x1, top=pr.y1)
     finally:

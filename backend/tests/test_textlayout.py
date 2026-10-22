@@ -321,3 +321,21 @@ def test_a_vowel_mark_next_to_a_full_stop_stays_on_its_letter(source):
     """Word anchors the tanween of "صالحاً." a little inside the full stop's space."""
     page = pymupdf.open(FIXTURES / "decorations" / f"decorations-{source}.pdf")[0]
     assert "السعر القديم لم يعد صالحاً." in [l.text for l in page_lines(page)]
+
+
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*/*.pdf")), ids=lambda p: p.name)
+def test_turning_a_page_doesnt_change_what_is_read(path):
+    """Same lines in the same order on a page shown turned (/Rotate), with and without a
+    crop box: table borders, paragraph rules and reading order use the page as written."""
+    plain = [[l.text for l in page_lines(p)] for p in pymupdf.open(path)]
+    for rotation, crop in ((90, None), (180, None), (270, None), (90, (20, 30, 575, 820))):
+        doc = pymupdf.open(path)
+        for page in doc:
+            if crop:
+                page.set_cropbox(pymupdf.Rect(crop))
+            page.set_rotation(rotation)
+        turned = pymupdf.open("pdf", doc.tobytes())
+        for n, page in enumerate(turned):
+            texts = [l.text for l in page_lines(page)]
+            want = plain[n] if not crop else [t for t in plain[n] if t in texts]
+            assert texts == want, f"rotation {rotation}, crop {crop}, page {n + 1}"

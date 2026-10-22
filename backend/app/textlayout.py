@@ -112,6 +112,9 @@ class Line:
     uncertain: bool = False  # some characters could not be confirmed
     members: tuple[int, ...] = ()  # every drawn glyph of the line, hidden ones included
     column: tuple[float, float] | None = None  # left and right edge of its column or cell
+    # Its box as the page was written, before the page's rotation: what "above" and
+    # "left" mean for the text itself.
+    written: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
     def __post_init__(self):
         self._run_of = {i: r for r in self.runs for i in r.glyphs}
@@ -395,15 +398,15 @@ def _vertical_rules(page: pymupdf.Page) -> list[tuple[float, float, float]]:
         drawings = page.get_drawings()
     except Exception:
         return rules
-    derot = page.derotation_matrix
+    # MuPDF gives shapes, like glyphs, in unrotated space (only links come rotated).
     for d in drawings:
         for item in d["items"]:
             if item[0] == "l":
-                p, q = item[1] * derot, item[2] * derot
+                p, q = item[1], item[2]
                 if abs(p.x - q.x) < 1 and abs(p.y - q.y) > 4:
                     rules.append(((p.x + q.x) / 2, min(p.y, q.y), max(p.y, q.y)))
             elif item[0] == "re":
-                r = pymupdf.Rect(item[1]) * derot
+                r = pymupdf.Rect(item[1])
                 r.normalize()
                 if r.width < 2.5 and r.height > 4:
                     rules.append(((r.x0 + r.x1) / 2, r.y0, r.y1))
@@ -848,14 +851,14 @@ def _awkward(text: str) -> int:
 
 def _line_above(lines: list[Line], line: Line) -> Line | None:
     """The line just above in the same column, if it is close enough to be the same paragraph."""
-    x0, y0, x1, y1 = line.bbox
+    x0, y0, x1, y1 = line.written
     height = y1 - y0
     above = [
         l for l in lines
-        if l is not line and l.bbox[3] <= y0 + 0.3 * height and y0 - l.bbox[3] < 0.8 * height
-        and min(l.bbox[2], x1) - max(l.bbox[0], x0) > 0
+        if l is not line and l.written[3] <= y0 + 0.3 * height and y0 - l.written[3] < 0.8 * height
+        and min(l.written[2], x1) - max(l.written[0], x0) > 0
     ]
-    return max(above, key=lambda l: l.bbox[3]) if above else None
+    return max(above, key=lambda l: l.written[3]) if above else None
 
 
 def _set_direction(line: Line, rtl: bool) -> None:
@@ -875,23 +878,17 @@ def _continue_paragraph_direction(lines: list[Line]) -> None:
         if line.rtl and letters <= _RTL_STRONG:
             # And the mirror case: "التجارية." ending an English sentence, aligned left.
             prev = _line_above(lines, line)
-            x0, x1 = line.bbox[0], line.bbox[2]
-            if prev and not prev.rtl and abs(prev.bbox[0] - x0) < 2.5 and prev.bbox[2] - x1 > 2.5:
+            x0, x1 = line.written[0], line.written[2]
+            if prev and not prev.rtl and abs(prev.written[0] - x0) < 2.5 and prev.written[2] - x1 > 2.5:
                 _set_direction(line, False)
             continue
         if line.rtl or any(g.bidi in _RTL_STRONG for g in line.glyphs):
             continue
-        x0, y0, x1, y1 = line.bbox
-        height = y1 - y0
-        above = [
-            l for l in lines
-            if l is not line and l.bbox[3] <= y0 + 0.3 * height and y0 - l.bbox[3] < 0.8 * height
-            and min(l.bbox[2], x1) - max(l.bbox[0], x0) > 0
-        ]
-        if not above:
+        prev = _line_above(lines, line)
+        if prev is None:
             continue
-        prev = max(above, key=lambda l: l.bbox[3])
-        if prev.rtl and abs(prev.bbox[2] - x1) < 2.5 and x0 - prev.bbox[0] > 2.5:
+        x0, x1 = line.written[0], line.written[2]
+        if prev.rtl and abs(prev.written[2] - x1) < 2.5 and x0 - prev.written[0] > 2.5:
             _set_direction(line, True)
 
 
@@ -930,6 +927,7 @@ def page_lines(page: pymupdf.Page) -> list[Line]:
             continue
         rtl, basis = _is_rtl(row, where)
         line = Line(id="", glyphs=row, rtl=rtl, runs=_order(row, rtl), bbox=_display_bbox(page, row))
+        line.written = _box([g for g in row if not g.is_space and not g.synthetic] or row)
         if not word_made and _mixed(row):
             # Not Word: the PDF was probably laid out with the standard bidi rules. Use
             # the reading that lays out exactly like the page. Two readings can look the
@@ -955,8 +953,9 @@ def page_lines(page: pymupdf.Page) -> list[Line]:
 
     _continue_paragraph_direction(lines)
 
-    # Reading order: top to bottom, then left to right (right to left for Arabic).
-    lines.sort(key=lambda l: (round(l.bbox[1] / 3), -l.bbox[2] if l.rtl else l.bbox[0]))
+    # Reading order: top to bottom, then left to right (right to left for Arabic), as
+    # the page was written: turning a page doesn't change its order.
+    lines.sort(key=lambda l: (round(l.written[1] / 3), -l.written[2] if l.rtl else l.written[0]))
     for n, line in enumerate(lines):
         line.id = f"{page.number}-{n}"
     return lines

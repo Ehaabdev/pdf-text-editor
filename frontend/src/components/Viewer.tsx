@@ -133,7 +133,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable]");
+      // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .line-panel");
       if (e.key === "Escape") clearSelection();
       else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length) {
         e.preventDefault();

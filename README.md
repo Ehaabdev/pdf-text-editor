@@ -32,6 +32,8 @@ Each glyph is checked against the font's own character table and corrected where
 
 Files not made by Word are read the way the standard Unicode bidi rules lay text out (Chrome, for one, draws a phone number in an Arabic sentence with its groups reversed). For those, the reading chosen is the one that, laid out by those rules, matches the page exactly.
 
+Turning a page (/Rotate), with or without a crop box, doesn't change what is read.
+
 `backend/tests/test_textlayout.py` checks against an answer key, the made-up documents saved as PDF by Word and printed to PDF by Chrome. Every line must be typed text, and every paragraph must be found again in order. A consistency check also runs on any PDF. It confirms the display text lays out like the page, but it can't catch a wrong direction. So for private samples, a report (`samples/detection-report.txt`) lists every line whose direction was a guess.
 
 ## Editing
@@ -70,6 +72,8 @@ Known limits:
 
 Word and Chrome draw each one as a filled rectangle next to the text, not as part of the font. `backend/app/decorations.py` tells them apart from shapes that only look similar and belong to the page: a paragraph's border, a table border right under a cell's text, a cell's shading, the footnote separator. A decoration starts and ends exactly at letter edges of one line, at a set height from its baseline. Shading and borders reach past the text on at least one side. The page's shapes are replayed too, and must match MuPDF's own list of them.
 
+So far this is tested on PDFs from Word and Chrome only. In case another program draws decorations differently, a delete that leaves a shape right under the deleted text, touching no other text, comes with a warning to check the page.
+
 ## Deleting
 
 `backend/app/deleting.py` deletes whole lines, on one page or several, as one change: one Undo brings them all back. A line's glyphs are taken out, each replaced by an equal spacing number so nothing else moves. Its underlines, strikethroughs and highlights go with it, and so do links that only cover deleted text. The lines below don't move up, as in other PDF editors.
@@ -80,9 +84,11 @@ Deleting needs no fonts and no layout, so lines that can't be edited (rotated te
 - PDFium reads no letters left where the lines were;
 - MuPDF sees the same shapes and links, minus those removed.
 
+These checks are tested on turned pages (/Rotate), cropped pages, and pages whose boxes don't start at 0,0.
+
 On the website: click a line and choose Delete line. To delete several, Shift-click or Ctrl-click them, or tap "Select more lines" on a phone. The Delete key works too. Emptying a line's text in the edit box also deletes it.
 
-Deleting every line of every test document and private sample, one at a time, succeeds for all 635.
+Deleting every line of every test document and private sample, one at a time, succeeds for all 635, with no warnings.
 
 ### Edit accuracy
 
