@@ -132,6 +132,17 @@ def _pieces(rp: Replay) -> list[Piece]:
     return out
 
 
+def _blank(rp: Replay, g) -> bool:
+    """A space, by the font's own word for what the glyph is."""
+    font = rp.fonts.get(g.paint.font)
+    if font is None:
+        return False
+    text = font.to_unicode.get(g.code)
+    if text is None and not font.two_byte and g.code == 32:
+        text = " "
+    return bool(text) and text.isspace()
+
+
 def _clip_scopes(rp: Replay) -> dict[int, int]:
     """For each clipping path (index into rp.paths): the instruction where it stops
     applying, the Q that restores the state it was set in (or the end of the page)."""
@@ -285,7 +296,7 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     width = cx1 - cx0
     # Where text is, is where its letters are: a space leaves no ink (a line's last space
     # can reach past a table cell's border).
-    spaces = {t for l in lines for g in l.glyphs if g.is_space for t in g.traces}
+    spaces = {t for l in lines for g in l.glyphs if g.is_space for t in g.traces} | {t for t, g in enumerate(rp.glyphs) if _blank(rp, g)}
     for p in pieces:
         if p.kind == "text":
             inked = [t for t in p.glyphs if t not in spaces] or list(p.glyphs)
@@ -431,10 +442,13 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     moved_lines = []
     for l in lines:
         members = set(l.members)
-        if members & moved_glyphs:
-            if not members <= moved_glyphs:
-                raise MoveRefused("a line below would be split")
-            moved_lines.append(l.id)
+        # A space may go or stay on its own: Word draws an English line's last space
+        # together with the Arabic cell beside it, and a space leaves no ink.
+        if not (members & moved_glyphs) - spaces:
+            continue
+        if not (members - moved_glyphs) <= spaces:
+            raise MoveRefused("a line below would be split")
+        moved_lines.append(l.id)
     if not moved_lines and not any(p.kind in ("path", "image") for p in moving):
         return None  # only invisible marks (Word's empty paragraphs): nothing to make room for
     return Shift(page_no, dy, moving, links, box, moved_lines)
