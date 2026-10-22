@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ApiError,
   deleteLines,
@@ -14,6 +14,7 @@ import {
 import AddTextPanel, { type Spot } from "./AddTextPanel";
 import ChangesPanel from "./ChangesPanel";
 import CheckPanel from "./CheckPanel";
+import CloseDialog from "./CloseDialog";
 import HomePanel from "./HomePanel";
 import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, MAGNIFIER, Mark, MINUS, PLUS, REDO, UNDO } from "./Icon";
 import LinePanel, { type Change } from "./LinePanel";
@@ -110,6 +111,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     );
   }
 
+  // Closing deletes the file from the server. With changes not yet downloaded (in this
+  // version), the user is asked first, and the browser warns before the tab closes.
+  const [downloaded, setDownloaded] = useState<number | null>(null);
+  const [askClose, setAskClose] = useState(false);
+  const unsaved = doc.history.length > 0 && downloaded !== doc.revision;
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // older browsers need this too
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+
   const [deleting, setDeleting] = useState(false);
   async function remove(lines: PickedLine[]) {
     if (!lines.length || deleting) return;
@@ -179,6 +195,49 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     setAdding(false);
   }
 
+  // On phones the panel opens under the pages and takes part of the screen. The line being
+  // worked on (or the add-text mark) is scrolled back into view above it when it's picked,
+  // and whenever the pages' area gets shorter: the panel opens or grows, the keyboard shows.
+  const focus = useRef<PickedLine | null>(null);
+  focus.current = picked.at(-1) ?? null;
+  const keepInView = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const f = focus.current;
+    const target = f
+      ? el.querySelector<HTMLElement>(`#page-${f.page} [data-line="${CSS.escape(f.line.id)}"]`)
+      : el.querySelector<HTMLElement>(".spot");
+    if (!target) return;
+    const box = el.getBoundingClientRect();
+    const r = target.getBoundingClientRect();
+    if (r.top >= box.top + 12 && r.bottom <= box.bottom - 12) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollBy({ top: r.top - box.top - el.clientHeight / 3, behavior: still ? "auto" : "smooth" });
+  }, []);
+
+  const last = picked.at(-1);
+  const lastKey = last ? `${last.page}:${last.line.id}` : "";
+  useEffect(() => {
+    const id = requestAnimationFrame(keepInView);
+    return () => cancelAnimationFrame(id);
+  }, [lastKey, spot, keepInView]);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let height = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      if (el.clientHeight < height) keepInView();
+      height = el.clientHeight;
+    });
+    ro.observe(el);
+    window.visualViewport?.addEventListener("resize", keepInView);
+    return () => {
+      ro.disconnect();
+      window.visualViewport?.removeEventListener("resize", keepInView);
+    };
+  }, [keepInView]);
+
   function startComparing(show: "original" | "now" = "original") {
     clearSelection();
     stopPlacing();
@@ -232,7 +291,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
-      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .dock");
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .dock, dialog");
       if (e.key === "Escape") {
         clearSelection();
         stopPlacing();
@@ -376,7 +435,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       <header className="bar">
         <button
           className="btn btn-ghost btn-icon"
-          onClick={onClose}
+          onClick={() => (unsaved ? setAskClose(true) : onClose())}
           aria-label="Close this PDF and open another"
           title="Close this PDF and open another"
         >
@@ -426,7 +485,13 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             Changes
             {applied > 0 && <span className="count">{applied}</span>}
           </button>
-          <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name} aria-label="Download PDF">
+          <a
+            className="btn btn-primary"
+            href={downloadUrl(doc)}
+            download={doc.name}
+            aria-label="Download PDF"
+            onClick={() => setDownloaded(doc.revision)}
+          >
             <Icon d={DOWNLOAD} />
             <span className="wide-only">Download</span>
           </a>
@@ -540,6 +605,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           )}
         </aside>
       </div>
+
+      {askClose && (
+        <CloseDialog
+          doc={doc}
+          onDownload={() => {
+            setDownloaded(doc.revision);
+            setAskClose(false);
+          }}
+          onClose={() => {
+            setAskClose(false);
+            onClose();
+          }}
+          onCancel={() => setAskClose(false)}
+        />
+      )}
     </div>
   );
 }

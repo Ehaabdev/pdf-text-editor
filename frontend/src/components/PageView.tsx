@@ -173,6 +173,7 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
                   }}
                   aria-label={line.text}
                   aria-pressed={selected}
+                  data-line={line.id}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect(line, e.shiftKey || e.ctrlKey || e.metaKey);
