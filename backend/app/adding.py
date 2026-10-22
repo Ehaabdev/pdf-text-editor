@@ -59,6 +59,7 @@ from .editing import (
     _split_words,
     _style_of,
     _tracking,
+    _tracking_from_copy,
     _visual_order,
     _visual_order_standard,
     clean_text,
@@ -267,12 +268,19 @@ def add_line(
         g = rp.glyphs[w.source.traces[0]]
         w_style = _style_of(ref if w.source in old else item_line, w.source)
         fonts.shape(w, g.paint, w_style)
-        if w.choice.full is not None:
+        if w.choice.full is not None and not w.other_widths:
             if w_style not in ratios:
                 ratios[w_style] = _tracking(ref, old, rp, w_style, w.choice.full, word_made) if w.source in old else 1.0
             r = ratios[w_style]
             w.shaped = [(gid, cl, adv * r, dx * r, dy) for gid, cl, adv, dx, dy in w.shaped]
-        w.width = sum(s[2] for s in w.shaped) * g.paint.size * g.paint.Tz * g.paint.trm2[0] / 1000
+        elif w.choice.full is None and w.source in old:
+            # Drawn from the PDF's own copy (no installed font): the line's spacing.
+            key = f"copy:{w_style}"
+            if key not in ratios:
+                ratios[key] = _tracking_from_copy(ref, old, rp, w_style)
+            r = ratios[key]
+            w.shaped = [(gid, cl, adv * r, dx * r, dy) for gid, cl, adv, dx, dy in w.shaped]
+        w.width = sum(s[2] for s in w.shaped) * g.paint.size * w.scale * g.paint.Tz * g.paint.trm2[0] / 1000
 
     space = _space_width(rp, ref)
     inside = _bracket_insides(words, visual)
@@ -413,9 +421,10 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
         wp = p.paint
         resource = w.choice.resource or embed_cache[w.choice.full.entry]
         info = w.choice.font_info or FontInfo(resource, pdf.pages[page_no].obj.Resources.Font[resource])
-        draw_paint = Paint(resource, wp.size, wp.Tz, wp.Tr, wp.trm2, wp.fill, wp.stroke, wp.extgstates)
-        em_x = wp.size * wp.Tz * wp.trm2[0] / 1000
-        em_y = wp.size * wp.trm2[3] / 1000
+        size = wp.size * w.scale
+        draw_paint = Paint(resource, size, wp.Tz, wp.Tr, wp.trm2, wp.fill, wp.stroke, wp.extgstates)
+        em_x = size * wp.Tz * wp.trm2[0] / 1000
+        em_y = size * wp.trm2[3] / 1000
         rise = p.origin[1] - base  # a list number may sit a little off the text's baseline
         pen, placed = 0.0, []
         for (gid, cl, adv, dx, dy), code in zip(w.shaped, w.choice.codes):
@@ -445,7 +454,7 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
 
     added = sum(len(r.glyphs) for r in runs)
     area, mark = _verify(src, result, page_no, rp, all_lines, expected, new_box, added)
-    return EditResult(result, list(dict.fromkeys(fonts.warnings)), expected, [(page_no, *area)], [(page_no, *mark)])
+    return EditResult(result, list(dict.fromkeys(fonts.warnings)), expected, [(page_no, *area)], [(page_no, *mark)], list(fonts.lookalikes.values()))
 
 
 def _lines_below(ref: Line, lines: list[Line]) -> list[Line]:

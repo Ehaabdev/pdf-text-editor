@@ -7,12 +7,14 @@ type Props = {
   onClose: () => void;
   /** Look at one change: the page it's on, compared with the original. */
   onShow: (index: number) => void;
+  /** A close look at one change, before and after. */
+  onCheck: (index: number) => void;
   onCompare: () => void;
   onGoTo: (version: number) => void;
 };
 
 /** Every change made, in order. Undone ones stay listed (they can be redone) until the next change. */
-export default function ChangesPanel({ doc, busy, comparing, onClose, onShow, onCompare, onGoTo }: Props) {
+export default function ChangesPanel({ doc, busy, comparing, onClose, onShow, onCheck, onCompare, onGoTo }: Props) {
   const changes = doc.history;
   const undone = changes.filter((c) => !c.applied).length;
   return (
@@ -37,8 +39,14 @@ export default function ChangesPanel({ doc, busy, comparing, onClose, onShow, on
                 <span className="change-meta">
                   {c.pages.length === 1 ? `Page ${c.pages[0] + 1}` : `Pages ${c.pages.map((p) => p + 1).join(", ")}`}
                   {c.applied ? "" : ", undone"}
+                  {c.lookalikes?.length ? ", look-alike font" : ""}
                 </span>
               </div>
+              {c.applied && (
+                <button className="btn btn-ghost" onClick={() => onCheck(k)} disabled={busy}>
+                  Check
+                </button>
+              )}
               {c.applied && (
                 <button className="btn btn-ghost" onClick={() => onShow(k)} disabled={busy}>
                   Show

@@ -125,6 +125,8 @@ class FontLibrary:
         word ("Semibold", "Light", "Condensed") never falls back: that would be a
         different font."""
         name = pdf_font_name.split("+")[-1]
+        if self._hidden(name):
+            return None
         hit = self.by_ps.get(name.lower()) or self.by_full.get(name.lower())
         if hit:
             return hit
@@ -136,6 +138,14 @@ class FontLibrary:
             if e.family.replace(" ", "").lower() == family and e.bold == bold and e.italic == italic:
                 return e
         return None
+
+    @staticmethod
+    def _hidden(name: str) -> bool:
+        """PDFEDIT_HIDE_FONTS: fonts to treat as not installed, to see what a server without
+        them would do ("calibri*,traditionalarabic": * matches any ending)."""
+        hidden = [h.strip().lower() for h in os.environ.get("PDFEDIT_HIDE_FONTS", "").split(",") if h.strip()]
+        plain = name.lower()
+        return any(plain == h or (h.endswith("*") and plain.startswith(h[:-1])) for h in hidden)
 
     def is_exact(self, pdf_font_name: str) -> bool:
         name = pdf_font_name.split("+")[-1].lower()
@@ -408,3 +418,70 @@ def _font_bytes(full: FullFont) -> bytes:
         full.tt.save(out)
         return out.getvalue()
     return Path(full.entry.path).read_bytes()
+
+
+# Look-alike fonts --------------------------------------------------------------------------
+#
+# When a PDF's font isn't installed and its embedded copy can't draw the new letters, a
+# free font that looks like it can stand in, and the user is asked to check the result.
+# The files ship with the code (lookalikes/, with their licences and MANIFEST.json), so a
+# server has them whatever is installed. Latin look-alikes have the same letter widths as
+# the fonts they replace; Arabic ones were chosen by eye and don't. Arabic look-alikes must
+# draw each letter as one glyph: fonts that split letters into a base and separate dots
+# (Noto Naskh Arabic, for one) give glyphs whose labels can't be right.
+
+LOOKALIKE_DIR = Path(__file__).resolve().parent.parent / "lookalikes"
+
+# Font family (as _split_style names it) -> (Latin look-alike, Arabic look-alike).
+_LOOKALIKES: dict[str, tuple[str | None, str | None]] = {
+    "calibri": ("Carlito", None),
+    "cambria": ("Caladea", None),
+    "arial": ("LiberationSans", "MarkaziText"),  # Arial's Arabic letters are Simplified Arabic's
+    "helvetica": ("LiberationSans", None),
+    "timesnewroman": ("LiberationSerif", "MarkaziText"),  # the same Arabic letters as Arial's
+    "times": ("LiberationSerif", None),
+    "couriernew": ("LiberationMono", None),
+    "courier": ("LiberationMono", None),
+    "traditionalarabic": (None, "Amiri"),  # classical Naskh with stacked letter pairs
+    "sakkalmajalla": (None, "Amiri"),
+    "arabictypesetting": (None, "Amiri"),
+    "simplifiedarabic": (None, "MarkaziText"),  # simplified Naskh, no stacked pairs
+    "tahoma": (None, "IBMPlexSansArabic"),  # modern, little contrast
+    "segoeui": (None, "IBMPlexSansArabic"),
+}
+_NAMES = {
+    "Carlito": "Carlito", "Caladea": "Caladea", "LiberationSans": "Liberation Sans",
+    "LiberationSerif": "Liberation Serif", "LiberationMono": "Liberation Mono", "Amiri": "Amiri",
+    "MarkaziText": "Markazi Text", "IBMPlexSansArabic": "IBM Plex Sans Arabic",
+}
+
+
+@dataclass(frozen=True)
+class Lookalike:
+    entry: FontEntry
+    name: str  # as people know it: "Carlito"
+    same_widths: bool  # every letter as wide as in the font it stands in for
+
+
+def lookalike(pdf_font_name: str, arabic: bool) -> Lookalike | None:
+    """The bundled look-alike for a PDF font, in the same weight and style, for Latin or
+    Arabic letters; None if there is none."""
+    family, style = _split_style(pdf_font_name.split("+")[-1])
+    if family is None or family not in _LOOKALIKES:
+        return None
+    base = _LOOKALIKES[family][1 if arabic else 0]
+    if base is None:
+        return None
+    bold, italic = "bold" in style, "italic" in style or "oblique" in style
+    suffix = "BoldItalic" if bold and italic else "Bold" if bold else "Italic" if italic else "Regular"
+    path = LOOKALIKE_DIR / f"{base}-{suffix}.ttf"
+    if not path.exists():
+        return None  # no italic Arabic look-alike, for one
+    return Lookalike(_bundled_entry(str(path)), _NAMES[base], not arabic)
+
+
+@lru_cache(maxsize=64)
+def _bundled_entry(path: str) -> FontEntry:
+    tt = TTFont(path, lazy=True)
+    ps, family, bold, italic, full = _names(tt)
+    return FontEntry(path, 0, ps, family, bold, italic, full)

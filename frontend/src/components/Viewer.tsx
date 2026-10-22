@@ -13,6 +13,7 @@ import {
 } from "../api";
 import AddTextPanel, { type Spot } from "./AddTextPanel";
 import ChangesPanel from "./ChangesPanel";
+import CheckPanel from "./CheckPanel";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView from "./PageView";
 import SelectionPanel from "./SelectionPanel";
@@ -61,6 +62,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const [showChanges, setShowChanges] = useState(false);
   // Comparing with the original: which version the pages show, with the changes outlined.
   const [compare, setCompare] = useState<"original" | "now" | null>(null);
+  // A close look at one change (doc.history index), opened after a change that used a
+  // look-alike font, or from the list of changes.
+  const [checking, setChecking] = useState<number | null>(null);
 
   // Confirmations fade after a while; warnings and errors stay until dismissed.
   useEffect(() => {
@@ -75,16 +79,23 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }, [doc.version]);
 
   function report(what: string, outcome: EditOutcome) {
+    // A look-alike font is explained in the check panel that opens: not twice.
+    const subs = (outcome.lookalikes ?? []).map((l) => l.substitute);
+    const warnings = outcome.warnings.filter((w) => !subs.some((s) => w.includes(s)));
     setNotice(
-      outcome.warnings.length
-        ? { text: `${what} ${outcome.warnings.join(" ")}`, tone: "warning" }
-        : { text: what, tone: "done" },
+      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done" },
     );
+  }
+
+  /** After a change that used a look-alike font: ask the user to check it. */
+  function offerCheck(outcome: EditOutcome) {
+    if (outcome.lookalikes?.length) setChecking(outcome.document.history.length - 1);
   }
 
   function edited(outcome: EditOutcome, change: Change) {
     clearSelection();
     onChange(outcome.document);
+    offerCheck(outcome);
     report(
       change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
       outcome,
@@ -112,6 +123,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     setBusy(true);
     try {
       onChange(await action());
+      setChecking(null);
       clearSelection();
       stopPlacing();
       setNotice({ text: done, tone: "done" });
@@ -382,7 +394,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </button>
         </div>
       )}
-      {showChanges ? (
+      {checking !== null && doc.history[checking] ? (
+        <CheckPanel doc={doc} index={checking} busy={busy} onClose={() => setChecking(null)} onUndo={() => void undo()} />
+      ) : showChanges ? (
         <ChangesPanel
           doc={doc}
           busy={busy}
@@ -391,6 +405,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           onShow={(k) => {
             setShowChanges(false);
             show(k);
+          }}
+          onCheck={(k) => {
+            setShowChanges(false);
+            setChecking(k);
           }}
           onCompare={() => (compare ? setCompare(null) : startComparing())}
           onGoTo={(v) => void goTo(v)}
@@ -405,6 +423,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               stopPlacing();
               onChange(outcome.document);
               report("Text added.", outcome);
+              offerCheck(outcome);
             }}
           />
         ) : (

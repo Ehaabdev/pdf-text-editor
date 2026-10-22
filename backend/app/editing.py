@@ -81,6 +81,9 @@ class EditResult:
     areas: list[tuple[int, float, float, float, float]] = field(default_factory=list)
     # The same, drawn tight for people to see: the old and new lines' boxes.
     marks: list[tuple[int, float, float, float, float]] = field(default_factory=list)
+    # Fonts that weren't available and the look-alikes used instead, for the user to
+    # check: {"font", "substitute", "sameWidths"}.
+    lookalikes: list[dict] = field(default_factory=list)
 
 
 def clean_text(text: str) -> str:
@@ -127,6 +130,11 @@ class Word:
     x: float = 0.0  # new left edge
     shaped: list = field(default_factory=list)  # new glyphs: (gid, cluster, advance, dx, dy)
     choice: "FontChoice | None" = None
+    # Drawn by a look-alike whose letters aren't as wide as the original's (an Arabic one),
+    # at this size relative to the original's: its letters can be taller or shorter at
+    # the same point size. The line's own letter spacing then doesn't apply.
+    other_widths: bool = False
+    scale: float = 1.0
     group: int = -1  # old words between the same two spaces share a group ("review" and ".")
     # A word added between old ones: the old word after it (an underline continues
     # through an added word only if it runs under the words on both sides).
@@ -341,12 +349,40 @@ def _base_name(font_dict) -> str:
     return str(font_dict.get("/BaseFont", "")).lstrip("/").split("+")[-1]
 
 
+def _glyph_top(tt, gid: int) -> float | None:
+    """How far a glyph rises above the baseline, in ems (TrueType outlines only)."""
+    try:
+        glyph = tt["glyf"][tt.getGlyphOrder()[gid]]
+    except (IndexError, KeyError):
+        return None
+    if glyph.numberOfContours == 0 or not hasattr(glyph, "yMax"):
+        return None
+    return glyph.yMax / tt["head"].unitsPerEm if glyph.yMax > 0 else None
+
+
+def _base_name_from(font_name: str) -> str:
+    """A PDF font name as people know it: "TimesNewRomanPS-BoldMT" -> "Times New Roman Bold"."""
+    name = font_name.split("+")[-1]
+    family, _, style = name.partition(",") if "," in name else name.partition("-")
+    for suffix in ("PSMT", "MT", "PS"):
+        if family.endswith(suffix) and len(family) > len(suffix) + 2:
+            family = family[: -len(suffix)]
+        if style.endswith(suffix):
+            style = style[: -len(suffix)]
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", family)
+    style = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", style)
+    shown = f"{spaced} {style}".strip() if style and style.lower() != "regular" else spaced
+    return shown[: -len(" Regular")] if shown.endswith(" Regular") else shown
+
+
 class Fonts:
     def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line):
         self.pdf, self.page_index, self.rp, self.word_made, self.line = pdf, page_index, rp, word_made, line
         self.embedded: dict[str, fontlib.EmbeddedFont] = {}
         self.warnings: list[str] = []
         self.checked: set[str] = set()
+        # Fonts that weren't available and what stood in for them, for the user to check.
+        self.lookalikes: dict[tuple[str, str], dict] = {}
 
     def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
         """Warn when the installed font draws the line's existing glyphs differently
@@ -377,7 +413,9 @@ class Fonts:
         return self.embedded[resource]
 
     def shape(self, word: Word, paint: Paint, font_name: str) -> None:
-        """Shape a new word and choose the font copy that will draw it."""
+        """Shape a new word and choose the font that will draw it, in this order: the
+        installed font itself; for Latin, the PDF's embedded copy when it has every
+        letter; a look-alike (the user is asked to check it); else refuse."""
         text = word.text
         entry = fontlib.library().find(font_name)
         full = fontlib.load_full_font(entry) if entry else None
@@ -400,12 +438,8 @@ class Fonts:
             word.choice = FontChoice(None, full, None, gids)
             return
 
-        if needs_shaping:
-            raise EditRejected(
-                f"The font {font_name} isn't installed on the server, so new Arabic text can't be shaped with it."
-            )
         # No installed font: Latin text can still use the embedded copy if it has every letter.
-        for resource in candidates:
+        for resource in candidates if not needs_shaping else []:
             info, emb = self.rp.fonts[resource], self._embedded(resource)
             # Which code draws a character: the copy's own labels (subsets often have no
             # character table of their own), else its character table.
@@ -428,7 +462,64 @@ class Fonts:
                 word.shaped = shaped
                 word.choice = FontChoice(resource, None, info, codes)
                 return
+        if self._shape_lookalike(word, font_name):
+            return
+        if needs_shaping:
+            raise EditRejected(
+                f"The font {font_name} isn't installed on the server, so new Arabic text can't be shaped with it."
+            )
         raise EditRejected(f"The font {font_name} isn't installed on the server and the PDF doesn't contain all the letters typed.")
+
+    def _shape_lookalike(self, word: Word, font_name: str) -> bool:
+        """Shape the word with the bundled look-alike of the font, if there is one."""
+        arabic = word.script == "R"
+        sub = fontlib.lookalike(font_name, arabic)
+        if sub is None:
+            return False
+        full = fontlib.load_full_font(sub.entry)
+        shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
+        missing = [word.text[c] for gid, c, *_ in shaped if gid == 0]
+        if missing:
+            raise EditRejected(f"The font {font_name} isn't installed on the server, and its look-alike {sub.name} has no character for “{missing[0]}”.")
+        word.shaped = shaped
+        word.choice = FontChoice(None, full, None, [g[0] for g in shaped])  # always embedded anew
+        word.other_widths = not sub.same_widths
+        word.scale = 1.0 if sub.same_widths else self._size_match(font_name, full)
+        shown = _base_name_from(font_name)
+        key = (shown, sub.name)
+        if key not in self.lookalikes:
+            self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths}
+            if sub.same_widths:
+                self.warnings.append(
+                    f"{shown} isn't available here, so the changed words use {sub.name}, a look-alike with the same letter widths. Check that it looks right."
+                )
+            else:
+                self.warnings.append(
+                    f"{shown} isn't available here, so the changed words use {sub.name}, a similar font. Its letters are a little different. Check that it looks right."
+                )
+        return True
+
+    def _size_match(self, font_name: str, full: "fontlib.FullFont") -> float:
+        """How big the look-alike must be drawn to match the original's letters: the
+        height of the tall Arabic letters (alef, lam, kaf, ta) in the PDF's own copy of
+        the font against the look-alike's, the middle of the ratios."""
+        tall = "الكطظ"
+        ratios = []
+        cmap = full.tt.getBestCmap() or {}
+        for resource in self._resources_named(font_name, ""):
+            info, emb = self.rp.fonts[resource], self._embedded(resource)
+            if not info.two_byte or emb.tt is None or "glyf" not in emb.tt:
+                continue
+            for code, label in info.to_unicode.items():
+                if label in tall and ord(label) in cmap:
+                    ours = _glyph_top(emb.tt, code)
+                    theirs = _glyph_top(full.tt, full.tt.getGlyphID(cmap[ord(label)]))
+                    if ours and theirs:
+                        ratios.append(ours / theirs)
+        if not ratios:
+            return 1.0
+        ratios.sort()
+        return min(1.4, max(0.6, ratios[len(ratios) // 2]))
 
     def _codes_in_copy(self, resource, gids, shaped, text, full) -> list[int] | None:
         """Codes to draw the glyphs with this embedded copy, if it has all of them drawn
@@ -814,11 +905,18 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             src_glyph = rp.glyphs[w.source.traces[0]]
             style = _style_of(line, w.source)
             fonts.shape(w, src_glyph.paint, style)
-            em = src_glyph.paint.size * src_glyph.paint.Tz * src_glyph.paint.trm2[0] / 1000
-            if w.choice.full is not None:
+            em = src_glyph.paint.size * src_glyph.paint.Tz * src_glyph.paint.trm2[0] / 1000 * w.scale
+            if w.choice.full is not None and not w.other_widths:
                 if style not in tracking:
                     tracking[style] = _tracking(line, old, rp, style, w.choice.full, word_made)
                 r = tracking[style]
+                w.shaped = [(gid, c, adv * r, dx * r, dy) for gid, c, adv, dx, dy in w.shaped]
+            elif w.choice.full is None:
+                # Drawn from the PDF's own copy (no installed font): the same spacing.
+                key = f"copy:{style}"
+                if key not in tracking:
+                    tracking[key] = _tracking_from_copy(line, old, rp, style)
+                r = tracking[key]
                 w.shaped = [(gid, c, adv * r, dx * r, dy) for gid, c, adv, dx, dy in w.shaped]
             w.width = sum(g[2] for g in w.shaped) * em
         else:
@@ -909,6 +1007,25 @@ def _tracking(line: Line, old: list[Word], rp: Replay, font_name: str, full: "fo
     return min(1.03, max(0.97, actual_total / shaped_total))
 
 
+def _tracking_from_copy(line: Line, old: list[Word], rp: Replay, font_name: str) -> float:
+    """The line's spacing as _tracking measures it, without an installed font: the
+    words' extents against the widths the PDF stores for their glyphs."""
+    actual = nominal = 0.0
+    chars = 0
+    for w in old:
+        if _style_of(line, w) != font_name or not w.text.strip() or len(_looks(w, line, rp)[1]) > 1:
+            continue
+        glyphs = [rp.glyphs[t] for t in w.traces]
+        p = glyphs[0].paint
+        em = p.size * p.Tz * p.trm2[0] / 1000
+        nominal += sum(rp.fonts[g.paint.font].width(g.code) for g in glyphs) * em
+        actual += w.u1 - w.u0
+        chars += len(w.text)
+    if chars < 4 or nominal <= 0:
+        return 1.0
+    return min(1.03, max(0.97, actual / nominal))
+
+
 def _style_of(line: Line, word: Word) -> str:
     """The font name of a word's main glyph, as the PDF names it."""
     for g in line.glyphs:
@@ -972,9 +1089,10 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         paint = src_glyph.paint
         resource = w.choice.resource or embed_cache[w.choice.full.entry]
         info = w.choice.font_info or FontInfo(resource, pdf.pages[page_no].obj.Resources.Font[resource])
-        draw_paint = Paint(resource, paint.size, paint.Tz, paint.Tr, paint.trm2, paint.fill, paint.stroke, paint.extgstates)
-        em_x = paint.size * paint.Tz * paint.trm2[0] / 1000
-        em_y = paint.size * paint.trm2[3] / 1000
+        size = paint.size * w.scale
+        draw_paint = Paint(resource, size, paint.Tz, paint.Tr, paint.trm2, paint.fill, paint.stroke, paint.extgstates)
+        em_x = size * paint.Tz * paint.trm2[0] / 1000
+        em_y = size * paint.trm2[3] / 1000
         pen, placed = 0.0, []
         baseline = src_glyph.origin[1]
         for (gid, cluster, adv, dx, dy), code in zip(w.shaped, w.choice.codes):
@@ -1020,7 +1138,7 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         boxes += [(x0, y0, x1, y1)] + [(a, y0, b, y1) for a, b in c.spans]
     drawn = "".join(w.text for w in visual if w.is_new)
     area, mark = _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes)
-    return EditResult(result, warnings, new_text, [(page_no, *area)], [(page_no, *mark)])
+    return EditResult(result, warnings, new_text, [(page_no, *area)], [(page_no, *mark)], list(fonts.lookalikes.values()))
 
 
 def _spaces(line: Line, rp: Replay, visual: list[Word], untouched: set[int], joined: list[bool]) -> list[PlacedRun]:

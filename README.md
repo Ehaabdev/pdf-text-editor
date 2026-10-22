@@ -13,8 +13,8 @@ Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public 
 | 3 | Edit text in place, matching the original style | Done |
 | 4 | Delete lines, with their underlines and links | Done |
 | 5 | Add new text, in the style of text on the page | Done |
-| 6 | Undo, before/after view, several edits | Next |
-| 7 | Public launch: limits, password PDFs, deploy | |
+| 6 | Changes list, undo and redo, before/after view, look-alike fonts | Done |
+| 7 | Public launch: limits, password PDFs, deploy | Next |
 
 ## Text detection
 
@@ -66,13 +66,47 @@ Known limits:
 - lines marked uncertain need their unreadable letters retyped;
 - rotated text and text inside embedded objects can't be edited yet.
 
-**Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). Without it, only letters already in the PDF can be reused. If the installed font isn't the exact version in the PDF, the edit goes ahead with a warning. On Windows, Office's cloud fonts (Aptos, the default in recent Word) are found in Office's font cache once Word has downloaded them.
+**Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). If the installed font isn't the exact version in the PDF, the edit goes ahead with a warning. On Windows, Office's cloud fonts (Aptos, the default in recent Word) are found in Office's font cache once Word has downloaded them. Without the font, the new letters are drawn in this order of preference:
+1. the PDF's own copy of the font, for Latin letters it already contains (the exact glyphs);
+2. a **look-alike font** that ships with the code (see below), and the user is asked to check the result;
+3. otherwise the edit is refused.
+
+### Look-alike fonts
+
+`backend/lookalikes/` holds free fonts (SIL Open Font License) that stand in for common fonts that can't be shipped. `MANIFEST.json` lists each file with its source, version, checksum and licence file.
+
+| Font in the PDF | Look-alike | Letter widths |
+|---|---|---|
+| Calibri | Carlito | the same |
+| Cambria | Caladea | the same |
+| Arial, Helvetica | Liberation Sans | the same |
+| Times New Roman, Times | Liberation Serif | the same |
+| Courier New, Courier | Liberation Mono | the same |
+| Traditional Arabic, Sakkal Majalla, Arabic Typesetting | Amiri | different |
+| Simplified Arabic; the Arabic letters of Arial and Times New Roman | Markazi Text | different |
+| Tahoma, Segoe UI (Arabic letters) | IBM Plex Sans Arabic | different |
+
+The Arabic look-alikes were chosen by eye, side by side with the real fonts. They must draw each letter as one glyph: fonts that split a letter into a base and separate dots (Noto Naskh Arabic, for one) can't be given correct copy and search labels. Each is drawn at the size that matches the original's letter height, measured against the tall letters in the PDF's own copy of the font. A bold or italic original gets the look-alike's bold or italic; where the look-alike has none, or for fonts with no free look-alike (Aptos, Georgia, Verdana, the Latin letters of Tahoma), the edit is refused.
+
+After a change that used a look-alike, the website shows a close before/after of the spot and asks whether it looks right: keep it, or undo it.
 
 ### Underlines, strikethroughs and highlights
 
 Word and Chrome draw each one as a filled rectangle next to the text, not as part of the font. `backend/app/decorations.py` tells them apart from shapes that only look similar and belong to the page: a paragraph's border, a table border right under a cell's text, a cell's shading, the footnote separator. A decoration starts and ends exactly at letter edges of one line, at a set height from its baseline. A list bullet drawn as a small filled circle just before a line (as Chrome draws them) goes with its line too. Shading and borders reach past the text on at least one side. The page's shapes are replayed too, and must match MuPDF's own list of them.
 
 So far this is tested on PDFs from Word and Chrome only. In case another program draws decorations differently, a delete that leaves a shape right under the deleted text, touching no other text, comes with a warning to check the page.
+
+## Changes, undo and redo, before and after
+
+Every change is stored as a new version of the file (`backend/app/storage.py`), with what it was and where:
+- the area its own check proved that nothing outside of changed;
+- a tight outline of the old and new lines, for display.
+
+Undo, redo and "go back to the original" move between versions; an undone change stays listed, and can be redone, until the next change. On the website:
+- the Changes list shows every change and opens a close before/after of any of them (Check), or jumps to it on the page (Show);
+- "Compare with the original" flips the pages between the original and the current version, with every change outlined. Editing is off while comparing.
+
+A test makes changes, undoes and redoes one, then checks that every pixel differing from the original lies inside the recorded areas.
 
 ## Deleting
 
@@ -208,6 +242,7 @@ python print_chrome.py
 | Variable | Default | Meaning |
 |---|---|---|
 | `PDFEDIT_DATA_DIR` | `backend/data` | Where uploads are stored |
+| `PDFEDIT_HIDE_FONTS` | (none) | Fonts to treat as not installed, comma-separated (`calibri*,traditionalarabic`; `*` matches any ending): to see what a server without them would do |
 | `PDFEDIT_MAX_UPLOAD_MB` | `20` | Largest file accepted |
 | `PDFEDIT_MAX_PAGES` | `50` | Most pages accepted |
 | `PDFEDIT_DOC_TTL_MINUTES` | `60` | Delete files this long after last use |

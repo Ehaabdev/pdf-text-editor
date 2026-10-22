@@ -206,8 +206,11 @@ _STALE = "This document changed in another tab or window. Reload the page to see
 
 
 def _short(text: str, n: int = 40) -> str:
+    """Quoted text in a change's summary: shortened, and isolated (FSI ... PDI) so an
+    Arabic quote inside an English sentence keeps its own direction."""
     text = " ".join(text.split())
-    return text if len(text) <= n else text[: n - 1] + "…"
+    text = text if len(text) <= n else text[: n - 1] + "…"
+    return "\u2068" + text + "\u2069"
 
 
 def _entry(kind: str, summary: str, result) -> dict:
@@ -219,6 +222,7 @@ def _entry(kind: str, summary: str, result) -> dict:
         "areas": [[round(v, 2) for v in a] for a in result.areas],  # [page, x0, y0, x1, y1]
         "marks": [[round(v, 2) for v in a] for a in result.marks],  # the same, drawn tight
         "warnings": result.warnings,
+        "lookalikes": result.lookalikes,  # fonts that stood in for missing ones: to check
     }
 
 
@@ -235,7 +239,7 @@ async def edit_line(doc_id: str, edit: EditRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     if result.pdf == src:
-        return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+        return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
     if edit.newText.strip():
         entry = _entry("edit", f"Changed “{_short(edit.oldText)}” to “{_short(result.text)}”", result)
     else:
@@ -244,7 +248,7 @@ async def edit_line(doc_id: str, edit: EditRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
 
 
 @app.post("/api/documents/{doc_id}/deletions")
@@ -265,7 +269,7 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
 
 
 @app.post("/api/documents/{doc_id}/additions")
@@ -286,7 +290,7 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
 
 
 @app.post("/api/documents/{doc_id}/undo")

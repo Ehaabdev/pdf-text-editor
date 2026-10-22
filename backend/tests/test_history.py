@@ -47,9 +47,10 @@ def _post(client, doc, what, version=None):
 def test_the_list_of_changes(client):
     doc = _chain(client)
     assert [h["kind"] for h in doc["history"]] == ["edit", "delete", "add"]
-    assert doc["history"][0]["summary"] == "Changed “Quarterly Service Report” to “Annual Service Report”"
-    assert doc["history"][1]["summary"].startswith("Deleted “Report ID")
-    assert doc["history"][2]["summary"] == "Added “Source: the support team's own records.”"
+    plain = lambda h: h["summary"].replace("\u2068", "").replace("\u2069", "")  # direction isolates
+    assert plain(doc["history"][0]) == "Changed “Quarterly Service Report” to “Annual Service Report”"
+    assert plain(doc["history"][1]).startswith("Deleted “Report ID")
+    assert plain(doc["history"][2]) == "Added “Source: the support team's own records.”"
     assert all(h["applied"] and h["pages"] == [0] and h["areas"] for h in doc["history"])
     assert doc["version"] == 3 and doc["canUndo"] and not doc["canRedo"]
 

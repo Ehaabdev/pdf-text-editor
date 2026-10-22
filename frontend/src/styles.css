@@ -969,3 +969,29 @@ body {
   background: rgba(255, 196, 0, 0.12);
   pointer-events: none;
 }
+
+/* A close look at one change: before and after. */
+.check-summary {
+  margin: 0 0 8px;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.check-shot {
+  margin: 0 0 8px;
+}
+
+.check-shot figcaption {
+  margin-bottom: 3px;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.check-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}

@@ -1,5 +1,8 @@
 export type PageSize = { width: number; height: number };
 
+/** A font that wasn't available, and the look-alike that drew the new letters instead. */
+export type Lookalike = { font: string; substitute: string; sameWidths: boolean };
+
 /** One change, as listed: what it was and where (page, x0, y0, x1, y1 in points). */
 export type Change = {
   kind: "edit" | "delete" | "add";
@@ -9,6 +12,7 @@ export type Change = {
   /** The same changes drawn tight (the old and new lines), for outlining on the page. */
   marks?: [number, number, number, number, number][];
   warnings: string[];
+  lookalikes?: Lookalike[];
   /** False once undone (it can be redone until the next change). */
   applied: boolean;
 };
@@ -144,7 +148,7 @@ export function getLines(doc: DocInfo, pageNo: number): Promise<PageLines> {
   return p;
 }
 
-export type EditOutcome = { document: DocInfo; warnings: string[] };
+export type EditOutcome = { document: DocInfo; warnings: string[]; lookalikes?: Lookalike[] };
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   let res: Response;
