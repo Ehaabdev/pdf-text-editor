@@ -260,6 +260,35 @@ def test_adding_where_there_is_no_room_explains_why(client):
     assert r.status_code == 422 and "no room" in r.json()["detail"]
 
 
+def test_a_list_item_added_and_deleted_with_the_text_moving(client):
+    """The lines say which marker a new item gets; adding one renumbers the list and moves
+    the text below, deleting it closes the gap and counts the list back."""
+    data = (Path(__file__).parent / "fixtures" / "additions" / "additions-word.pdf").read_bytes()
+    doc = upload(client, data, name="additions-word.pdf").json()
+    ref = _line(client, doc, "1. Confirm")
+    assert ref["item"] == {"below": "2.", "above": "1."}
+    assert _line(client, doc, "Project Kickoff")["item"] is None
+    r = client.post(f"/api/documents/{doc['id']}/additions", json={
+        "revision": doc["revision"], "page": 0, "lineId": ref["id"], "oldText": ref["text"],
+        "text": "Call the client", "item": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["moved"] > 0
+    added = r.json()["document"]
+    texts = lambda d: [l["text"] for l in client.get(f"/api/documents/{d['id']}/pages/0/lines").json()["lines"]]
+    assert texts(added)[1:5] == [
+        "1. Confirm the delivery dates with the client", "2. Call the client",
+        "3. Share the draft budget with finance", "4. Book the review meeting",
+    ]
+    new = _line(client, added, "2. Call the client")
+    r = client.post(f"/api/documents/{doc['id']}/deletions", json={
+        "revision": added["revision"], "lines": [{"page": 0, "lineId": new["id"], "oldText": new["text"]}]})
+    assert r.status_code == 200, r.text
+    assert r.json()["moved"] > 0
+    assert texts(r.json()["document"])[1:4] == [
+        "1. Confirm the delivery dates with the client", "2. Share the draft budget with finance", "3. Book the review meeting",
+    ]
+
+
 def test_nothing_to_undo(client):
     doc = _fixture_upload(client)
     assert client.post(f"/api/documents/{doc['id']}/undo", json={"revision": doc["revision"]}).status_code == 409

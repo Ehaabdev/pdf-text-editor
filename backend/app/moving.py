@@ -266,6 +266,15 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
             raise MoveRefused("this text sits in a column beside other text")
     limit, footer_ids = bottom_limit(doc, page_no, lines, crop)
     footer_glyphs = {t for l in lines if l.id in footer_ids for t in l.members}
+    # Whatever sits beside a footer line, at its height (a logo, a rule, a page number
+    # drawn on its own), is part of the footer too.
+    bands = [(rects[i][1], rects[i][3]) for i in footer_ids]
+
+    def in_footer(p: Piece) -> bool:
+        if p.kind == "text" and footer_glyphs.intersection(p.glyphs):
+            return True
+        return any(min(p.box[3], b1) - max(p.box[1], b0) > 0 for b0, b1 in bands)
+
     margin = 0.5 * size
 
     moving: list[Piece] = []
@@ -274,6 +283,13 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     clips: list[Piece] = []
     pieces = _pieces(rp)
     width = cx1 - cx0
+    # Where text is, is where its letters are: a space leaves no ink (a line's last space
+    # can reach past a table cell's border).
+    spaces = {t for l in lines for g in l.glyphs if g.is_space for t in g.traces}
+    for p in pieces:
+        if p.kind == "text":
+            inked = [t for t in p.glyphs if t not in spaces] or list(p.glyphs)
+            p.box = _union(_glyph_box(rp.glyphs[t]) for t in inked)
 
     def across_cell(p: Piece) -> bool:  # a horizontal border line spanning the cell
         return p.kind == "path" and p.box[3] - p.box[1] <= 3 and p.box[0] <= cx0 + 0.25 * width and p.box[2] >= cx1 - 0.25 * width
@@ -326,7 +342,7 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         if cell and across_cell(p):
             stoppers.append(p)  # a border between rows (Word draws one per cell)
             continue
-        if not inside or (p.kind == "text" and footer_glyphs.intersection(p.glyphs)) or y1 < limit:
+        if not inside or in_footer(p) or y1 < limit:
             stoppers.append(p)
         else:
             moving.append(p)
