@@ -96,6 +96,16 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
         </span>
       </header>
 
+      {/* A file is over the window: the whole screen becomes the place to drop it. */}
+      {dragging && (
+        <div className="drop-veil" aria-hidden="true">
+          <div className="drop-frame">
+            <Icon d={UPLOAD} size={44} />
+            <p>Drop your PDF to open it</p>
+          </div>
+        </div>
+      )}
+
       <main className="landing-main">
         <section className="hero" aria-labelledby="upload-title">
           <div className="hero-copy">

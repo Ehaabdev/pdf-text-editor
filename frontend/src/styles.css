@@ -632,6 +632,81 @@ html.theme-switching::view-transition-new(root) {
   font-size: 0.8125rem;
 }
 
+/* A file dragged over the window: the whole screen becomes the drop target. It takes no
+   pointer events, so the window keeps counting drag enters and leaves. */
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  animation: veil-in 220ms ease-out;
+}
+
+.drop-frame {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  width: min(760px, 100%);
+  height: min(440px, 70vh);
+  border: 2px dashed var(--accent);
+  border-radius: 36px;
+  background: var(--accent-wash);
+  box-shadow:
+    0 0 90px -10px var(--accent-glow),
+    inset 0 0 70px -20px var(--accent-glow);
+  color: var(--text);
+  font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  animation:
+    frame-in 450ms var(--spring),
+    frame-breathe 1.6s ease-in-out 450ms infinite alternate;
+}
+
+.drop-frame p {
+  margin: 0;
+}
+
+.drop-frame .icon {
+  color: var(--accent);
+  animation: lift 1s ease-in-out infinite alternate;
+}
+
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes frame-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes frame-breathe {
+  to {
+    transform: scale(1.015);
+    box-shadow:
+      0 0 120px -10px var(--accent-glow),
+      inset 0 0 90px -20px var(--accent-glow);
+  }
+}
+
+@keyframes lift {
+  to {
+    transform: translateY(-8px);
+  }
+}
+
 /* The demo: a sample page whose lines are retyped under a glass loupe. */
 .demo {
   position: relative;
@@ -652,15 +727,32 @@ html.theme-switching::view-transition-new(root) {
   font-family: "Times New Roman", Times, "Geeza Pro", "Noto Naskh Arabic", serif;
   font-size: 2.45cqi;
   box-shadow: var(--page-shadow);
-  transform: rotateY(-9deg) rotateX(4deg) rotateZ(-1deg);
+  transform: rotateY(calc(-9deg + var(--tx, 0) * 9deg)) rotateX(calc(4deg - var(--ty, 0) * 7deg)) rotateZ(-1deg);
   transform-style: preserve-3d;
+  transition: transform 700ms var(--ease);
+}
+
+/* Light glancing off the paper, sliding as the page tilts. */
+.demo-sheet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    calc(115deg + var(--tx, 0) * 25deg),
+    rgba(255, 255, 255, 0) 25%,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(255, 255, 255, 0) 62%
+  );
+  mix-blend-mode: soft-light;
+  pointer-events: none;
 }
 
 .demo-sheet--behind {
   inset: 9% 5% 2% 15%;
   padding: 0;
   background: #f1f4f9;
-  transform: rotateY(-9deg) rotateX(4deg) rotateZ(3.5deg) translateZ(-80px);
+  transform: rotateY(calc(-9deg + var(--tx, 0) * 6deg)) rotateX(calc(4deg - var(--ty, 0) * 5deg)) rotateZ(3.5deg) translateZ(-80px);
   opacity: 0.85;
 }
 
@@ -739,6 +831,7 @@ html.theme-switching::view-transition-new(root) {
 
 /* The loupe: a lens floating above the page, showing the line large. */
 .demo-loupe {
+  translate: calc(var(--tx, 0) * 22px) calc(var(--ty, 0) * 14px);
   position: absolute;
   top: 30%;
   inset-inline-end: 0;
@@ -764,6 +857,7 @@ html.theme-switching::view-transition-new(root) {
   transition:
     opacity 300ms ease-out,
     transform 500ms var(--spring),
+    translate 700ms var(--ease),
     top 600ms var(--ease);
   /* The line runs on past the lens's start edge: fade it there. */
   -webkit-mask-image: linear-gradient(to right, transparent, #000 18%);
@@ -797,6 +891,7 @@ html.theme-switching::view-transition-new(root) {
 }
 
 .demo-check {
+  translate: calc(var(--tx, 0) * 12px) calc(var(--ty, 0) * 8px);
   position: absolute;
   inset-inline-start: 2%;
   bottom: 3%;
@@ -818,7 +913,8 @@ html.theme-switching::view-transition-new(root) {
   transform: translateY(10px);
   transition:
     opacity 250ms ease-out,
-    transform 400ms var(--spring);
+    transform 400ms var(--spring),
+    translate 700ms var(--ease);
 }
 
 .demo-check svg {

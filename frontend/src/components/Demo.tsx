@@ -61,6 +61,32 @@ export default function Demo() {
     return () => ro.disconnect();
   }, []);
 
+  // The page tilts toward the mouse (--tx, --ty from -1 to 1), as if held in the hand.
+  useEffect(() => {
+    const el = stage.current;
+    if (!el || still || !window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return;
+    let queued = false;
+    let x = 0;
+    let y = 0;
+    const paint = () => {
+      queued = false;
+      const r = el.getBoundingClientRect();
+      const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+      el.style.setProperty("--tx", clamp((x - (r.left + r.width / 2)) / r.width).toFixed(3));
+      el.style.setProperty("--ty", clamp((y - (r.top + r.height / 2)) / r.height).toFixed(3));
+    };
+    const move = (e: PointerEvent) => {
+      x = e.clientX;
+      y = e.clientY;
+      if (!queued) {
+        queued = true;
+        requestAnimationFrame(paint);
+      }
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    return () => window.removeEventListener("pointermove", move);
+  }, [still]);
+
   const frame = still ? STILL : FRAMES[step][0];
   const edit = EDITS[frame.line];
   // A line shows its new month once saved, and keeps it until the loop starts over.
