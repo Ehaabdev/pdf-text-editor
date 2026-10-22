@@ -44,6 +44,7 @@ export default function SelectionPanel({ picked, deleting, onDelete, onClose }: 
 
       <div className="edit-actions">
         <button className="btn btn-delete" onClick={onDelete} disabled={n === 0 || deleting}>
+          {deleting && <span className="spinner" aria-hidden="true" />}
           {deleting ? "Deleting…" : n === 1 ? "Delete line" : n > 1 ? `Delete ${n} lines` : "Delete lines"}
         </button>
         <button className="btn btn-secondary" onClick={onClose} disabled={deleting}>

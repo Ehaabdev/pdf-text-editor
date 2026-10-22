@@ -25,15 +25,23 @@ type Props = {
   onEdited: (outcome: EditOutcome, change: Change) => void;
   onDelete: () => void;
   onSelectMore: () => void;
+  /** The server is checking this panel's change. */
+  onWorking?: (working: boolean) => void;
 };
 
 type Mode = "view" | "edit" | "add";
 
-export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore }: Props) {
+export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onWorking }: Props) {
   const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState(line.display);
   const [where, setWhere] = useState<"below" | "above">("below");
   const [saving, setSaving] = useState(false);
+
+  // Tell the page while the server works on this change (and stop if the panel closes).
+  useEffect(() => {
+    onWorking?.(saving);
+  }, [saving, onWorking]);
+  useEffect(() => () => onWorking?.(false), [onWorking]);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -151,7 +159,8 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           )}
           <div className="edit-actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? "Saving…" : mode === "add" ? "Add line" : "Save change"}
+              {saving && <span className="spinner" aria-hidden="true" />}
+              {saving ? "Checking the change…" : mode === "add" ? "Add line" : "Save change"}
             </button>
             <button className="btn btn-secondary" type="button" disabled={saving} onClick={() => show("view")}>
               Cancel
@@ -215,6 +224,7 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               Add a line
             </button>
             <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
+              {deleting && <span className="spinner" aria-hidden="true" />}
               {deleting ? "Deleting…" : "Delete line"}
             </button>
             <button className="btn btn-ghost" onClick={onSelectMore} disabled={deleting}>

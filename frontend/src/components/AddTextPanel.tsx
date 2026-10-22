@@ -10,6 +10,8 @@ type Props = {
   spot: Spot;
   onClose: () => void;
   onAdded: (outcome: EditOutcome) => void;
+  /** The server is checking the new text. */
+  onWorking?: (working: boolean) => void;
 };
 
 type Style = { key: string; line: TextLine; distance: number };
@@ -36,13 +38,19 @@ function stylesNear(lines: TextLine[], spot: Spot): Style[] {
 
 const SHOWN = 4;
 
-export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
+export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }: Props) {
   const [lines, setLines] = useState<TextLine[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Tell the page while the server works on this change (and stop if the panel closes).
+  useEffect(() => {
+    onWorking?.(saving);
+  }, [saving, onWorking]);
+  useEffect(() => () => onWorking?.(false), [onWorking]);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -176,7 +184,8 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
         )}
         <div className="edit-actions">
           <button className="btn btn-primary" type="submit" disabled={saving || !chosen}>
-            {saving ? "Adding…" : "Add text"}
+            {saving && <span className="spinner" aria-hidden="true" />}
+            {saving ? "Checking the change…" : "Add text"}
           </button>
           <button className="btn btn-secondary" type="button" disabled={saving} onClick={onClose}>
             Cancel

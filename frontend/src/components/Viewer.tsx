@@ -17,7 +17,7 @@ import CheckPanel from "./CheckPanel";
 import HomePanel from "./HomePanel";
 import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, Mark, MINUS, PLUS, REDO, UNDO } from "./Icon";
 import LinePanel, { type Change } from "./LinePanel";
-import PageView from "./PageView";
+import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
@@ -39,7 +39,12 @@ function useWidth(ref: React.RefObject<HTMLElement | null>) {
   return width;
 }
 
-type Notice = { text: string; tone: "done" | "warning" | "error" };
+type Notice = { text: string; tone: "done" | "warning" | "error"; detail?: string };
+type HistoryEntry = DocInfo["history"][number];
+
+// Every change the server accepts has passed its checks, among them that nothing outside
+// the changed lines differs by a single pixel.
+const CHECKED = "Checked: nothing else on the page changed.";
 
 export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClose: () => void; onChange: (d: DocInfo) => void }) {
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -58,6 +63,22 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     return () => clearTimeout(t);
   }, [notice]);
 
+  // Where the last change was made: lit up on the page once its new image is showing.
+  const [flash, setFlash] = useState<Flash | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 4000);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  function lightUp(d: DocInfo, change: HistoryEntry | undefined) {
+    const rects = change ? (change.marks ?? change.areas ?? []) : [];
+    setFlash(rects.length ? { revision: d.revision, rects } : null);
+  }
+
+  // A panel is waiting for the server: the selected lines shimmer meanwhile.
+  const [working, setWorking] = useState(false);
+
   // Nothing left to compare: back to editing.
   useEffect(() => {
     if (doc.version === 0) setCompare(null);
@@ -68,7 +89,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const subs = (outcome.lookalikes ?? []).map((l) => l.substitute);
     const warnings = outcome.warnings.filter((w) => !subs.some((s) => w.includes(s)));
     setNotice(
-      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done" },
+      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done", detail: CHECKED },
     );
   }
 
@@ -80,6 +101,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function edited(outcome: EditOutcome, change: Change) {
     clearSelection();
     onChange(outcome.document);
+    lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
     report(
       change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
@@ -95,6 +117,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       const outcome = await deleteLines(doc, lines);
       clearSelection();
       onChange(outcome.document);
+      lightUp(outcome.document, outcome.document.history.at(-1));
       report(lines.length === 1 ? "Line deleted. The space it used stays empty." : `${lines.length} lines deleted. The space they used stays empty.`, outcome);
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't delete. Try again.", tone: "error" });
@@ -104,10 +127,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }
 
   /** Undo, redo, or jump to a version: the pages change, nothing else does. */
-  async function move(action: () => Promise<DocInfo>, done: string, failed: string) {
+  async function move(action: () => Promise<DocInfo>, done: string, failed: string, light?: (d: DocInfo) => HistoryEntry | undefined) {
     setBusy(true);
     try {
-      onChange(await action());
+      const d = await action();
+      onChange(d);
+      if (light) lightUp(d, light(d));
       setChecking(null);
       clearSelection();
       stopPlacing();
@@ -118,8 +143,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       setBusy(false);
     }
   }
-  const undo = () => move(() => undoEdit(doc), "Last change undone.", "Couldn't undo. Try again.");
-  const redo = () => move(() => redoEdit(doc), "Change redone.", "Couldn't redo. Try again.");
+  // Undo lights up the change it took back; redo the one it put back.
+  const undo = () => move(() => undoEdit(doc), "Last change undone.", "Couldn't undo. Try again.", (d) => d.history[d.version]);
+  const redo = () => move(() => redoEdit(doc), "Change redone.", "Couldn't redo. Try again.", (d) => d.history[d.version - 1]);
   const goTo = (version: number) =>
     move(
       () => goToVersion(doc, version),
@@ -290,9 +316,11 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           doc={doc}
           spot={spot}
           onClose={stopPlacing}
+          onWorking={setWorking}
           onAdded={(outcome) => {
             stopPlacing();
             onChange(outcome.document);
+            lightUp(outcome.document, outcome.document.history.at(-1));
             report("Text added.", outcome);
             offerCheck(outcome);
           }}
@@ -319,6 +347,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         deleting={deleting}
         onClose={clearSelection}
         onEdited={edited}
+        onWorking={setWorking}
         onDelete={() => void remove(picked)}
         onSelectMore={() => setAdding(true)}
       />
@@ -328,7 +357,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   return (
     <div
-      className={`viewer${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}${compare ? " viewer--comparing" : ""}`}
+      className={`viewer${working || deleting ? " viewer--working" : ""}${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}${compare ? " viewer--comparing" : ""}`}
     >
       <header className="bar">
         <button
@@ -418,7 +447,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               {available > 0 &&
                 doc.pages.map((p, i) => (
                   <PageView
-                    key={`${doc.revision}-${i}`}
+                    key={i}
                     doc={doc}
                     index={i}
                     width={pageWidth(p.width)}
@@ -429,6 +458,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     onPlace={(x, y) => setSpot({ page: i, x, y })}
                     version={shownVersion}
                     outlines={outlines(i)}
+                    flash={flash && { revision: flash.revision, rects: flash.rects.filter((r) => r[0] === i).map((r) => r.slice(1)) }}
                   />
                 ))}
             </div>
@@ -440,7 +470,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         <aside className="dock">
           {notice && (
             <div className={`notice notice--${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>
-              <p>{notice.text}</p>
+              <p>
+                {notice.text}
+                {notice.detail && <span className="notice-detail">{notice.detail}</span>}
+              </p>
               <button className="btn btn-ghost btn-icon" onClick={() => setNotice(null)} aria-label="Dismiss">
                 <Icon d={CLOSE} size={16} />
               </button>

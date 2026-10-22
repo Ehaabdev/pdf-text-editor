@@ -4,6 +4,9 @@ import { getLines, pageImageUrl, type DocInfo, type PageLines, type TextLine } f
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
 const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
 
+/** Spots to light up briefly once this page's new image is on screen: where a change was made. */
+export type Flash = { revision: number; rects: number[][] };
+
 type Props = {
   doc: DocInfo;
   index: number;
@@ -20,31 +23,51 @@ type Props = {
   version?: number;
   /** Areas to outline (points, as displayed): where changes were made. */
   outlines?: number[][];
+  flash?: Flash | null;
 };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [] }: Props) {
+/** One image of the page: which revision and version it shows, and its URLs. */
+type Layer = { key: string; revision: number; src: string; srcSet: string };
+
+export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [], flash }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
-  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
-  const [text, setText] = useState<PageLines | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  // The image on screen. After a change the old image stays until the new one has
+  // loaded, so the page never flashes blank.
+  const [shown, setShown] = useState<Layer | null>(null);
+  const [text, setText] = useState<{ revision: number; lines: PageLines } | null>(null);
 
-  // Text boxes are fetched once the page image is on screen.
+  const url = (w: number) => pageImageUrl(doc, index, w, version) + (attempt ? `&retry=${attempt}` : "");
+  const wanted: Layer = {
+    key: `${doc.revision}-${version ?? "now"}-${attempt}`,
+    revision: doc.revision,
+    src: url(960),
+    srcSet: WIDTHS.map((w) => `${url(w)} ${w}w`).join(", "),
+  };
+  const loaded = shown !== null;
+  const state = failed === wanted.key ? "failed" : loaded ? "ready" : "loading";
+
+  // Text boxes are fetched once the page has first shown, and again after every change.
   useEffect(() => {
-    if (state !== "ready" || text) return;
+    if (!loaded || text?.revision === doc.revision) return;
     let alive = true;
     getLines(doc, index)
-      .then((t) => alive && setText(t))
+      .then((t) => alive && setText({ revision: doc.revision, lines: t }))
       .catch(() => {
         // Without text boxes the page still shows; nothing to tell the user here.
       });
     return () => {
       alive = false;
     };
-  }, [state, text, doc, index]);
+  }, [loaded, text, doc, index]);
 
-  const url = (w: number) => pageImageUrl(doc, index, w, version) + (attempt ? `&retry=${attempt}` : "");
+  const lines = text?.revision === doc.revision ? text.lines : null;
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  // While a new image loads underneath, the previous one stays on top of it.
+  const swapping = shown !== null && shown.key !== wanted.key;
+  const layers = swapping ? [wanted, shown] : [wanted];
 
   return (
     <figure className="page-wrap" id={`page-${index}`} style={{ width }}>
@@ -61,18 +84,25 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
           if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null, false);
         }}
       >
-        <img
-          key={`${attempt}-${version ?? "now"}`}
-          src={url(960)}
-          srcSet={WIDTHS.map((w) => `${url(w)} ${w}w`).join(", ")}
-          sizes={`${Math.round(width)}px`}
-          alt={`Page ${index + 1}`}
-          loading={index < 2 ? "eager" : "lazy"}
-          decoding="async"
-          draggable={false}
-          onLoad={() => setState("ready")}
-          onError={() => setState("failed")}
-        />
+        {layers.map((layer) => (
+          <img
+            key={layer.key}
+            className={layer !== wanted ? "page-prev" : undefined}
+            src={layer.src}
+            srcSet={layer.srcSet}
+            sizes={`${Math.round(width)}px`}
+            alt={layer === wanted ? `Page ${index + 1}` : ""}
+            loading={index < 2 ? "eager" : "lazy"}
+            decoding="async"
+            draggable={false}
+            onLoad={() => {
+              if (layer.key !== wanted.key) return;
+              setShown(layer);
+              setFailed(null);
+            }}
+            onError={() => layer.key === wanted.key && setFailed(layer.key)}
+          />
+        ))}
         {outlines.map(([x0, y0, x1, y1], k) => (
           <span
             key={k}
@@ -81,9 +111,20 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
             aria-hidden="true"
           />
         ))}
-        {text && editable && (
+        {/* The glow starts only once the new image is the one on screen. */}
+        {flash &&
+          shown?.revision === flash.revision &&
+          flash.rects.map(([x0, y0, x1, y1], k) => (
+            <span
+              key={`${flash.revision}-${k}`}
+              className="change-flash"
+              style={{ left: pct(x0, size.width), top: pct(y0, size.height), width: pct(x1 - x0, size.width), height: pct(y1 - y0, size.height) }}
+              aria-hidden="true"
+            />
+          ))}
+        {lines && editable && (
           <div className="page-overlay">
-            {text.lines.map((line) => {
+            {lines.lines.map((line) => {
               const [x0, y0, x1, y1] = line.bbox;
               // A little extra around each line makes small text easier to tap.
               const padX = 1, padY = Math.min(2, (y1 - y0) * 0.15);
@@ -94,10 +135,10 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
                   type="button"
                   className={`line-box${selected ? " line-box--selected" : ""}${line.uncertain ? " line-box--uncertain" : ""}`}
                   style={{
-                    left: pct(x0 - padX, text.width),
-                    top: pct(y0 - padY, text.height),
-                    width: pct(x1 - x0 + 2 * padX, text.width),
-                    height: pct(y1 - y0 + 2 * padY, text.height),
+                    left: pct(x0 - padX, lines.width),
+                    top: pct(y0 - padY, lines.height),
+                    width: pct(x1 - x0 + 2 * padX, lines.width),
+                    height: pct(y1 - y0 + 2 * padY, lines.height),
                   }}
                   aria-label={line.text}
                   aria-pressed={selected}
@@ -119,7 +160,7 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
             <button
               className="btn btn-secondary"
               onClick={() => {
-                setState("loading");
+                setFailed(null);
                 setAttempt((a) => a + 1);
               }}
             >
