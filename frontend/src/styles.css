@@ -690,6 +690,112 @@ body {
   outline-offset: 0;
 }
 
+.where {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.where-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.where-option--on {
+  border-color: var(--pencil);
+  background: var(--npb-wash);
+}
+
+.where-option input {
+  accent-color: var(--pencil);
+  margin: 0;
+}
+
+.where-option:has(input:focus-visible) {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
+.viewer--placing .page {
+  cursor: crosshair;
+}
+
+.viewer--placing .line-box {
+  pointer-events: none;
+}
+
+/* The mark where added text will start: a caret the height of a line of text. */
+.spot {
+  position: absolute;
+  width: 2px;
+  height: 18px;
+  margin: -9px 0 0 -1px;
+  background: var(--pencil);
+  box-shadow: 0 0 0 3px var(--npb-wash);
+  pointer-events: none;
+}
+
+.style-choice {
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.style-choice legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.style-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+
+.style-option--on {
+  border-color: var(--pencil);
+  background: var(--npb-wash);
+}
+
+.style-option input {
+  margin: 3px 0 0;
+  accent-color: var(--pencil);
+}
+
+.style-option:has(input:focus-visible) {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
+.style-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.style-option-sample {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .picked-list {
   margin: 0 0 8px;
   padding: 0;

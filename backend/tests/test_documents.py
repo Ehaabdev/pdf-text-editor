@@ -225,6 +225,41 @@ def test_deleting_a_stale_line_is_refused(client):
     assert client.post(f"/api/documents/{doc['id']}/deletions", json={**body, "revision": 99}).status_code == 409
 
 
+def test_add_edit_delete_then_undo_everything(client):
+    doc = _fixture_upload(client)
+    ref = _line(client, doc, "Figures are rounded")
+    r = client.post(f"/api/documents/{doc['id']}/additions", json={
+        "revision": doc["revision"], "page": 0, "lineId": ref["id"], "oldText": ref["text"],
+        "text": "Source: the support team's own records."})
+    assert r.status_code == 200, r.text
+    added = r.json()["document"]
+    new = _line(client, added, "Source: the support team")
+    r = client.post(f"/api/documents/{doc['id']}/edits", json={
+        "revision": added["revision"], "page": 0, "lineId": new["id"], "oldText": new["text"],
+        "newText": "Source: the quarterly survey."})
+    assert r.status_code == 200, r.text
+    edited = r.json()["document"]
+    new = _line(client, edited, "Source: the quarterly")
+    r = client.post(f"/api/documents/{doc['id']}/deletions", json={
+        "revision": edited["revision"], "lines": [{"page": 0, "lineId": new["id"], "oldText": new["text"]}]})
+    assert r.status_code == 200, r.text
+    current = r.json()["document"]
+    texts = lambda d: [l["text"] for l in client.get(f"/api/documents/{d['id']}/pages/0/lines").json()["lines"]]
+    assert not any(t.startswith("Source:") for t in texts(current))
+    for want in ("Source: the quarterly survey.", "Source: the support team's own records.", None):
+        current = client.post(f"/api/documents/{doc['id']}/undo", json={"revision": current["revision"]}).json()
+        sources = [t for t in texts(current) if t.startswith("Source:")]
+        assert sources == ([want] if want else [])
+
+
+def test_adding_where_there_is_no_room_explains_why(client):
+    doc = _fixture_upload(client)
+    ref = _line(client, doc, "Quarterly Service Report")
+    r = client.post(f"/api/documents/{doc['id']}/additions", json={
+        "revision": doc["revision"], "page": 0, "lineId": ref["id"], "oldText": ref["text"], "text": "Draft"})
+    assert r.status_code == 422 and "no room" in r.json()["detail"]
+
+
 def test_nothing_to_undo(client):
     doc = _fixture_upload(client)
     assert client.post(f"/api/documents/{doc['id']}/undo", json={"revision": doc["revision"]}).status_code == 409

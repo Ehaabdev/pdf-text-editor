@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
+import { ApiError, addLine, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 
 type Look = Pick<TextSpan, "font" | "size" | "color" | "bold" | "italic">;
@@ -12,38 +12,48 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
+export type Change = "changed" | "deleted" | "added";
+
 type Props = {
   doc: DocInfo;
   line: TextLine;
   page: number; // 0-based
   deleting: boolean;
   onClose: () => void;
-  /** deleted: the text was emptied, which deletes the line. */
-  onEdited: (outcome: EditOutcome, deleted: boolean) => void;
+  onEdited: (outcome: EditOutcome, change: Change) => void;
   onDelete: () => void;
   onSelectMore: () => void;
 };
 
+type Mode = "view" | "edit" | "add";
+
 export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore }: Props) {
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState(line.display);
+  const [where, setWhere] = useState<"below" | "above">("below");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
+  function show(next: Mode) {
+    setMode(next);
+    setDraft(next === "add" ? "" : line.display);
+    setError(null);
+  }
+
   // A different line was selected: start over.
   useEffect(() => {
-    setEditing(false);
+    setMode("view");
     setDraft(line.display);
     setError(null);
   }, [line.id, line.display]);
 
   useEffect(() => {
-    if (editing) {
+    if (mode !== "view") {
       box.current?.focus();
       box.current?.select();
     }
-  }, [editing]);
+  }, [mode]);
 
   // Other styles used in the line, besides the main one: a bold word, a colored word.
   const others: TextSpan[] = [];
@@ -53,10 +63,15 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
 
   async function save() {
     if (saving) return;
+    if (mode === "add" && !draft.trim()) {
+      setError("Type the text to add.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      onEdited(await editLine(doc, page, line, draft), draft.trim() === "");
+      if (mode === "add") onEdited(await addLine(doc, page, line, draft, where), "added");
+      else onEdited(await editLine(doc, page, line, draft), draft.trim() === "" ? "deleted" : "changed");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
     } finally {
@@ -64,10 +79,12 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     }
   }
 
+  const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
+
   return (
-    <section className="line-panel" aria-label={editing ? "Edit line" : "Selected line"}>
+    <section className="line-panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
       <div className="line-panel-head">
-        <h2>{editing ? "Edit line" : `Line on page ${page + 1}`}</h2>
+        <h2>{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
             <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -75,22 +92,33 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
         </button>
       </div>
 
-      {editing ? (
+      {mode !== "view" ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
         >
+          {mode === "add" && (
+            <div className="where" role="radiogroup" aria-label="Where the new line goes">
+              {(["below", "above"] as const).map((w) => (
+                <label key={w} className={`where-option${where === w ? " where-option--on" : ""}`}>
+                  <input type="radio" name="where" value={w} checked={where === w} onChange={() => setWhere(w)} disabled={saving} />
+                  {w === "below" ? "Below this line" : "Above this line"}
+                </label>
+              ))}
+            </div>
+          )}
           <textarea
             ref={box}
             className="line-edit"
-            dir={line.dir}
+            dir={mode === "add" ? "auto" : line.dir}
             lang={line.dir === "rtl" ? "ar" : undefined}
             value={draft}
             rows={2}
             spellCheck={false}
-            aria-label="New text for this line"
+            placeholder={mode === "add" ? "Type the new line" : undefined}
+            aria-label={mode === "add" ? "Text of the new line" : "New text for this line"}
             disabled={saving}
             onChange={(e) => setDraft(e.target.value.replace(/[\r\n]+/g, " "))}
             onKeyDown={(e) => {
@@ -99,16 +127,16 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
                 void save();
               } else if (e.key === "Escape") {
                 e.stopPropagation();
-                setEditing(false);
-                setDraft(line.display);
-                setError(null);
+                show("view");
               }
             }}
           />
           <p className="edit-note">
-            Keeps the font ({fontLabel(line.font)}), size ({pointSize(line.size)}) and color.
+            {mode === "add"
+              ? `Uses ${style} of this line. Nothing on the page moves to make room, so a new line fits best after a paragraph's last line.`
+              : `Keeps ${style}.`}
           </p>
-          {line.uncertain && (
+          {mode === "edit" && line.uncertain && (
             <p className="line-warning">
               Some letters on this line are stored wrongly in the PDF itself. Check the text above against the page and
               retype anything that differs.
@@ -121,18 +149,9 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           )}
           <div className="edit-actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save change"}
+              {saving ? "Saving…" : mode === "add" ? "Add line" : "Save change"}
             </button>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                setEditing(false);
-                setDraft(line.display);
-                setError(null);
-              }}
-            >
+            <button className="btn btn-secondary" type="button" disabled={saving} onClick={() => show("view")}>
               Cancel
             </button>
           </div>
@@ -187,8 +206,11 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           )}
 
           <div className="edit-actions">
-            <button className="btn btn-primary" onClick={() => setEditing(true)} disabled={deleting}>
+            <button className="btn btn-primary" onClick={() => show("edit")} disabled={deleting}>
               Edit text
+            </button>
+            <button className="btn btn-secondary" onClick={() => show("add")} disabled={deleting}>
+              Add a line
             </button>
             <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
               {deleting ? "Deleting…" : "Delete line"}

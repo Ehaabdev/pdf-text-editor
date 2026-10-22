@@ -1,7 +1,7 @@
-# Saves every .docx in backend/tests/fixtures/word and .../decorations as PDF using
-# Microsoft Word, exactly like File > Save As > PDF. Output: <name>-word.pdf next to
-# each .docx. Run after `node make.js` and `node decorations.js`. Needs Microsoft Word
-# on Windows; close Word first.
+# Saves every .docx in backend/tests/fixtures/word, .../decorations and .../additions as
+# PDF using Microsoft Word, exactly like File > Save As > PDF. Output: <name>-word.pdf
+# next to each .docx. Run after `node make.js`, `node decorations.js` and
+# `node additions.js`. Needs Microsoft Word on Windows; close Word first.
 #   powershell -File export.ps1                    all documents
 #   powershell -File export.ps1 french-quote       just one
 #
@@ -10,7 +10,7 @@
 # in a job it doesn't, and a stuck job can be timed out and cleaned up.
 
 $fixtures = Join-Path $PSScriptRoot "..\..\backend\tests\fixtures"
-$dirs = @("word", "decorations") | ForEach-Object { (Resolve-Path (Join-Path $fixtures $_)).Path }
+$dirs = @("word", "decorations", "additions") | ForEach-Object { (Resolve-Path (Join-Path $fixtures $_)).Path }
 $only = $args
 $timeoutSeconds = 60
 

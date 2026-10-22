@@ -141,6 +141,30 @@ export function editLine(doc: DocInfo, page: number, line: TextLine, newText: st
   });
 }
 
+/** Add a new line below or above a line, in that line's font, size and color. */
+export function addLine(doc: DocInfo, page: number, line: TextLine, text: string, where: "below" | "above"): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/additions`, {
+    revision: doc.revision,
+    page,
+    lineId: line.id,
+    oldText: line.text,
+    text,
+    where,
+  });
+}
+
+/** Add text at a point on the page (in points, as displayed), in the style of a line. */
+export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: string, at: [number, number]): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/additions`, {
+    revision: doc.revision,
+    page,
+    lineId: styleOf.id,
+    oldText: styleOf.text,
+    text,
+    at,
+  });
+}
+
 export type PickedLine = { page: number; line: TextLine };
 
 /** Delete whole lines, on any pages, as one change: one Undo brings them all back. */
