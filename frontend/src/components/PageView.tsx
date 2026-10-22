@@ -70,7 +70,8 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
   const layers = swapping ? [wanted, shown] : [wanted];
 
   return (
-    <figure className="page-wrap" id={`page-${index}`} style={{ width }}>
+    // Pages rise into place one after another when the file opens (they stay mounted after).
+    <figure className="page-wrap" id={`page-${index}`} style={{ width, "--delay": `${Math.min(index, 4) * 80}ms` } as React.CSSProperties}>
       <div
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
