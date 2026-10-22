@@ -864,3 +864,157 @@ body {
     margin-inline: var(--gutter);
   }
 }
+
+/* Changes: the count on the button, the list, and comparing with the original. */
+
+.count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--npb-wash);
+  border: 1px solid var(--npb);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.changes-list {
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.changes-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.changes-list li:last-child {
+  border-bottom: 0;
+}
+
+.change-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9375rem;
+}
+
+.change-text > span:first-child {
+  overflow-wrap: anywhere;
+}
+
+.change-meta {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.change--undone .change-text > span:first-child {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.compare-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px var(--gutter);
+  border-bottom: 1px solid var(--rule);
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.segmented button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--pencil);
+  color: var(--on-pencil);
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--pencil);
+  outline-offset: 2px;
+}
+
+/* Where a change was made, drawn over the page while comparing. */
+.change-outline {
+  position: absolute;
+  border: 2px solid #e0a100;
+  border-radius: 2px;
+  background: rgba(255, 196, 0, 0.12);
+  pointer-events: none;
+}
+
+/* A close look at one change: before and after. */
+.check-summary {
+  margin: 0 0 8px;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.check-shot {
+  margin: 0 0 8px;
+}
+
+.check-shot figcaption {
+  margin-bottom: 3px;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.check-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+/* Phones: the top bar holds Close, Undo, Redo, Changes and Download; the file's name
+   needs the rest of the room. */
+@media (max-width: 480px) {
+  .topbar {
+    gap: 4px;
+  }
+
+  .topbar .download-label,
+  .doc-pages {
+    display: none;
+  }
+}
+
+/* Checking a change is the task at hand: room for both images and the buttons. */
+.line-panel.check-panel {
+  max-height: 82dvh;
+}
+
+.check-shot img {
+  max-height: 110px;
+  object-fit: contain;
+}

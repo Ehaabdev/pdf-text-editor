@@ -187,9 +187,21 @@ def test_plain_line_edit_on_background_image_is_invisible(fixture_pdf):
     assert_invisible(edit_and_measure(fixture_pdf, 0, "Date:", "09/2/2026", "29/6/2026"))
 
 
-def test_refuses_characters_the_subset_font_cannot_draw(fixture_pdf, monkeypatch):
-    # As on a server without Arial: the fixture never uses the digit 1, so it can't be drawn.
+def test_a_letter_the_subset_lacks_comes_from_the_look_alike(fixture_pdf, monkeypatch):
+    # As on a server without Arial: the fixture never uses the digit 1, so its copy of
+    # Arial can't draw it; Liberation Sans (same widths) does, and the user is told.
     monkeypatch.setattr(library(), "find", lambda name: None)
+    line = next(l for l in page_lines(pymupdf.open("pdf", fixture_pdf)[0]) if "Date:" in l.text)
+    result = replace_line(fixture_pdf, 0, line.id, line.text, line.text.replace("09/2/2026", "10/2/2026"))
+    assert result.lookalikes == [{"font": "Arial", "substitute": "Liberation Sans", "sameWidths": True}]
+
+
+def test_refuses_characters_nothing_can_draw(fixture_pdf, monkeypatch):
+    # Without Arial and without a look-alike for it.
+    from app import fonts as fontlib
+
+    monkeypatch.setattr(library(), "find", lambda name: None)
+    monkeypatch.setattr(fontlib, "lookalike", lambda name, arabic: None)
     with pytest.raises(EditRejected, match="doesn't contain all the letters"):
         real_replace(fixture_pdf, 0, "Date:", "09/2/2026", "10/2/2026")
 

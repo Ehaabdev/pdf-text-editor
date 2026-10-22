@@ -16,9 +16,14 @@ type Props = {
   placing: boolean;
   spot: { x: number; y: number } | null;
   onPlace: (x: number, y: number) => void;
+  /** Comparing: which stored version to show (0 is the original), with editing off. */
+  version?: number;
+  /** Areas to outline (points, as displayed): where changes were made. */
+  outlines?: number[][];
 };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace }: Props) {
+export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [] }: Props) {
+  const editable = version === undefined;
   const size = doc.pages[index];
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -38,15 +43,16 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
     };
   }, [state, text, doc, index]);
 
-  const url = (w: number) => pageImageUrl(doc, index, w) + (attempt ? `&retry=${attempt}` : "");
+  const url = (w: number) => pageImageUrl(doc, index, w, version) + (attempt ? `&retry=${attempt}` : "");
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
   return (
-    <figure className="page-wrap" style={{ width }}>
+    <figure className="page-wrap" id={`page-${index}`} style={{ width }}>
       <div
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
         onClick={(e) => {
+          if (!editable) return;
           if (placing) {
             const r = e.currentTarget.getBoundingClientRect();
             onPlace(((e.clientX - r.left) / r.width) * size.width, ((e.clientY - r.top) / r.height) * size.height);
@@ -56,7 +62,7 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
         }}
       >
         <img
-          key={attempt}
+          key={`${attempt}-${version ?? "now"}`}
           src={url(960)}
           srcSet={WIDTHS.map((w) => `${url(w)} ${w}w`).join(", ")}
           sizes={`${Math.round(width)}px`}
@@ -67,7 +73,15 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
           onLoad={() => setState("ready")}
           onError={() => setState("failed")}
         />
-        {text && (
+        {outlines.map(([x0, y0, x1, y1], k) => (
+          <span
+            key={k}
+            className="change-outline"
+            style={{ left: pct(x0, size.width), top: pct(y0, size.height), width: pct(x1 - x0, size.width), height: pct(y1 - y0, size.height) }}
+            aria-hidden="true"
+          />
+        ))}
+        {text && editable && (
           <div className="page-overlay">
             {text.lines.map((line) => {
               const [x0, y0, x1, y1] = line.bbox;

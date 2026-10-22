@@ -1,8 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ApiError, deleteLines, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type PickedLine, type TextLine } from "../api";
+import {
+  ApiError,
+  deleteLines,
+  downloadUrl,
+  goToVersion,
+  redoEdit,
+  undoEdit,
+  type DocInfo,
+  type EditOutcome,
+  type PickedLine,
+  type TextLine,
+} from "../api";
+import AddTextPanel, { type Spot } from "./AddTextPanel";
+import ChangesPanel from "./ChangesPanel";
+import CheckPanel from "./CheckPanel";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView from "./PageView";
-import AddTextPanel, { type Spot } from "./AddTextPanel";
 import SelectionPanel from "./SelectionPanel";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
@@ -24,7 +37,9 @@ const PLUS = "M10 4v12M4 10h12";
 const MINUS = "M4 10h12";
 const BOXES = "M3 5h9M3 10h14M3 15h11";
 const UNDO = "M7.5 5.5L4 9l3.5 3.5M4.5 9H12a4 4 0 010 8h-2";
+const REDO = "M12.5 5.5L16 9l-3.5 3.5M15.5 9H8a4 4 0 000 8h2";
 const ADD_TEXT = "M3 4.5h8M7 4.5V15M12.5 12.5h5M15 10v5";
+const CHANGES = "M7 5h10M7 10h10M7 15h10M3.5 5h.01M3.5 10h.01M3.5 15h.01";
 
 function useWidth(ref: React.RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(0);
@@ -43,7 +58,13 @@ type Notice = { text: string; tone: "done" | "warning" | "error" };
 
 export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClose: () => void; onChange: (d: DocInfo) => void }) {
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [undoing, setUndoing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  // Comparing with the original: which version the pages show, with the changes outlined.
+  const [compare, setCompare] = useState<"original" | "now" | null>(null);
+  // A close look at one change (doc.history index), opened after a change that used a
+  // look-alike font, or from the list of changes.
+  const [checking, setChecking] = useState<number | null>(null);
 
   // Confirmations fade after a while; warnings and errors stay until dismissed.
   useEffect(() => {
@@ -52,17 +73,29 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     return () => clearTimeout(t);
   }, [notice]);
 
+  // Nothing left to compare: back to editing.
+  useEffect(() => {
+    if (doc.version === 0) setCompare(null);
+  }, [doc.version]);
+
   function report(what: string, outcome: EditOutcome) {
+    // A look-alike font is explained in the check panel that opens: not twice.
+    const subs = (outcome.lookalikes ?? []).map((l) => l.substitute);
+    const warnings = outcome.warnings.filter((w) => !subs.some((s) => w.includes(s)));
     setNotice(
-      outcome.warnings.length
-        ? { text: `${what} ${outcome.warnings.join(" ")}`, tone: "warning" }
-        : { text: what, tone: "done" },
+      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done" },
     );
+  }
+
+  /** After a change that used a look-alike font: ask the user to check it. */
+  function offerCheck(outcome: EditOutcome) {
+    if (outcome.lookalikes?.length) setChecking(outcome.document.history.length - 1);
   }
 
   function edited(outcome: EditOutcome, change: Change) {
     clearSelection();
     onChange(outcome.document);
+    offerCheck(outcome);
     report(
       change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
       outcome,
@@ -85,18 +118,29 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     }
   }
 
-  async function undo() {
-    setUndoing(true);
+  /** Undo, redo, or jump to a version: the pages change, nothing else does. */
+  async function move(action: () => Promise<DocInfo>, done: string, failed: string) {
+    setBusy(true);
     try {
-      onChange(await undoEdit(doc));
+      onChange(await action());
+      setChecking(null);
       clearSelection();
-      setNotice({ text: "Last change undone.", tone: "done" });
+      stopPlacing();
+      setNotice({ text: done, tone: "done" });
     } catch (e) {
-      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't undo. Try again.", tone: "error" });
+      setNotice({ text: e instanceof ApiError ? e.message : failed, tone: "error" });
     } finally {
-      setUndoing(false);
+      setBusy(false);
     }
   }
+  const undo = () => move(() => undoEdit(doc), "Last change undone.", "Couldn't undo. Try again.");
+  const redo = () => move(() => redoEdit(doc), "Change redone.", "Couldn't redo. Try again.");
+  const goTo = (version: number) =>
+    move(
+      () => goToVersion(doc, version),
+      version === 0 ? "Back to the original. Your changes can still be redone." : "Changes redone.",
+      "Couldn't do that. Try again.",
+    );
 
   const scroller = useRef<HTMLElement>(null);
   const available = useWidth(scroller);
@@ -119,6 +163,33 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function clearSelection() {
     setPicked([]);
     setAdding(false);
+  }
+
+  function startComparing(show: "original" | "now" = "original") {
+    clearSelection();
+    stopPlacing();
+    setCompare(show);
+  }
+
+  /** Scroll so a spot on a page (points, as displayed) is in the middle of the view. */
+  function scrollTo(page: number, x: number, y: number) {
+    const el = scroller.current;
+    const figure = document.getElementById(`page-${page}`);
+    if (!el || !figure) return;
+    const img = figure.querySelector(".page") as HTMLElement | null;
+    const box = img ?? figure;
+    const size = doc.pages[page];
+    el.scrollTop = box.offsetTop + (y / size.height) * box.offsetHeight - el.clientHeight / 3;
+    el.scrollLeft = box.offsetLeft + (x / size.width) * box.offsetWidth - el.clientWidth / 2;
+  }
+
+  function show(index: number) {
+    const change = doc.history[index];
+    const where = (change.marks ?? change.areas ?? [])[0];
+    if (!where) return;
+    const [page, x0, y0, x1, y1] = where;
+    startComparing("now");
+    requestAnimationFrame(() => scrollTo(page, (x0 + x1) / 2, (y0 + y1) / 2));
   }
 
   function select(page: number, line: TextLine | null, more: boolean) {
@@ -151,8 +222,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       if (e.key === "Escape") {
         clearSelection();
         stopPlacing();
-      }
-      else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length) {
+        setCompare(null);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length && !compare) {
         e.preventDefault();
         void remove(picked);
       }
@@ -164,8 +235,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const pageWidth = (ptWidth: number) =>
     Math.max(200, Math.min(available - 2 * GUTTER, ptWidth * CSS_PX_PER_PT)) * zoom;
 
+  // While comparing, the pages show a stored version, with every applied change outlined.
+  const shownVersion = compare === "original" ? 0 : compare === "now" ? doc.version : undefined;
+  const outlines = (page: number) =>
+    compare
+      ? doc.history.filter((c) => c.applied).flatMap((c) => (c.marks ?? c.areas ?? []).filter((a) => a[0] === page).map((a) => a.slice(1)))
+      : [];
+  const applied = doc.history.filter((c) => c.applied).length;
+
   return (
-    <div className={`desk viewer${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}`}>
+    <div
+      className={`desk viewer${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}${compare ? " viewer--comparing" : ""}`}
+    >
       <header className="topbar">
         <button className="btn btn-ghost" onClick={onClose} aria-label="Close this PDF and open another">
           <Icon d={CLOSE} />
@@ -180,14 +261,32 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </span>
         </div>
         {doc.canUndo && (
-          <button className="btn btn-ghost" onClick={() => void undo()} disabled={undoing} aria-label="Undo the last change">
+          <button className="btn btn-ghost" onClick={() => void undo()} disabled={busy} aria-label="Undo the last change">
             <Icon d={UNDO} />
             <span className="wide-only">Undo</span>
           </button>
         )}
-        <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name}>
+        {doc.canRedo && (
+          <button className="btn btn-ghost" onClick={() => void redo()} disabled={busy} aria-label="Redo the change undone last">
+            <Icon d={REDO} />
+            <span className="wide-only">Redo</span>
+          </button>
+        )}
+        {doc.history.length > 0 && (
+          <button
+            className="btn btn-ghost"
+            aria-pressed={showChanges}
+            onClick={() => setShowChanges((v) => !v)}
+            aria-label={`Changes (${applied})`}
+          >
+            <Icon d={CHANGES} />
+            <span className="wide-only">Changes</span>
+            <span className="count">{applied}</span>
+          </button>
+        )}
+        <a className="btn btn-primary" href={downloadUrl(doc)} download={doc.name} aria-label="Download PDF">
           <Icon d={DOWNLOAD} />
-          <span>
+          <span className="download-label">
             Download<span className="wide-only"> PDF</span>
           </span>
         </a>
@@ -197,6 +296,22 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         <p className="banner" role="status">
           This PDF has a digital signature. Editing it will make that signature invalid.
         </p>
+      )}
+
+      {compare && (
+        <div className="compare-bar" role="group" aria-label="Compare with the original">
+          <div className="segmented">
+            <button aria-pressed={compare === "original"} onClick={() => setCompare("original")}>
+              Original
+            </button>
+            <button aria-pressed={compare === "now"} onClick={() => setCompare("now")}>
+              With changes
+            </button>
+          </div>
+          <button className="btn btn-ghost" onClick={() => setCompare(null)}>
+            Done
+          </button>
+        </div>
       )}
 
       <main className="pages" ref={scroller}>
@@ -213,6 +328,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 placing={placing}
                 spot={spot?.page === i ? spot : null}
                 onPlace={(x, y) => setSpot({ page: i, x, y })}
+                version={shownVersion}
+                outlines={outlines(i)}
               />
             ))}
         </div>
@@ -220,30 +337,34 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
       <div className="viewer-bottom">
       <div className="view-controls" role="toolbar" aria-label="View">
-        <button
-          className="btn btn-control"
-          aria-pressed={placing}
-          onClick={() => {
-            if (placing) stopPlacing();
-            else {
-              clearSelection();
-              setPlacing(true);
-            }
-          }}
-          title={placing ? "Stop adding text" : "Add text anywhere on the page"}
-          aria-label={placing ? "Stop adding text" : "Add text anywhere on the page"}
-        >
-          <Icon d={ADD_TEXT} />
-        </button>
-        <button
-          className="btn btn-control"
-          aria-pressed={showText}
-          onClick={() => setShowText((v) => !v)}
-          title={showText ? "Hide text boxes" : "Show all text boxes"}
-          aria-label={showText ? "Hide text boxes" : "Show all text boxes"}
-        >
-          <Icon d={BOXES} />
-        </button>
+        {!compare && (
+          <button
+            className="btn btn-control"
+            aria-pressed={placing}
+            onClick={() => {
+              if (placing) stopPlacing();
+              else {
+                clearSelection();
+                setPlacing(true);
+              }
+            }}
+            title={placing ? "Stop adding text" : "Add text anywhere on the page"}
+            aria-label={placing ? "Stop adding text" : "Add text anywhere on the page"}
+          >
+            <Icon d={ADD_TEXT} />
+          </button>
+        )}
+        {!compare && (
+          <button
+            className="btn btn-control"
+            aria-pressed={showText}
+            onClick={() => setShowText((v) => !v)}
+            title={showText ? "Hide text boxes" : "Show all text boxes"}
+            aria-label={showText ? "Hide text boxes" : "Show all text boxes"}
+          >
+            <Icon d={BOXES} />
+          </button>
+        )}
         <div className="zoom-group">
           <button
             className="btn btn-control"
@@ -275,7 +396,26 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </button>
         </div>
       )}
-      {placing ? (
+      {checking !== null && doc.history[checking]?.areas?.length ? (
+        <CheckPanel doc={doc} index={checking} busy={busy} onClose={() => setChecking(null)} onUndo={() => void undo()} />
+      ) : showChanges ? (
+        <ChangesPanel
+          doc={doc}
+          busy={busy}
+          comparing={compare !== null}
+          onClose={() => setShowChanges(false)}
+          onShow={(k) => {
+            setShowChanges(false);
+            show(k);
+          }}
+          onCheck={(k) => {
+            setShowChanges(false);
+            setChecking(k);
+          }}
+          onCompare={() => (compare ? setCompare(null) : startComparing())}
+          onGoTo={(v) => void goTo(v)}
+        />
+      ) : compare ? null : placing ? (
         spot ? (
           <AddTextPanel
             doc={doc}
@@ -285,6 +425,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               stopPlacing();
               onChange(outcome.document);
               report("Text added.", outcome);
+              offerCheck(outcome);
             }}
           />
         ) : (

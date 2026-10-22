@@ -56,17 +56,23 @@ def describe_file(path: Path) -> PdfInfo:
         return describe(doc)
 
 
-def render_page_png(path: Path, page_no: int, width: int) -> bytes:
-    """Render one page to PNG at the requested pixel width."""
+def render_page_png(path: Path, page_no: int, width: int, clip: tuple[float, float, float, float] | None = None) -> bytes:
+    """Render one page (or the part of it in `clip`, points as displayed) to PNG at the
+    requested pixel width."""
     width = max(config.MIN_RENDER_WIDTH, min(config.MAX_RENDER_WIDTH, width))
     with pymupdf.open(path) as doc:
         if not 0 <= page_no < doc.page_count:
             raise IndexError(page_no)
         page = doc[page_no]
-        zoom = width / page.rect.width
-        # Very tall pages: keep the image to a sane number of pixels.
-        pixels = (page.rect.width * zoom) * (page.rect.height * zoom)
+        area = page.rect
+        if clip is not None:
+            area = pymupdf.Rect(clip) & page.rect
+            if area.is_empty or area.width < 1 or area.height < 1:
+                raise ValueError("That part of the page is empty.")
+        zoom = width / area.width
+        # Very tall pages (or thin strips): keep the image to a sane number of pixels.
+        pixels = (area.width * zoom) * (area.height * zoom)
         if pixels > config.MAX_RENDER_PIXELS:
             zoom *= (config.MAX_RENDER_PIXELS / pixels) ** 0.5
-        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=area if clip is not None else None, alpha=False)
         return pix.tobytes("png")
