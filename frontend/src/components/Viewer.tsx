@@ -518,9 +518,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           }}
         />
       ) : (
-        <section className="panel" aria-label="Add text">
+        <section className="panel" aria-label="Add text anywhere">
           <div className="panel-head">
-            <h2 className="panel-title">Add text</h2>
+            <h2 className="panel-title">Add text anywhere</h2>
             <button className="btn btn-ghost btn-icon" onClick={stopPlacing} aria-label="Stop adding text">
               <Icon d={CLOSE} />
             </button>
@@ -727,7 +727,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 {!compare && (
                   <button className="toolbar-item" aria-pressed={placing} onClick={togglePlacing}>
                     <Icon d={ADD_TEXT} />
-                    <span>Add text</span>
+                    <span>Add text anywhere</span>
                   </button>
                 )}
                 {!compare && (

@@ -38,7 +38,7 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
         <>
           <h2 className="panel-title">Edit this PDF</h2>
           <p className="panel-lede">
-            Click a line on the page to change it, add a line next to it, or delete it. Shift-click to pick several
+            Click a line on the page to change it, add a line below or above it, or delete it. Shift-click to pick several
             lines.
           </p>
 
@@ -46,7 +46,7 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
             <button className="tool" aria-pressed={placing} onClick={onAddText}>
               <Icon d={ADD_TEXT} />
               <span className="tool-text">
-                <span className="tool-name">Add text</span>
+                <span className="tool-name">Add text anywhere</span>
                 <span className="tool-note">Click anywhere on a page to place new text.</span>
               </span>
             </button>

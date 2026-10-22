@@ -15,13 +15,13 @@ export function editorSteps(narrow: boolean): Step[] {
     {
       title: "Your PDF",
       text: narrow
-        ? "Tap any line of text. A panel opens to change it, add a line next to it, or delete it. New text keeps the line's font, size and color."
+        ? "Tap any line of text. A panel opens to change it, add a line below or above it, or delete it. New text keeps the line's font, size and color."
         : "Click any line of text to select it. Shift-click to select more than one.",
       targets: () => [q(".page")],
     },
     {
       title: "The panel",
-      text: "The selected line shows here, magnified from your page. Change it, add a line next to it, or delete it. New text keeps the line's font, size and color.",
+      text: "The selected line shows here, magnified from your page. Change it, add a line below or above it, or delete it. New text keeps the line's font, size and color.",
       targets: () => (narrow ? [] : [q(".dock > .panel")]),
     },
     {

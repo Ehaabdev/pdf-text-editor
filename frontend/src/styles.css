@@ -2096,12 +2096,6 @@ html.theme-switching::view-transition-new(root) {
   color: var(--muted);
 }
 
-.where {
-  display: flex;
-  gap: 8px;
-}
-
-.where-option,
 .style-option {
   display: flex;
   align-items: center;
@@ -2117,19 +2111,16 @@ html.theme-switching::view-transition-new(root) {
     background-color 150ms ease-out;
 }
 
-.where-option--on,
 .style-option--on {
   border-color: var(--accent);
   background: var(--accent-wash);
 }
 
-.where-option input,
 .style-option input {
   margin: 0;
   accent-color: var(--accent);
 }
 
-.where-option:has(input:focus-visible),
 .style-option:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
