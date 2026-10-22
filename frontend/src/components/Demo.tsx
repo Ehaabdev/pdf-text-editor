@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-/** One line of the sample page that the demo retypes: the month, in each language. */
-type Edit = { dir: "ltr" | "rtl"; before: string; after: string; prefix: string; suffix: string };
+/** A line of the sample page that the demo retypes: the words before and after the change. */
+type Edit = { before: string; after: string; prefix: string; suffix: string };
 
 const EDITS: Edit[] = [
-  { dir: "ltr", prefix: "This Agreement is made on 21 ", before: "October", after: "November", suffix: " 2026," },
-  { dir: "rtl", prefix: "أبرمت هذه الاتفاقية بتاريخ 21 ", before: "أكتوبر", after: "نوفمبر", suffix: " 2026" },
+  { prefix: "This Agreement is made on 21 ", before: "October", after: "November", suffix: " 2026," },
+  { prefix: "Payment is due within ", before: "thirty (30)", after: "fifteen (15)", suffix: " days of each invoice." },
 ];
 
 type Frame = { line: number; value: string; saved: boolean; selected: boolean };
@@ -32,7 +32,7 @@ function prefersStill() {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** A sample page whose lines are selected and retyped under a glass loupe, in English then Arabic. */
+/** A sample page whose lines are selected and retyped, one after the other, under a glass loupe. */
 export default function Demo() {
   const [step, setStep] = useState(0);
   const [still] = useState(prefersStill);
@@ -103,9 +103,7 @@ export default function Demo() {
       <div className="demo-sheet demo-sheet--behind" />
       <div className="demo-sheet">
         <p className="demo-title">Service Agreement</p>
-        <p className="demo-title demo-title--ar" dir="rtl" lang="ar">
-          اتفاقية تقديم خدمات
-        </p>
+        <p className="demo-subtitle">Agreement No. SA-2026-114</p>
         <div className="demo-para">
           <p {...target(0)}>
             {EDITS[0].prefix}
@@ -113,45 +111,35 @@ export default function Demo() {
             {EDITS[0].suffix}
           </p>
           <p className="demo-line">between Elite Services Co. (the Provider)</p>
-          <p className="demo-line">and Al Noor Trading Est. (the Client).</p>
+          <p className="demo-line">and Harbor Trading Co. (the Client).</p>
         </div>
         <div className="demo-table">
-          <p>Term: twelve (12) months</p>
-          <p dir="rtl" lang="ar">
-            المدة: اثنا عشر شهراً
-          </p>
-          <p>Fees: SAR 4,542.50 per month</p>
-          <p dir="rtl" lang="ar">
-            الرسوم: ٤٬٥٤٢٫٥٠ ريال شهرياً
-          </p>
-          <p>Notices: legal@example.com</p>
-          <p dir="rtl" lang="ar">
-            الإشعارات: بالبريد الإلكتروني
-          </p>
+          <p>Term</p>
+          <p>Twelve (12) months</p>
+          <p>Monthly fee</p>
+          <p>SAR 4,542.50</p>
+          <p>Notices</p>
+          <p>legal@example.com</p>
         </div>
-        <div className="demo-para" dir="rtl" lang="ar">
+        <div className="demo-para">
           <p {...target(1)}>
             {EDITS[1].prefix}
             {shown(1)}
             {EDITS[1].suffix}
           </p>
-          <p className="demo-line">بين شركة النخبة للخدمات (مقدم الخدمة)</p>
-          <p className="demo-line">ومؤسسة النور التجارية (العميل).</p>
+          <p className="demo-line">Late payments carry a fee of 1.5% per month.</p>
         </div>
         <div className="demo-signs">
           <p>For the Provider</p>
-          <p dir="rtl" lang="ar">
-            عن العميل
-          </p>
+          <p>For the Client</p>
         </div>
       </div>
 
       <div
         className={`demo-loupe${frame.selected ? " demo-loupe--on" : ""}`}
-        dir={edit.dir}
         style={lensTop[frame.line] ? { top: lensTop[frame.line] } : undefined}
       >
-        <span className="demo-loupe-text" dir={edit.dir} lang={edit.dir === "rtl" ? "ar" : undefined}>
+        <span className="demo-loupe-text">
           {edit.prefix}
           {frame.value}
           {!frame.saved && <span className="demo-caret" />}

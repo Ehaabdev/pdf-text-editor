@@ -760,7 +760,7 @@ html.theme-switching::view-transition-new(root) {
   border-radius: 4px;
   background: #ffffff;
   color: #14161a;
-  font-family: "Times New Roman", Times, "Geeza Pro", "Noto Naskh Arabic", serif;
+  font-family: "Times New Roman", Times, serif;
   font-size: 2.45cqi;
   box-shadow: var(--page-shadow);
   transform: rotateY(calc(-9deg + var(--tx, 0) * 9deg)) rotateX(calc(4deg - var(--ty, 0) * 7deg)) rotateZ(-1deg);
@@ -803,9 +803,11 @@ html.theme-switching::view-transition-new(root) {
   line-height: 1.2;
 }
 
-.demo-title--ar {
-  margin-bottom: 1.3em;
-  font-size: 1.45em;
+.demo-sheet .demo-subtitle {
+  margin-bottom: 1.4em;
+  text-align: center;
+  font-size: 0.85em;
+  color: #5b6170;
 }
 
 .demo-para {
@@ -886,7 +888,7 @@ html.theme-switching::view-transition-new(root) {
     0 0 0 6px rgba(255, 255, 255, 0.18),
     0 30px 60px -20px rgba(10, 20, 50, 0.6);
   color: #14161a;
-  font-family: "Times New Roman", Times, "Geeza Pro", "Noto Naskh Arabic", serif;
+  font-family: "Times New Roman", Times, serif;
   font-size: 5.6cqi;
   opacity: 0;
   transform: translateY(8px) scale(0.96);
@@ -898,12 +900,6 @@ html.theme-switching::view-transition-new(root) {
   /* The line runs on past the lens's start edge: fade it there. */
   -webkit-mask-image: linear-gradient(to right, transparent, #000 18%);
   mask-image: linear-gradient(to right, transparent, #000 18%);
-}
-
-/* Arabic: the lens sits on the left (its own end side) and fades on the right. */
-.demo-loupe[dir="rtl"] {
-  -webkit-mask-image: linear-gradient(to left, transparent, #000 18%);
-  mask-image: linear-gradient(to left, transparent, #000 18%);
 }
 
 .demo-loupe--on {
