@@ -15,7 +15,7 @@ import AddTextPanel, { type Spot } from "./AddTextPanel";
 import ChangesPanel from "./ChangesPanel";
 import CheckPanel from "./CheckPanel";
 import HomePanel from "./HomePanel";
-import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, Mark, MINUS, PLUS, REDO, UNDO } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, Icon, MAGNIFIER, Mark, MINUS, PLUS, REDO, UNDO } from "./Icon";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
@@ -158,6 +158,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const available = useWidth(scroller);
   const [zoomStep, setZoomStep] = useState(0);
   const [showText, setShowText] = useState(false);
+  // A lens over the page that follows the mouse (wide screens).
+  const [magnifier, setMagnifier] = useState(false);
   // Selected lines, in the order they were picked. In "adding" mode (for touch screens)
   // every tap adds or removes a line; with a mouse, Shift or Ctrl does the same.
   const [picked, setPicked] = useState<PickedLine[]>([]);
@@ -235,6 +237,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         clearSelection();
         stopPlacing();
         setCompare(null);
+      } else if (e.key.toLowerCase() === "m" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setMagnifier((v) => !v);
       } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length && !compare) {
         e.preventDefault();
         void remove(picked);
@@ -257,6 +261,15 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   const zoomControls = (
     <div className="zoom-group" role="group" aria-label="Zoom">
+      <button
+        className="btn btn-ghost btn-icon wide-only"
+        aria-pressed={magnifier}
+        onClick={() => setMagnifier((v) => !v)}
+        aria-label="Magnifier"
+        title="Magnifier (M)"
+      >
+        <Icon d={MAGNIFIER} />
+      </button>
       <button
         className="btn btn-ghost btn-icon"
         onClick={() => setZoomStep((z) => Math.max(0, z - 1))}
@@ -460,6 +473,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     onPlace={(x, y) => setSpot({ page: i, x, y })}
                     version={shownVersion}
                     outlines={outlines(i)}
+                    magnifier={magnifier}
                     flash={flash && { revision: flash.revision, rects: flash.rects.filter((r) => r[0] === i).map((r) => r.slice(1)) }}
                   />
                 ))}
@@ -487,6 +501,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 doc={doc}
                 placing={placing}
                 showText={showText}
+                magnifier={magnifier}
+                onToggleMagnifier={() => setMagnifier((v) => !v)}
                 comparing={compare !== null}
                 onAddText={togglePlacing}
                 onToggleText={() => setShowText((v) => !v)}

@@ -1131,6 +1131,7 @@ html.theme-switching::view-transition-new(root) {
 }
 
 .page-wrap {
+  position: relative;
   flex: none;
   margin: 0;
   animation: page-rise 800ms var(--ease) var(--delay, 0ms) both;
@@ -1360,6 +1361,58 @@ html.theme-switching::view-transition-new(root) {
   pointer-events: none;
 }
 
+/* The magnifier: a round glass lens showing the page larger, just above the pointer. */
+.lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  border-radius: 50%;
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 0 7px rgba(255, 255, 255, 0.28),
+    0 0 0 8px rgba(15, 23, 42, 0.12),
+    0 24px 50px -12px rgba(5, 10, 30, 0.6);
+  opacity: 0;
+  scale: 0.85;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease-out,
+    scale 300ms var(--spring);
+}
+
+.lens--on {
+  opacity: 1;
+  scale: 1;
+}
+
+/* The glass's shine, and a dot where the pointer is. */
+.lens::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 42%);
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.9),
+    inset 0 -10px 24px -10px rgba(15, 23, 42, 0.35);
+}
+
+.lens::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: #2f6bff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 10px rgba(47, 107, 255, 0.8);
+}
+
 /* Where a change was made, drawn over the page while comparing. */
 .change-outline {
   position: absolute;
@@ -1375,6 +1428,11 @@ html.theme-switching::view-transition-new(root) {
   display: flex;
   align-items: center;
   border-radius: 999px;
+}
+
+.zoom-group .btn[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
 }
 
 .toolbar .zoom-group {

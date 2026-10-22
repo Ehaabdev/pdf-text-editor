@@ -1,11 +1,13 @@
 import type { DocInfo } from "../api";
 import { SOURCE_URL } from "../config";
-import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon, MAGNIFIER } from "./Icon";
 
 type Props = {
   doc: DocInfo;
   placing: boolean;
   showText: boolean;
+  magnifier: boolean;
+  onToggleMagnifier: () => void;
   comparing: boolean;
   onAddText: () => void;
   onToggleText: () => void;
@@ -14,7 +16,7 @@ type Props = {
 };
 
 /** The side panel when nothing is selected (wide screens): how to start, the tools, the changes. */
-export default function HomePanel({ doc, placing, showText, comparing, onAddText, onToggleText, onShowChanges, onCompare }: Props) {
+export default function HomePanel({ doc, placing, showText, magnifier, comparing, onAddText, onToggleText, onToggleMagnifier, onShowChanges, onCompare }: Props) {
   const applied = doc.history.filter((c) => c.applied).length;
   const undone = doc.history.length - applied;
 
@@ -54,6 +56,14 @@ export default function HomePanel({ doc, placing, showText, comparing, onAddText
               <span className="tool-text">
                 <span className="tool-name">Show editable text</span>
                 <span className="tool-note">Outline every line on the pages.</span>
+              </span>
+              <span className="switch" aria-hidden="true" />
+            </button>
+            <button className="tool" aria-pressed={magnifier} onClick={onToggleMagnifier}>
+              <Icon d={MAGNIFIER} />
+              <span className="tool-text">
+                <span className="tool-name">Magnifier</span>
+                <span className="tool-note">See the print up close as you move the mouse. Key: M</span>
               </span>
               <span className="switch" aria-hidden="true" />
             </button>

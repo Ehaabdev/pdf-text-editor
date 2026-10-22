@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getLines, pageImageUrl, type DocInfo, type PageLines, type TextLine } from "../api";
 
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
 const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
+// The magnifier: how much larger it shows the page, and its radius (CSS px).
+const MAG = 2.4;
+const LENS = 92;
 
 /** Spots to light up briefly once this page's new image is on screen: where a change was made. */
 export type Flash = { revision: number; rects: number[][] };
@@ -24,12 +27,14 @@ type Props = {
   /** Areas to outline (points, as displayed): where changes were made. */
   outlines?: number[][];
   flash?: Flash | null;
+  /** A round lens follows the mouse over the page, showing the print larger. */
+  magnifier?: boolean;
 };
 
 /** One image of the page: which revision and version it shows, and its URLs. */
 type Layer = { key: string; revision: number; src: string; srcSet: string };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [], flash }: Props) {
+export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [], flash, magnifier }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
   const [attempt, setAttempt] = useState(0);
@@ -69,12 +74,31 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
   const swapping = shown !== null && shown.key !== wanted.key;
   const layers = swapping ? [wanted, shown] : [wanted];
 
+  // The lens moves by direct style changes, not React state: the page has hundreds of line
+  // boxes that shouldn't re-render on every mouse move.
+  const lens = useRef<HTMLSpanElement>(null);
+  const lensWidth = WIDTHS.find((w) => w >= width * MAG * Math.min(2, window.devicePixelRatio || 1)) ?? 3200;
+  function moveLens(e: React.PointerEvent<HTMLDivElement>) {
+    const el = lens.current;
+    if (!el || e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    // Like a phone's text magnifier, the lens sits just above the pointer, so the spot
+    // being clicked stays in view.
+    el.style.transform = `translate(${x - LENS}px, ${y - 2 * LENS - 20}px)`;
+    el.style.backgroundPosition = `${LENS - x * MAG}px ${LENS - y * MAG}px`;
+    el.classList.add("lens--on");
+  }
+
   return (
     // Pages rise into place one after another when the file opens (they stay mounted after).
     <figure className="page-wrap" id={`page-${index}`} style={{ width, "--delay": `${Math.min(index, 4) * 80}ms` } as React.CSSProperties}>
       <div
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
+        onPointerMove={magnifier ? moveLens : undefined}
+        onPointerLeave={() => lens.current?.classList.remove("lens--on")}
         onClick={(e) => {
           if (!editable) return;
           if (placing) {
@@ -170,6 +194,19 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
           </div>
         )}
       </div>
+      {magnifier && (
+        <span
+          ref={lens}
+          className="lens"
+          style={{
+            width: 2 * LENS,
+            height: 2 * LENS,
+            backgroundImage: `url(${pageImageUrl(doc, index, lensWidth, version)})`,
+            backgroundSize: `${width * MAG}px auto`,
+          }}
+          aria-hidden="true"
+        />
+      )}
       <figcaption>
         Page {index + 1} of {doc.pageCount}
       </figcaption>

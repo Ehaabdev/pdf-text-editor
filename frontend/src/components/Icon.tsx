@@ -41,3 +41,4 @@ export function Mark({ size = 24 }: { size?: number }) {
 export const UPLOAD = "M10 13V3.5m0 0L6.5 7M10 3.5L13.5 7M4 12.5V16h12v-3.5";
 export const SUN = "M10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM10 2.5v1.5M10 16v1.5M2.5 10H4M16 10h1.5M4.7 4.7l1.06 1.06M14.24 14.24l1.06 1.06M4.7 15.3l1.06-1.06M14.24 5.76l1.06-1.06";
 export const MOON = "M16 12.2A6.5 6.5 0 017.8 4a6.5 6.5 0 108.2 8.2z";
+export const MAGNIFIER = "M8.5 3.5a5 5 0 100 10 5 5 0 000-10zM12.2 12.2l4.3 4.3";
