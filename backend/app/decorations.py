@@ -89,7 +89,26 @@ def for_line(line: Line, rp: Replay) -> list[Decoration]:
             if kind == "highlight" and p.end > min(first_op[t] for t in covered):
                 continue  # a highlight lies behind its text, so it's drawn first
             found.append(Decoration(index, kind, x0, x1, covered, shared=len(p.subpaths) > 1))
+        bullet = _bullet(p, base, size, u0, u1, line.rtl)
+        if bullet:
+            found.append(Decoration(index, "bullet", p.bbox[0], p.bbox[2], frozenset()))
     return found
+
+
+def _bullet(p: DrawnPath, base: float, size: float, u0: float, u1: float, rtl: bool) -> bool:
+    """A list bullet drawn as a shape (Chrome draws them as small filled circles): small
+    and roundish, at the height of the middle of small letters, just before the text."""
+    if not p.fills or p.strokes or len(p.subpaths) != 1:
+        return False
+    x0, y0, x1, y1 = p.bbox
+    w, h = x1 - x0, y1 - y0
+    if not (0.15 * size <= w <= 0.6 * size and 0.15 * size <= h <= 0.6 * size and abs(w - h) < 0.3 * size):
+        return False
+    if not base + 0.1 * size <= (y0 + y1) / 2 <= base + 0.6 * size:
+        return False
+    if rtl:
+        return u1 + 0.2 * size <= x0 <= u1 + 2.5 * size
+    return u0 - 2.5 * size <= x1 <= u0 - 0.2 * size
 
 
 def _kind(p: DrawnPath, bbox, base: float, size: float) -> str | None:

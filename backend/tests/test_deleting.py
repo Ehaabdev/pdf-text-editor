@@ -316,3 +316,13 @@ def test_rotated_text_can_be_deleted():
     result = delete_lines(src, [(page_no, line.id, line.text)])
     assert find(result.pdf, "Sideways label") is None
     assert find(result.pdf, "Upright line of text") is not None
+
+
+def test_a_bullet_drawn_as_a_shape_goes_with_its_line():
+    """Chrome draws list bullets as small filled circles, not text."""
+    src = (FIXTURES / "additions" / "additions-chrome.pdf").read_bytes()
+    page_no, line = find(src, "Access cards")
+    before = pymupdf.open("pdf", src)[page_no].get_drawings()
+    result = delete_lines(src, [(page_no, line.id, line.text)])
+    after = pymupdf.open("pdf", result.pdf)[page_no].get_drawings()
+    assert len(after) == len(before) - 1 and result.warnings == []

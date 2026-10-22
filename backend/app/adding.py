@@ -118,7 +118,24 @@ def _groups(words: list[Word]) -> list[list[Word]]:
     return out
 
 
-def _item_of(line: Line, rp: Replay) -> _Item | None:
+def _marker_kind(text: str) -> str | None:
+    """What a line's first word is as a list marker: a number, a letter or Roman
+    numeral, a bullet, a dash; or None. In an Arabic line "1." can come as ".1"."""
+    for t in (text, text[::-1]):
+        if re.fullmatch(r"\d{1,3}[.)]", t):
+            return "number"
+        if re.fullmatch(r"[a-zA-Z][.)]|[ivxIVX]{1,4}[.)]", t):
+            return "letter"
+    if text in "•●▪◦■○◆►✓" and len(text) == 1:
+        return "bullet"
+    if text in ("-", "–", "—", "*", "·"):
+        return "dash"
+    return None
+
+
+def _candidate(line: Line, rp: Replay) -> tuple[_Item, str, float] | None:
+    """The line read as a list item, without asking whether it really is one: the item,
+    its marker's kind, and the gap between marker and text."""
     old = _old_words(line, rp)
     groups: dict[int, list[Word]] = {}
     for w in old:
@@ -131,10 +148,43 @@ def _item_of(line: Line, rp: Replay) -> _Item | None:
     a0, a1 = min(w.u0 for w in after), max(w.u1 for w in after)
     tab = (a0 - m1) if not line.rtl else (m0 - a1)
     text = "".join(w.text for w in marker)
-    # Word sets the text a tab away; Chrome, a space.
-    if not (_MARKER.match(text) or _MARKER.match(text[::-1])) or tab < 0.1 * line.style.size:
+    kind = _marker_kind(text)
+    if kind is None or tab < 0.1 * line.style.size:
         return None
-    return _Item(marker, text, (m0, m1), a0 if not line.rtl else a1)
+    return _Item(marker, text, (m0, m1), a0 if not line.rtl else a1), kind, tab
+
+
+def _item_of(line: Line, rp: Replay, lines: list[Line] | None = None) -> _Item | None:
+    """The line as a list item, if the page shows it is one. "J. Smith" in a signature
+    or a heading "1. Scope" starts like an item but isn't one, and text added under it
+    must not be indented. Evidence: a bullet; a number a tab away from its text (Word);
+    another item of the same kind lined up with it nearby; or the item's next lines
+    starting where its text starts."""
+    found = _candidate(line, rp)
+    if found is None:
+        return None
+    item, kind, tab = found
+    if kind == "bullet" or (kind == "number" and tab >= 0.4 * line.style.size):
+        return item
+    if lines is None:
+        return None
+    edge = item.marker_edges[0] if not line.rtl else item.marker_edges[1]
+    height = line.written[3] - line.written[1]
+    for other in lines:
+        if other is line or abs(other.written[1] - line.written[1]) > 8 * height:
+            continue
+        theirs = _candidate(other, rp)
+        if theirs is None or theirs[1] != kind:
+            continue
+        their_edge = theirs[0].marker_edges[0] if not other.rtl else theirs[0].marker_edges[1]
+        if abs(their_edge - edge) < 1.5:
+            return item
+    below = _lines_below(line, lines)
+    if below:
+        start = min(w.u0 for w in _old_words(below[0], rp)) if not line.rtl else max(w.u1 for w in _old_words(below[0], rp))
+        if abs(start - item.text_edge) < 1.5:
+            return item
+    return None
 
 
 def add_line(
@@ -185,8 +235,8 @@ def add_line(
     words = [Word(t, _script(t), source=source, sep=s) for t, s in _split_words(text)]
     for k, w in enumerate(words):
         w.logical = k
-    item_line = None if at is not None else next((l for l in [ref, *_lines_above(ref, all_lines)] if _item_of(l, rp) is not None), None)
-    item = _item_of(item_line, rp) if item_line is not None else None
+    item_line = None if at is not None else next((l for l in [ref, *_lines_above(ref, all_lines)] if _item_of(l, rp, all_lines) is not None), None)
+    item = _item_of(item_line, rp, all_lines) if item_line is not None else None
     first = _groups(words)[0]
     new_marker = first if item is not None and rtl == ref.rtl and _MARKER.match("".join(w.text for w in first)) else []
     expected = text
@@ -443,7 +493,8 @@ def _source_word(ref: Line, old: list[Word], rp: Replay) -> Word:
     candidates = [w for w in old if w.text.strip() and visible(w)]
     if not candidates:
         raise EditRejected("This line is invisible text (as in a scanned page), so its style can't be copied.")
-    item = _item_of(ref, rp)
+    found = _candidate(ref, rp)
+    item = found[0] if found is not None else None  # a marker isn't a style to copy, list or not
     if item is not None:
         candidates = [w for w in candidates if w not in item.marker] or candidates
     for w in candidates:
@@ -542,6 +593,7 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
     if not (page.rect + (-0.5, -0.5, 0.5, 0.5)).contains(shown):
         raise EditRejected(f"{no_room}: it would go past the edge of the page.")
     tight = box + (0.25, 0.25, -0.25, -0.25)
+    rules = decorations._vertical_rules(rp)  # table borders, as (x, y0, y1) in PDF space
     height = box.y1 - box.y0
     for l in lines:
         r = _pdf_rect(l.bbox, page)
@@ -556,6 +608,10 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
             raise EditRejected(f"{no_room}: it would overlap other text. {hint}")
         overlap = min(r.y1, box.y1) - max(r.y0, box.y0)
         if overlap <= 0.3 * height:
+            continue
+        # A table's border between them keeps them apart: cells never read as one line.
+        gap0, gap1 = (r.x1, box.x0) if r.x1 <= box.x0 else (box.x1, r.x0)
+        if any(gap0 - 1 <= x <= gap1 + 1 and y0 < max(r.y1, box.y1) and y1 > min(r.y0, box.y0) for x, y0, y1 in rules):
             continue
         distance = max(r.x0 - box.x1, box.x0 - r.x1)
         # Half a row off a line nearby: crowded, and its vowel marks would mix with ours.

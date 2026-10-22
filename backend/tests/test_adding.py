@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not HAVE_FONTS, reason="the fonts of the test do
 def find(src: bytes, needle: str):
     for page in pymupdf.open("pdf", src):
         for line in page_lines(page):
-            if line.text.startswith(needle):
+            if comparable(line.text).startswith(comparable(needle)):  # any kind of space
                 return page.number, line
     return None
 
@@ -56,7 +56,8 @@ def test_a_new_list_item_lines_up_with_the_items_above(source):
     new = added(src, result.pdf, page_no, "4. Send the minutes to everyone")
     rp_old = replay(pikepdf.open(io.BytesIO(src)), page_no)
     rp_new = replay(pikepdf.open(io.BytesIO(result.pdf)), page_no)
-    item_ref, item_new = _item_of(ref, rp_old), _item_of(new, rp_new)
+    item_ref = _item_of(ref, rp_old, page_lines(pymupdf.open("pdf", src)[page_no]))
+    item_new = _item_of(new, rp_new, page_lines(pymupdf.open("pdf", result.pdf)[page_no]))
     assert abs(item_new.marker_edges[0] - item_ref.marker_edges[0]) < 0.5  # the number where the numbers are
     assert abs(item_new.text_edge - item_ref.text_edge) < 0.5  # the text at the item's tab
     assert (new.style.font, round(new.style.size, 1), new.style.color) == (ref.style.font, round(ref.style.size, 1), ref.style.color)
@@ -71,7 +72,7 @@ def test_more_text_under_a_list_item_lines_up_with_its_text(source):
     page_no, ref = find(src, "3. Book")
     result = add_line(src, page_no, "Ask the client about the date", ref.id, ref.text)
     new = added(src, result.pdf, page_no, "Ask the client about the date")
-    item = _item_of(ref, replay(pikepdf.open(io.BytesIO(src)), page_no))
+    item = _item_of(ref, replay(pikepdf.open(io.BytesIO(src)), page_no), page_lines(pymupdf.open("pdf", src)[page_no]))
     assert abs(_pdf_x0(result.pdf, page_no, new) - item.text_edge) < 0.5
 
 
@@ -97,8 +98,8 @@ def test_a_new_arabic_list_item(source):
     result = add_line(src, page_no, "3. تحديد موعد الاجتماع التالي", ref.id, ref.text)
     new = added(src, result.pdf, page_no, "3. تحديد موعد الاجتماع التالي")
     assert new.rtl and abs(new.bbox[2] - ref.bbox[2]) < 0.5  # the numbers' right edge
-    item_ref = _item_of(ref, replay(pikepdf.open(io.BytesIO(src)), page_no))
-    item_new = _item_of(new, replay(pikepdf.open(io.BytesIO(result.pdf)), page_no))
+    item_ref = _item_of(ref, replay(pikepdf.open(io.BytesIO(src)), page_no), page_lines(pymupdf.open("pdf", src)[page_no]))
+    item_new = _item_of(new, replay(pikepdf.open(io.BytesIO(result.pdf)), page_no), page_lines(pymupdf.open("pdf", result.pdf)[page_no]))
     assert abs(item_new.text_edge - item_ref.text_edge) < 0.5
 
 
@@ -268,3 +269,39 @@ def test_tapping_on_a_turned_page(rotation):
         tap = (status.bbox[2] - 3, (cell.y0 + cell.y1) / 2)
     result = add_line(src, page_no, "In progress", planning.id, planning.text, at=tap)
     added(src, result.pdf, page_no, "In progress")
+
+
+# Lines that only look like list items ---------------------------------------------------------
+
+
+def _arial_page(rows) -> bytes:
+    """A page of 12 pt Arial lines: (x, baseline, text) each."""
+    doc = pymupdf.open()
+    font = pymupdf.Font(fontbuffer=Path(library().find("ArialMT").path).read_bytes())
+    page = doc.new_page(width=595, height=842)
+    tw = pymupdf.TextWriter(page.rect)
+    for x, y, text in rows:
+        tw.append((x, y), text, font=font, fontsize=12)
+    tw.write_text(page)
+    return doc.tobytes(garbage=3, deflate=True)
+
+
+@pytest.mark.parametrize("line", ["J. Smith", "1. Scope", "– quoted remark"])
+def test_text_under_a_line_that_only_looks_like_a_list_item_starts_at_its_edge(line):
+    """A signature's "J. Smith" or a heading "1. Scope" isn't a list: what's added under
+    it starts where it starts, not after its first word."""
+    src = _arial_page([(72, 100, "Kind regards,"), (72, 118, line)])
+    page_no, ref = find(src, line)
+    result = add_line(src, page_no, "Managing Director", ref.id, ref.text)
+    new = added(src, result.pdf, page_no, "Managing Director")
+    assert abs(new.bbox[0] - ref.bbox[0]) < 0.5
+
+
+def test_a_list_made_without_tabs_is_still_a_list():
+    """Numbers set a space away from their text (as Chrome does) form a list when there
+    is more than one."""
+    src = _arial_page([(72, 100, "1. First point"), (72, 118, "2. Second point")])
+    page_no, ref = find(src, "2. Second")
+    result = add_line(src, page_no, "More about the second point", ref.id, ref.text)
+    new = added(src, result.pdf, page_no, "More about the second point")
+    assert new.bbox[0] > ref.bbox[0] + 5  # under the item's text, not its number

@@ -70,7 +70,7 @@ Known limits:
 
 ### Underlines, strikethroughs and highlights
 
-Word and Chrome draw each one as a filled rectangle next to the text, not as part of the font. `backend/app/decorations.py` tells them apart from shapes that only look similar and belong to the page: a paragraph's border, a table border right under a cell's text, a cell's shading, the footnote separator. A decoration starts and ends exactly at letter edges of one line, at a set height from its baseline. Shading and borders reach past the text on at least one side. The page's shapes are replayed too, and must match MuPDF's own list of them.
+Word and Chrome draw each one as a filled rectangle next to the text, not as part of the font. `backend/app/decorations.py` tells them apart from shapes that only look similar and belong to the page: a paragraph's border, a table border right under a cell's text, a cell's shading, the footnote separator. A decoration starts and ends exactly at letter edges of one line, at a set height from its baseline. A list bullet drawn as a small filled circle just before a line (as Chrome draws them) goes with its line too. Shading and borders reach past the text on at least one side. The page's shapes are replayed too, and must match MuPDF's own list of them.
 
 So far this is tested on PDFs from Word and Chrome only. In case another program draws decorations differently, a delete that leaves a shape right under the deleted text, touching no other text, comes with a warning to check the page.
 
@@ -123,7 +123,8 @@ Known limits:
 - one line at a time;
 - the style comes from a line on the same page;
 - rotated text can't be a style;
-- Chrome draws list bullets as shapes, and those aren't copied for a new item.
+- Chrome draws list bullets as shapes, and those aren't copied for a new item (deleting an item does take its bullet);
+- in other programs (copying the page's text, search, screen readers), added text comes at the end of the page's text, and outside a tagged PDF's structure. Other PDF editors work the same way.
 
 ### Edit accuracy
 
