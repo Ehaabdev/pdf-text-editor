@@ -11,8 +11,8 @@ Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public 
 | 1 | Upload, view pages, download | Done |
 | 2 | Detect every text line with its font, size, color and position | Done |
 | 3 | Edit text in place, matching the original style | Done |
-| 4 | Delete text | Next (an empty edit already removes a line) |
-| 5 | Add new text | |
+| 4 | Delete lines, with their underlines and links | Done |
+| 5 | Add new text | Next |
 | 6 | Undo, before/after view, several edits | |
 | 7 | Public launch: limits, password PDFs, deploy | |
 
@@ -32,6 +32,8 @@ Each glyph is checked against the font's own character table and corrected where
 
 Files not made by Word are read the way the standard Unicode bidi rules lay text out (Chrome, for one, draws a phone number in an Arabic sentence with its groups reversed). For those, the reading chosen is the one that, laid out by those rules, matches the page exactly.
 
+Turning a page (/Rotate), with or without a crop box, doesn't change what is read.
+
 `backend/tests/test_textlayout.py` checks against an answer key, the made-up documents saved as PDF by Word and printed to PDF by Chrome. Every line must be typed text, and every paragraph must be found again in order. A consistency check also runs on any PDF. It confirms the display text lays out like the page, but it can't catch a wrong direction. So for private samples, a report (`samples/detection-report.txt`) lists every line whose direction was a guess.
 
 ## Editing
@@ -42,11 +44,13 @@ Files not made by Word are read the way the standard Unicode bidi rules lay text
 2. **Keep unchanged words.** Words that didn't change keep their original glyphs. Changed words are shaped with the installed font (`fonts.py`, HarfBuzz), with the line's own letter spacing. A word that replaces one old word keeps its letters' looks, so superscripts ("3rd" to "21st"), subscripts ("CO2" to "CO3") and small capitals stay as they were. A spelled-out "third" isn't half raised. The font must match by its exact name: a missing bold or italic is never swapped for the regular weight.
 3. **Choose the font.** The PDF's embedded copy of the font is reused only when it has every glyph needed, drawn identically, with correct copy/search labels. Otherwise the installed font's glyphs are embedded.
 4. **Lay out.** The line keeps its alignment: left, right, centered, or justified (detected from the paragraph's other lines). Outside tables, the page's side margins are taken to mirror each other, so a short line on a sparse page can still grow. Text that would run into other text or a picture on the same row is refused. Word documents follow Word's ordering of mixed Arabic and English. Other PDFs follow the Unicode bidi algorithm (`bidi.py`).
-5. **Check before accepting.** The edit is refused, and nothing changes, unless:
+5. **Decorations and links follow.** Underlines, strikethroughs and highlights (`decorations.py`) are redrawn under the words' new place. A link's clickable area moves with its words. A link whose target is its own text ("mailto:" plus the address shown) gets the new text as its target; any other target stays, and the user is told.
+6. **Check before accepting.** The edit is refused, and nothing changes, unless:
    - the line reads back as typed;
    - the new text is visible (it leaves ink, in both engines);
    - a second reader (PDFium) sees the new letters;
    - nothing outside the line changes by a single pixel, in MuPDF and PDFium;
+   - MuPDF sees the same shapes and links as before, except those that moved with their words;
    - no other page changes.
 
 Each edit is a new version, so Undo goes back.
@@ -56,11 +60,35 @@ Known limits:
 - text too long for its line is refused;
 - kashida-justified lines come back justified with spaces, with a warning;
 - an Arabic word that mixes sizes or colors inside it can't be changed;
+- a word that is only partly underlined, highlighted or linked can't be changed (the rest of its line can);
+- a link that covers several lines doesn't move with the text, with a warning;
 - fonts whose licence forbids embedding can't get new letters;
 - lines marked uncertain need their unreadable letters retyped;
 - rotated text and text inside embedded objects can't be edited yet.
 
 **Fonts on the server matter.** Word strips the Arabic shaping rules from the fonts it embeds, so new Arabic text needs the real font installed (`PDFEDIT_FONT_DIRS`). Without it, only letters already in the PDF can be reused. If the installed font isn't the exact version in the PDF, the edit goes ahead with a warning. On Windows, Office's cloud fonts (Aptos, the default in recent Word) are found in Office's font cache once Word has downloaded them.
+
+### Underlines, strikethroughs and highlights
+
+Word and Chrome draw each one as a filled rectangle next to the text, not as part of the font. `backend/app/decorations.py` tells them apart from shapes that only look similar and belong to the page: a paragraph's border, a table border right under a cell's text, a cell's shading, the footnote separator. A decoration starts and ends exactly at letter edges of one line, at a set height from its baseline. Shading and borders reach past the text on at least one side. The page's shapes are replayed too, and must match MuPDF's own list of them.
+
+So far this is tested on PDFs from Word and Chrome only. In case another program draws decorations differently, a delete that leaves a shape right under the deleted text, touching no other text, comes with a warning to check the page.
+
+## Deleting
+
+`backend/app/deleting.py` deletes whole lines, on one page or several, as one change: one Undo brings them all back. A line's glyphs are taken out, each replaced by an equal spacing number so nothing else moves. Its underlines, strikethroughs and highlights go with it, and so do links that only cover deleted text. The lines below don't move up, as in other PDF editors.
+
+Deleting needs no fonts and no layout, so lines that can't be edited (rotated text, unreadable letters, fonts not on the server) can still be deleted. Before a delete is accepted:
+- every other glyph on the page is drawn exactly as before;
+- nothing outside the deleted lines changes by a single pixel (MuPDF and PDFium);
+- PDFium reads no letters left where the lines were;
+- MuPDF sees the same shapes and links, minus those removed.
+
+These checks are tested on turned pages (/Rotate), cropped pages, and pages whose boxes don't start at 0,0.
+
+On the website: click a line and choose Delete line. To delete several, Shift-click or Ctrl-click them, or tap "Select more lines" on a phone. The Delete key works too. Emptying a line's text in the edit box also deletes it.
+
+Deleting every line of every test document and private sample, one at a time, succeeds for all 635, with no warnings.
 
 ### Edit accuracy
 
@@ -123,12 +151,15 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 | `bilingual-contract` | English and Arabic side by side, Arabic sentences with English words, phone numbers and URLs, and the reverse |
 | `english-styles` | Many fonts and sizes, style changes mid-sentence, links, shading, text box, small caps, two columns |
 
-`expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them (Windows with Microsoft Word and Chrome; close Word first):
+`backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
+
+`expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them all (Windows with Microsoft Word and Chrome; close Word first):
 
 ```powershell
-cd tools	est-documents
+cd tools\test-documents
 npm install
 node make.js
+node decorations.js
 powershell -ExecutionPolicy Bypass -File export.ps1
 python print_chrome.py
 ```

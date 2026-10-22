@@ -1,6 +1,7 @@
-# Saves every .docx in backend/tests/fixtures/word as PDF using Microsoft Word,
-# exactly like File > Save As > PDF. Output: <name>-word.pdf next to each .docx.
-# Run after `node make.js`. Needs Microsoft Word on Windows; close Word first.
+# Saves every .docx in backend/tests/fixtures/word and .../decorations as PDF using
+# Microsoft Word, exactly like File > Save As > PDF. Output: <name>-word.pdf next to
+# each .docx. Run after `node make.js` and `node decorations.js`. Needs Microsoft Word
+# on Windows; close Word first.
 #   powershell -File export.ps1                    all documents
 #   powershell -File export.ps1 french-quote       just one
 #
@@ -8,7 +9,8 @@
 # Word directly from this script sometimes hangs forever while saving the PDF;
 # in a job it doesn't, and a stuck job can be timed out and cleaned up.
 
-$dir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\backend\tests\fixtures\word")).Path
+$fixtures = Join-Path $PSScriptRoot "..\..\backend\tests\fixtures"
+$dirs = @("word", "decorations") | ForEach-Object { (Resolve-Path (Join-Path $fixtures $_)).Path }
 $only = $args
 $timeoutSeconds = 60
 
@@ -30,9 +32,9 @@ $convert = {
 }
 
 $failed = 0
-foreach ($file in Get-ChildItem $dir -Filter *.docx) {
+foreach ($file in Get-ChildItem $dirs -Filter *.docx) {
     if ($only -and -not ($only -contains $file.BaseName)) { continue }
-    $pdf = Join-Path $dir ($file.BaseName + "-word.pdf")
+    $pdf = Join-Path $file.DirectoryName ($file.BaseName + "-word.pdf")
     $job = Start-Job -ScriptBlock $convert -ArgumentList $file.FullName, $pdf
     $null = Wait-Job $job -Timeout $timeoutSeconds
     if ($job.State -eq "Completed") {

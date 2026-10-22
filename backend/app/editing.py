@@ -8,9 +8,13 @@ How an edit works:
   3. The words are laid out the way the line was aligned (left, right, centered or
      justified). Words that end up where they already were are not touched at all;
      the others are taken out of their instructions and drawn again in a new block.
+     Underlines, strikethroughs, highlights and links follow their words.
   4. The result is checked independently before it is accepted: the line reads back
      as typed (our reader and PDFium), nothing outside the line changed by a single
-     pixel (MuPDF and PDFium), and no other page changed.
+     pixel (MuPDF and PDFium), MuPDF sees the same shapes and links except those that
+     moved with their words, and no other page changed.
+
+Emptying a line deletes it (deleting.py).
 """
 
 import difflib
@@ -20,13 +24,32 @@ import re
 import unicodedata
 from dataclasses import dataclass, field, replace
 
-import numpy as np
 import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
 from . import bidi
+from . import decorations
 from . import fonts as fontlib
+from .changes import (
+    EditRejected,
+    LinkChange,
+    PathChange,
+    apply_links,
+    check_drawings,
+    check_links,
+    check_other_pages,
+    fail,
+    ink,
+    ink_box,
+    new_target,
+    outside,
+    page_links,
+    render,
+    rewrite,
+    to_display,
+    write_page,
+)
 from .pdfcontent import (
     DrawnGlyph,
     FontInfo,
@@ -37,6 +60,7 @@ from .pdfcontent import (
     Unsupported,
     draw_block,
     matches_trace,
+    page_matrix,
     replay,
 )
 from .textlayout import Line, made_by_word, page_lines
@@ -45,10 +69,6 @@ log = logging.getLogger("pdfedit.editing")
 
 _BIDI_CONTROLS = dict.fromkeys(map(ord, "‎‏⁦⁧⁨⁩‪‫‬‭‮؜"))
 _SPACE_RUN = re.compile(r"(\s+)")
-
-
-class EditRejected(Exception):
-    """The edit can't be made safely. The message is shown to the user."""
 
 
 @dataclass
@@ -103,6 +123,10 @@ class Word:
     shaped: list = field(default_factory=list)  # new glyphs: (gid, cluster, advance, dx, dy)
     choice: "FontChoice | None" = None
     group: int = -1  # old words between the same two spaces share a group ("review" and ".")
+    # A word added between old ones: the old word after it (an underline continues
+    # through an added word only if it runs under the words on both sides).
+    inserted: bool = False
+    after: "Word | None" = None
 
     @property
     def is_new(self) -> bool:
@@ -601,7 +625,7 @@ def _visual_order_standard(words: list[Word], rtl: bool) -> list[Word]:
 
 def _pdf_rect(bbox, page: pymupdf.Page) -> pymupdf.Rect:
     """A rectangle in displayed page space, in PDF coordinates (x as in the content stream)."""
-    r = pymupdf.Rect(bbox) * (page.derotation_matrix * ~page.transformation_matrix)
+    r = pymupdf.Rect(bbox) * (page.derotation_matrix * ~page_matrix(page))
     r.normalize()
     return r
 
@@ -613,7 +637,10 @@ def _room(line: Line, lines: list[Line], page: pymupdf.Page, column, u0: float, 
     as in most documents, so a short line can still grow."""
     left, right = column
     paper = _pdf_rect(page.rect, page)
-    edges = [_pdf_rect((l.column[0], l.bbox[1], l.column[1], l.bbox[3]), page) for l in lines if l.column]
+    # Columns are measured as the page was written, before its rotation.
+    edges = [pymupdf.Rect(l.column[0], l.written[1], l.column[1], l.written[3]) * ~page_matrix(page) for l in lines if l.column]
+    for r in edges:
+        r.normalize()
     if edges:
         text_left, text_right = min(r.x0 for r in edges), max(r.x1 for r in edges)
         if right > text_right - 0.5:
@@ -642,7 +669,7 @@ def _collides(line: Line, lines: list[Line], page: pymupdf.Page, old: tuple[floa
 def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
     """Left and right ink edges (PDF x) of the nearby lines in the same column: the
     lines just above and below that overlap this one, i.e. probably its paragraph."""
-    to_pdf = page.derotation_matrix * ~page.transformation_matrix
+    to_pdf = page.derotation_matrix * ~page_matrix(page)
     def edges(l):
         r = pymupdf.Rect(l.bbox) * to_pdf
         r.normalize()
@@ -709,6 +736,10 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         raise EditRejected("This line changed since you selected it. Select it again.")
     if comparable(new_text) == comparable(line.text) and not redraw_all:
         return EditResult(src, [], line.text)
+    if not comparable(new_text):
+        from .deleting import delete_lines
+
+        return delete_lines(src, [(page_no, line_id, old_text)])
     if "�" in new_text:
         raise EditRejected("Some letters on this line couldn't be read from the PDF (shown as �). Retype them before saving.")
 
@@ -728,7 +759,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     if not old:
         raise EditRejected("This line has no text to change.")
     old_visual = sorted(old, key=lambda w: w.u0)
-    to_pdf = ~page.transformation_matrix
+    to_pdf = ~page_matrix(page)
     if line.column:
         a, b = pymupdf.Point(line.column[0], 0) * to_pdf, pymupdf.Point(line.column[1], 0) * to_pdf
         column = (min(a.x, b.x), max(a.x, b.x))
@@ -759,13 +790,13 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         for j in range(j1, j2):
             source = old[min(i1 + (j - j1), i2 - 1)] if i2 > i1 else (old[i1 - 1] if i1 > 0 else old[0])
             word = Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1])
+            if i2 == i1:
+                word.inserted, word.after = True, (old[i1] if i1 < len(old) else None)
             # A word that replaces exactly one old word keeps its letters' looks; others
             # (two words for one, an added word) take their source's main look.
             words += _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]
     for k, w in enumerate(words):
         w.logical = k
-    if not words:
-        return _apply(src, pdf, mu, rp, page_no, line, old, [], column, word_made, [], new_text)
 
     if word_made:
         visual = _visual_order(words, line.rtl)
@@ -948,29 +979,42 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
 
     runs += _spaces(line, rp, visual, untouched, joined or [])
 
+    # Underlines, strikethroughs and highlights over moved or changed words follow them.
+    path_changes = []
+    for d in decorations.for_line(line, rp):
+        if not d.traces & remove:
+            continue
+        spans = _follow(d.traces, visual, rp)
+        if len(spans) == 1 and abs(spans[0][0] - d.x0) < 0.005 and abs(spans[0][1] - d.x1) < 0.005:
+            continue
+        if d.shared:
+            raise EditRejected("An underline on this line is drawn together with other shapes, so it can't be changed safely yet.")
+        path_changes.append(PathChange(d.path, (d.x0, d.x1), spans))
+    link_changes = _link_changes(pdf, page_no, rp, line, visual, remove, warnings)
+
     # Draw the block next to the line's own visible letters: hidden members (a cell's
     # paragraph mark) can sit in a neighbouring cell, whose clipping would hide the text.
-    ink = [t for w in old for t in w.traces if t in remove]
-    first = min(ink) if ink else min(remove)
+    ink_traces = [t for w in old for t in w.traces if t in remove]
+    first = min(ink_traces) if ink_traces else min(remove)
     insert_after = rp.et_after.get(rp.glyphs[first].op)
     if insert_after is None:
         raise EditRejected("This page is built in a way that can't be edited safely yet.")
     block = draw_block(runs, rp.glyphs[first].ctm, None)
-    instructions = _rewrite(rp, remove, insert_after, block)
-    pikepdf_page = pdf.pages[page_no]
-    pikepdf_page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(instructions))
+    write_page(pdf, page_no, rewrite(rp, remove, insert_after, block, path_changes))
+    apply_links(pdf, page_no, link_changes)
     out = io.BytesIO()
     pdf.save(out)
     result = out.getvalue()
 
-    new_box = None
-    if visual:
-        heights = [rp.glyphs[t] for t in line.members]
-        size = max(g.paint.size * g.paint.trm2[3] for g in heights)
-        base = rp.glyphs[old[0].traces[0]].origin[1]
-        new_box = (min(w.x for w in visual), base - 0.3 * size, max(w.x + w.width for w in visual), base + 1.0 * size)
+    heights = [rp.glyphs[t] for t in line.members]
+    size = max(g.paint.size * g.paint.trm2[3] for g in heights)
+    base = rp.glyphs[old[0].traces[0]].origin[1]
+    boxes = [(min(w.x for w in visual), base - 0.3 * size, max(w.x + w.width for w in visual), base + 1.0 * size)]
+    for c in path_changes:
+        x0, y0, x1, y1 = rp.paths[c.path].bbox
+        boxes += [(x0, y0, x1, y1)] + [(a, y0, b, y1) for a, b in c.spans]
     drawn = "".join(w.text for w in visual if w.is_new)
-    _verify(src, result, page_no, line, new_text, new_box, drawn)
+    _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes)
     return EditResult(result, warnings, new_text)
 
 
@@ -996,142 +1040,133 @@ def _spaces(line: Line, rp: Replay, visual: list[Word], untouched: set[int], joi
     return runs
 
 
-def _rewrite(rp: Replay, remove: set[int], insert_after: int, block: list) -> list:
-    from .pdfcontent import remove_glyphs
 
-    rewritten = remove_glyphs(rp, remove)
-    # remove_glyphs keeps one instruction per original one, except ' and " which become
-    # several; count them to find where the text object's ET ended up.
-    out, k_new = [], 0
-    expansions = {}
-    for k, ins in enumerate(rp.instructions):
-        op = str(ins.operator) if not isinstance(ins, pikepdf.ContentStreamInlineImage) else None
-        touched = any(rp.glyphs[i].op == k for i in remove)
-        expansions[k] = (2 if op == "'" else 4 if op == '"' else 1) if touched else 1
-    index = 0
-    for k in range(len(rp.instructions)):
-        n = expansions[k]
-        out += rewritten[index : index + n]
-        index += n
-        if k == insert_after:
-            out += block
-    return out
+
+def _follow(covered: frozenset[int], visual: list[Word], rp: Replay) -> list[tuple[float, float]]:
+    """Where something over these glyphs (an underline, a link) goes after the edit: one
+    span (PDF x) per run of neighbouring words that carry it. A changed word carries it
+    if the word it replaces did; an added word, only if the words on both sides do."""
+    pieces = []
+    for v, w in enumerate(visual):
+        if w.is_new:
+            source = set(w.source.traces) if w.source is not None else set()
+            if not source & covered:
+                continue
+            if w.inserted and not (w.after is not None and set(w.after.traces) & covered):
+                continue
+            if source - covered:
+                raise EditRejected(
+                    "Part of a word on this line is underlined, struck out, highlighted or a link. Changing that word isn't possible yet."
+                )
+            pieces.append((v, w.x, w.x + w.width))
+        else:
+            hit = set(w.traces) & covered
+            if not hit:
+                continue
+            dx = w.x - w.u0
+            ends = [_extent(rp.glyphs[t]) for t in hit]
+            pieces.append((v, min(a for a, _ in ends) + dx, max(b for _, b in ends) + dx))
+    spans: list[list] = []
+    for v, a, b in sorted(pieces):
+        if spans and spans[-1][0] == v - 1:
+            spans[-1][0], spans[-1][2] = v, max(spans[-1][2], b)
+        else:
+            spans.append([v, a, b])
+    return [(a, b) for _, a, b in spans]
+
+
+def _link_changes(pdf, page_no, rp, line, visual, remove, warnings) -> list[LinkChange]:
+    """Links over the line's changed words: the clickable area follows the words, and a
+    link to its own text ("mailto:" plus the address) gets the new text as its target."""
+    members = set(line.members)
+    changes = []
+    for link in page_links(pdf, page_no, rp):
+        if not link.glyphs & remove:
+            continue
+        if not link.glyphs <= members or not link.single_quad:
+            warnings.append("A link on this line also covers other text, so it wasn't changed.")
+            continue
+        spans = _follow(link.glyphs, visual, rp)
+        if not spans:
+            changes.append(LinkChange(link, None))
+            continue
+        # The clickable area keeps its margins around the text.
+        x0, y0, x1, y1 = link.rect
+        left = min(_extent(rp.glyphs[t])[0] for t in link.glyphs)
+        right = max(_extent(rp.glyphs[t])[1] for t in link.glyphs)
+        rect = (spans[0][0] - (left - x0), y0, spans[-1][1] + (x1 - right), y1)
+        old_text = "".join(
+            line.glyph_text(i)
+            for i in line.order
+            if line.glyphs[i].traces and line.glyphs[i].traces[0] in link.glyphs and not line.glyphs[i].is_space
+        )
+        carried = [
+            w for w in sorted(visual, key=lambda w: w.logical)
+            if any(a - 0.01 <= w.x and w.x + w.width <= b + 0.01 for a, b in spans)
+        ]
+        new_text = "".join(w.text + (w.sep if k < len(carried) - 1 else "") for k, w in enumerate(carried)).strip()
+        uri = None
+        if new_text != old_text:
+            uri = new_target(link.uri, old_text, new_text)
+            if uri is None and link.uri:
+                warnings.append(f"The link on “{new_text}” still opens {link.uri}.")
+        changes.append(LinkChange(link, rect, uri))
+    return changes
 
 
 # Verification ----------------------------------------------------------------------------
 
 
-def _render(doc_bytes: bytes, page_no: int, zoom: float = 2.0):
-    with pymupdf.open("pdf", doc_bytes) as d:
-        pix = d[page_no].get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False, colorspace=pymupdf.csGRAY)
-        mu = np.frombuffer(pix.samples, np.uint8).reshape(pix.h, pix.w).copy()
-    doc = pdfium.PdfDocument(doc_bytes)
-    try:
-        bm = doc[page_no].render(scale=zoom, grayscale=True)
-        pf = bm.to_numpy().reshape(bm.height, bm.width).copy()
-    finally:
-        doc.close()
-    return mu, pf
-
-
-def _outside(a, b, box, zoom, tolerance_px):
-    h, w = min(a.shape[0], b.shape[0]), min(a.shape[1], b.shape[1])
-    a, b = a[:h, :w].astype(int), b[:h, :w].astype(int)
-    mask = np.ones((h, w), bool)
-    x0, y0, x1, y1 = (v * zoom for v in box)
-    mask[max(0, int(y0)) : int(y1) + 1, max(0, int(x0)) : int(x1) + 1] = False
-    if tolerance_px == 0:
-        changed = a != b
-    else:
-        def spread(img, fn):
-            out = img.copy()
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    out = fn(out, np.roll(np.roll(img, dy, 0), dx, 1))
-            return out
-        changed = (b < spread(a, np.minimum)) | (b > spread(a, np.maximum)) | (a < spread(b, np.minimum)) | (a > spread(b, np.maximum))
-    return int(changed[mask].sum()), int((a != b)[~mask].sum())
-
-
-def _ink(img, box, zoom) -> int:
-    """Pixels in the box clearly darker than its background."""
-    x0, y0, x1, y1 = (int(v * zoom) for v in box)
-    region = img[max(0, y0) : y1 + 1, max(0, x0) : x1 + 1].astype(int)
-    if region.size == 0:
-        return 0
-    return int((region < np.median(region) - 60).sum())
-
-
-def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_text: str, new_box, drawn: str) -> None:
-    def fail(why: str):
-        raise EditRejected(f"The change couldn't be made exactly ({why}), so nothing was changed.")
-
+def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_text: str, boxes, drawn: str,
+            rp: Replay, path_changes: list[PathChange], link_changes: list[LinkChange]) -> None:
     new_doc = pymupdf.open("pdf", new_bytes)
     page = new_doc[page_no]
     try:
-        rp = replay(pikepdf.open(io.BytesIO(new_bytes)), page_no)
+        new_rp = replay(pikepdf.open(io.BytesIO(new_bytes)), page_no)
     except Unsupported:
         fail("the edited page can't be read back")
-    if not matches_trace(rp, page):
+    if not matches_trace(new_rp, page):
         fail("the edited page can't be read back")
 
-    # Everything outside the old and new line boxes is unchanged, in two engines.
-    to_page = page.transformation_matrix
-    boxes = [pymupdf.Rect(line.bbox) * page.derotation_matrix]
-    if new_box:
-        r = pymupdf.Rect(new_box[0], new_box[1], new_box[2], new_box[3]) * to_page
-        r.normalize()
-        boxes.append(r)
-    area = pymupdf.Rect(boxes[0])
-    for b in boxes[1:]:
-        area |= b
-    area = (area + (-3, -3, 3, 3)) * page.rotation_matrix
-    area.normalize()
-    old_mu, old_pf = _render(old_bytes, page_no)
-    new_mu, new_pf = _render(new_bytes, page_no)
-    outside_mu, _ = _outside(old_mu, new_mu, tuple(area), 2.0, 0)
-    outside_pf, _ = _outside(old_pf, new_pf, tuple(area), 2.0, 1)
-    if outside_mu or outside_pf:
+    # Everything outside the old and new line (and its decorations) is unchanged, in two engines.
+    area = pymupdf.Rect(line.bbox) | to_display(page, ink_box(rp, line.members))
+    for b in boxes:
+        area |= to_display(page, b)
+    # Vowel marks can reach a little past the font's height: a third of the size.
+    v = max(3.0, 0.35 * line.style.size)
+    area = area + (-3, -v, 3, v)
+    old_mu, old_pf = render(old_bytes, page_no)
+    new_mu, new_pf = render(new_bytes, page_no)
+    if outside(old_mu, new_mu, [tuple(area)], 2.0, 0) or outside(old_pf, new_pf, [tuple(area)], 2.0, 1):
         fail("other parts of the page would have moved")
     # The new text leaves ink, in both engines: text can vanish (a clipping window, a
     # wrong colour) while pixels still change.
-    if new_text.strip():
-        for before, after in ((old_mu, new_mu), (old_pf, new_pf)):
-            had, has = _ink(before, tuple(area), 2.0), _ink(after, tuple(area), 2.0)
-            if has < max(1, 0.3 * had) * (1 if had else 0) or (had == 0 and has == 0):
-                fail("the new text wasn't visible")
+    for before, after in ((old_mu, new_mu), (old_pf, new_pf)):
+        had, has = ink(before, tuple(area), 2.0), ink(after, tuple(area), 2.0)
+        if has < max(1, 0.3 * had) * (1 if had else 0) or (had == 0 and has == 0):
+            fail("the new text wasn't visible")
 
     # The line reads back as typed.
-    if new_text.strip():
-        cands = [l for l in page_lines(page) if pymupdf.Rect(l.bbox).intersects(area)]
-        if not any(comparable(l.text) == comparable(new_text) for l in cands):
-            got = " | ".join(l.text for l in cands)
-            fail(f"it read back as “{got}”")
-        # An independent reader (PDFium) finds the same characters there.
-        doc = pdfium.PdfDocument(new_bytes)
-        try:
-            tp = doc[page_no].get_textpage()
-            pr = pymupdf.Rect(area) * page.derotation_matrix * ~page.transformation_matrix
-            pr.normalize()
-            found = tp.get_text_bounded(left=pr.x0, bottom=pr.y0, right=pr.x1, top=pr.y1)
-        finally:
-            doc.close()
-        # Only the words drawn now: untouched words keep whatever labels the PDF had.
-        letters = lambda t: {c for c in unicodedata.normalize("NFKC", clean_text(t)) if c.isalnum()}
-        if not letters(drawn) <= letters(found):
-            fail("a second PDF reader saw different letters")
+    cands = [l for l in page_lines(page) if pymupdf.Rect(l.bbox).intersects(area)]
+    if not any(comparable(l.text) == comparable(new_text) for l in cands):
+        got = " | ".join(l.text for l in cands)
+        fail(f"it read back as “{got}”")
+    # An independent reader (PDFium) finds the same characters there.
+    doc = pdfium.PdfDocument(new_bytes)
+    try:
+        tp = doc[page_no].get_textpage()
+        pr = pymupdf.Rect(area) * page.derotation_matrix * ~page_matrix(page)
+        pr.normalize()
+        found = tp.get_text_bounded(left=pr.x0, bottom=pr.y0, right=pr.x1, top=pr.y1)
+    finally:
+        doc.close()
+    # Only the words drawn now: untouched words keep whatever labels the PDF had.
+    letters = lambda t: {c for c in unicodedata.normalize("NFKC", clean_text(t)) if c.isalnum()}
+    if not letters(drawn) <= letters(found):
+        fail("a second PDF reader saw different letters")
 
-    # No other page changed.
-    old_pdf, new_pdf = pikepdf.open(io.BytesIO(old_bytes)), pikepdf.open(io.BytesIO(new_bytes))
-    for i, (a, b) in enumerate(zip(old_pdf.pages, new_pdf.pages)):
-        if i != page_no and _contents(a) != _contents(b):
-            fail("another page changed")
-
-
-def _contents(page) -> bytes:
-    contents = page.obj.get("/Contents")
-    if contents is None:
-        return b""
-    if isinstance(contents, pikepdf.Array):
-        return b" ".join(s.read_bytes() for s in contents)
-    return contents.read_bytes()
+    # MuPDF sees the same shapes and links, except those that moved with their words.
+    old_page = pymupdf.open("pdf", old_bytes)[page_no]
+    check_drawings(old_page, page, path_changes, rp)
+    check_links(old_page, page, link_changes)
+    check_other_pages(old_bytes, new_bytes, {page_no})

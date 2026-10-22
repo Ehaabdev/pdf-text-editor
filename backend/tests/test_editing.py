@@ -10,7 +10,7 @@ import pytest
 
 from app.editing import EditRejected, comparable, replace_line
 from app.fonts import library
-from app.pdfcontent import matches_trace, replay
+from app.pdfcontent import matches_trace, page_matrix, replay
 from app.textlayout import page_lines
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -49,6 +49,22 @@ def test_replay_agrees_with_mupdf_on_every_glyph(path):
     pdf, doc = pikepdf.open(path), pymupdf.open(path)
     for i in range(len(pdf.pages)):
         assert matches_trace(replay(pdf, i), doc[i]), f"page {i + 1}"
+
+
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*/*.pdf")) + SAMPLES, ids=lambda p: p.name)
+def test_replay_agrees_with_mupdf_on_every_shape(path):
+    """Underlines and borders are found among the replayed shapes: they must be the ones
+    MuPDF draws, in the same order and place."""
+    pdf, doc = pikepdf.open(path), pymupdf.open(path)
+    for i in range(len(pdf.pages)):
+        page = doc[i]
+        ours = [p for p in replay(pdf, i).paths if p.op != "n"]
+        theirs = page.get_drawings()
+        assert len(ours) == len(theirs), f"page {i + 1}"
+        for p, d in zip(ours, theirs):
+            r = pymupdf.Rect(p.bbox) * page_matrix(page)  # MuPDF gives shapes unrotated
+            r.normalize()
+            assert all(abs(a - b) <= 0.25 for a, b in zip(r, d["rect"])), f"page {i + 1}: {r} vs {d['rect']}"
 
 
 # The planned edits ---------------------------------------------------------------------------
@@ -105,13 +121,18 @@ def test_old_text_is_really_gone():
 
 
 @needs_fonts
-def test_links_survive_editing_their_line():
+def test_a_link_follows_its_changed_address():
+    """The link to the address shown opens the new address, over the new text; the
+    other link on the page stays as it was."""
     src = pdf_path("word", "english-styles").read_bytes()
     page_no, line = find_line(src, "reports@example.com")
     before = pymupdf.open("pdf", src)[page_no].get_links()
-    result = replace_line(src, page_no, line.id, line.text, line.text.replace("reports@", "stats@"))
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("reports@", "quarterly-stats@"))
+    assert result.warnings == []
     after = pymupdf.open("pdf", result.pdf)[page_no].get_links()
-    assert [l.get("uri") for l in after] == [l.get("uri") for l in before]
+    assert [l.get("uri") for l in after] == ["https://dashboard.example.com/q3", "mailto:quarterly-stats@example.com"]
+    assert after[0]["from"] == before[0]["from"]
+    assert after[1]["from"].x1 > before[1]["from"].x1 + 20  # the clickable area grew with the text
 
 
 @needs_fonts

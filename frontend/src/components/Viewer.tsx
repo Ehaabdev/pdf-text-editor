@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ApiError, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type TextLine } from "../api";
+import { ApiError, deleteLines, downloadUrl, undoEdit, type DocInfo, type EditOutcome, type PickedLine, type TextLine } from "../api";
 import LinePanel from "./LinePanel";
 import PageView from "./PageView";
+import SelectionPanel from "./SelectionPanel";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
 const CSS_PX_PER_PT = 1.45;
@@ -36,8 +37,6 @@ function useWidth(ref: React.RefObject<HTMLElement | null>) {
   return width;
 }
 
-type Selection = { page: number; line: TextLine } | null;
-
 type Notice = { text: string; tone: "done" | "warning" | "error" };
 
 export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClose: () => void; onChange: (d: DocInfo) => void }) {
@@ -51,21 +50,41 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     return () => clearTimeout(t);
   }, [notice]);
 
-  function edited(outcome: EditOutcome) {
-    setSelection(null);
-    onChange(outcome.document);
+  function report(what: string, outcome: EditOutcome) {
     setNotice(
       outcome.warnings.length
-        ? { text: `Line changed. ${outcome.warnings.join(" ")}`, tone: "warning" }
-        : { text: "Line changed.", tone: "done" },
+        ? { text: `${what} ${outcome.warnings.join(" ")}`, tone: "warning" }
+        : { text: what, tone: "done" },
     );
+  }
+
+  function edited(outcome: EditOutcome, deleted: boolean) {
+    clearSelection();
+    onChange(outcome.document);
+    report(deleted ? "Line deleted. The space it used stays empty." : "Line changed.", outcome);
+  }
+
+  const [deleting, setDeleting] = useState(false);
+  async function remove(lines: PickedLine[]) {
+    if (!lines.length || deleting) return;
+    setDeleting(true);
+    try {
+      const outcome = await deleteLines(doc, lines);
+      clearSelection();
+      onChange(outcome.document);
+      report(lines.length === 1 ? "Line deleted. The space it used stays empty." : `${lines.length} lines deleted. The space they used stays empty.`, outcome);
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't delete. Try again.", tone: "error" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function undo() {
     setUndoing(true);
     try {
       onChange(await undoEdit(doc));
-      setSelection(null);
+      clearSelection();
       setNotice({ text: "Last change undone.", tone: "done" });
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't undo. Try again.", tone: "error" });
@@ -78,8 +97,28 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const available = useWidth(scroller);
   const [zoomStep, setZoomStep] = useState(0);
   const [showText, setShowText] = useState(false);
-  const [selection, setSelection] = useState<Selection>(null);
+  // Selected lines, in the order they were picked. In "adding" mode (for touch screens)
+  // every tap adds or removes a line; with a mouse, Shift or Ctrl does the same.
+  const [picked, setPicked] = useState<PickedLine[]>([]);
+  const [adding, setAdding] = useState(false);
   const zoom = ZOOMS[zoomStep];
+
+  function clearSelection() {
+    setPicked([]);
+    setAdding(false);
+  }
+
+  function select(page: number, line: TextLine | null, more: boolean) {
+    if (!line) {
+      if (!adding) setPicked([]);
+      return;
+    }
+    setPicked((current) => {
+      const has = current.some((p) => p.page === page && p.line.id === line.id);
+      if (more || adding) return has ? current.filter((p) => !(p.page === page && p.line.id === line.id)) : [...current, { page, line }];
+      return has && current.length === 1 ? [] : [{ page, line }];
+    });
+  }
 
   // Keep the middle of the view in place when zooming.
   const previousZoom = useRef(zoom);
@@ -94,11 +133,17 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelection(null);
+      // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .line-panel");
+      if (e.key === "Escape") clearSelection();
+      else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length) {
+        e.preventDefault();
+        void remove(picked);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  });
 
   const pageWidth = (ptWidth: number) =>
     Math.max(200, Math.min(available - 2 * GUTTER, ptWidth * CSS_PX_PER_PT)) * zoom;
@@ -147,8 +192,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 doc={doc}
                 index={i}
                 width={pageWidth(p.width)}
-                selectedId={selection?.page === i ? selection.line.id : null}
-                onSelect={(line) => setSelection(line ? { page: i, line } : null)}
+                selectedIds={new Set(picked.filter((p) => p.page === i).map((p) => p.line.id))}
+                onSelect={(line, more) => select(i, line, more)}
               />
             ))}
         </div>
@@ -196,9 +241,20 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </button>
         </div>
       )}
-      {selection && (
-        <LinePanel doc={doc} line={selection.line} page={selection.page} onClose={() => setSelection(null)} onEdited={edited} />
-      )}
+      {picked.length === 1 && !adding ? (
+        <LinePanel
+          doc={doc}
+          line={picked[0].line}
+          page={picked[0].page}
+          deleting={deleting}
+          onClose={clearSelection}
+          onEdited={edited}
+          onDelete={() => void remove(picked)}
+          onSelectMore={() => setAdding(true)}
+        />
+      ) : picked.length > 0 || adding ? (
+        <SelectionPanel picked={picked} deleting={deleting} onDelete={() => void remove(picked)} onClose={clearSelection} />
+      ) : null}
       </div>
     </div>
   );

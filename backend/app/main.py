@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
+from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NothingToUndo, StaleRevision
 from .textlayout import line_json, lines_for
@@ -153,6 +154,17 @@ class EditRequest(BaseModel):
     newText: str = Field(max_length=5000)
 
 
+class LineRef(BaseModel):
+    page: int
+    lineId: str = Field(max_length=32)
+    oldText: str = Field(max_length=5000)
+
+
+class DeletionRequest(BaseModel):
+    revision: int
+    lines: list[LineRef] = Field(min_length=1, max_length=500)
+
+
 class RevisionRequest(BaseModel):
     revision: int
 
@@ -176,6 +188,25 @@ async def edit_line(doc_id: str, edit: EditRequest):
         return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}
+
+
+@app.post("/api/documents/{doc_id}/deletions")
+async def delete_document_lines(doc_id: str, body: DeletionRequest):
+    """Delete lines, on one page or several, as one change (one Undo brings them back)."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    targets = [(l.page, l.lineId, l.oldText) for l in body.lines]
+    try:
+        result = await run_in_threadpool(delete_lines, src, targets)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf)
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings}

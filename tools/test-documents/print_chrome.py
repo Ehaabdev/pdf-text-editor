@@ -107,5 +107,24 @@ def main():
     (OUT / "expected.json").write_text(json.dumps(expected, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
+def print_decorations():
+    """decorations.html (underlines, strikethroughs, highlights) -> fixtures/decorations."""
+    out = ROOT / "backend" / "tests" / "fixtures" / "decorations" / "decorations-chrome.pdf"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    page = Path(__file__).resolve().parent / "decorations.html"
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(
+            [browser(), "--headless=new", "--disable-gpu", "--no-pdf-header-footer", f"--user-data-dir={tmp}\\profile",
+             f"--print-to-pdf={out}", page.as_uri()],
+            check=True, capture_output=True, timeout=120,
+        )
+    print(f"saved {out.name}")
+
+
 if __name__ == "__main__":
-    main()
+    # python print_chrome.py decorations   -> only the decorations document
+    if sys.argv[1:] == ["decorations"]:
+        print_decorations()
+    else:
+        main()
+        print_decorations()

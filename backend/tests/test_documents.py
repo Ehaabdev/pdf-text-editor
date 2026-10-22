@@ -197,6 +197,34 @@ def test_edit_that_cannot_fit_explains_why(client):
     assert r.status_code == 422 and "too long" in r.json()["detail"]
 
 
+def test_deleting_lines_on_two_pages_is_one_change(client):
+    doc = _fixture_upload(client)
+    first = _line(client, doc, "Quarterly Service Report")
+    second = client.get(f"/api/documents/{doc['id']}/pages/1/lines").json()["lines"][0]
+    r = client.post(f"/api/documents/{doc['id']}/deletions", json={
+        "revision": doc["revision"],
+        "lines": [{"page": 0, "lineId": first["id"], "oldText": first["text"]},
+                  {"page": 1, "lineId": second["id"], "oldText": second["text"]}]})
+    assert r.status_code == 200, r.text
+    deleted = r.json()["document"]
+    assert deleted["revision"] == doc["revision"] + 1 and deleted["canUndo"]
+    texts = lambda d, n: [l["text"] for l in client.get(f"/api/documents/{d['id']}/pages/{n}/lines").json()["lines"]]
+    assert first["text"] not in texts(deleted, 0) and second["text"] not in texts(deleted, 1)
+
+    # One undo brings both back.
+    undone = client.post(f"/api/documents/{doc['id']}/undo", json={"revision": deleted["revision"]}).json()
+    assert first["text"] in texts(undone, 0) and second["text"] in texts(undone, 1)
+
+
+def test_deleting_a_stale_line_is_refused(client):
+    doc = _fixture_upload(client)
+    line = _line(client, doc, "Quarterly Service Report")
+    body = {"revision": doc["revision"], "lines": [{"page": 0, "lineId": line["id"], "oldText": "not this"}]}
+    r = client.post(f"/api/documents/{doc['id']}/deletions", json=body)
+    assert r.status_code == 422 and "changed since" in r.json()["detail"]
+    assert client.post(f"/api/documents/{doc['id']}/deletions", json={**body, "revision": 99}).status_code == 409
+
+
 def test_nothing_to_undo(client):
     doc = _fixture_upload(client)
     assert client.post(f"/api/documents/{doc['id']}/undo", json={"revision": doc["revision"]}).status_code == 409
