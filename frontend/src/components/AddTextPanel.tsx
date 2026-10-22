@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, addTextAt, getLines, type DocInfo, type EditOutcome, type TextLine } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
+import { CLOSE, Icon } from "./Icon";
 
 export type Spot = { page: number; x: number; y: number }; // page points, as displayed
 
@@ -9,6 +10,8 @@ type Props = {
   spot: Spot;
   onClose: () => void;
   onAdded: (outcome: EditOutcome) => void;
+  /** The server is checking the new text. */
+  onWorking?: (working: boolean) => void;
 };
 
 type Style = { key: string; line: TextLine; distance: number };
@@ -35,13 +38,19 @@ function stylesNear(lines: TextLine[], spot: Spot): Style[] {
 
 const SHOWN = 4;
 
-export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
+export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }: Props) {
   const [lines, setLines] = useState<TextLine[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Tell the page while the server works on this change (and stop if the panel closes).
+  useEffect(() => {
+    onWorking?.(saving);
+  }, [saving, onWorking]);
+  useEffect(() => () => onWorking?.(false), [onWorking]);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -87,13 +96,11 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
   const shown = !open ? (chosen ? [chosen] : []) : more ? styles : styles.slice(0, SHOWN);
 
   return (
-    <section className="line-panel" aria-label="Add text here">
-      <div className="line-panel-head">
-        <h2>Add text here</h2>
+    <section className="panel" aria-label="Add text here">
+      <div className="panel-head">
+        <h2 className="panel-title">Add text here</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Stop adding text">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
 
@@ -177,7 +184,8 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded }: Props) {
         )}
         <div className="edit-actions">
           <button className="btn btn-primary" type="submit" disabled={saving || !chosen}>
-            {saving ? "Adding…" : "Add text"}
+            {saving && <span className="spinner" aria-hidden="true" />}
+            {saving ? "Checking the change…" : "Add text"}
           </button>
           <button className="btn btn-secondary" type="button" disabled={saving} onClick={onClose}>
             Cancel

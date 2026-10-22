@@ -1,44 +1,156 @@
 /* Tokens ------------------------------------------------------------------
-   Desk: the surface pages sit on. Paper: the page itself.
-   Non-photo blue: the pale blue editors used for markup because it never
-   showed in print. Here it marks anything you can edit. */
+   Glass: frosted panels float over a softly glowing background, like a
+   loupe held over printed paper. Glass sits over the background, never over
+   a page's text. Blue means editing: the text you can change, and the
+   action that changes it. Amber marks what was changed. Warnings are solid,
+   never glass. PDF pages are always white, as printed. */
 :root {
-  --desk: #dce2e7;
-  --rule: #c5cdd4;
-  --paper: #ffffff;
-  --ink: #1c2228;
-  --ink-soft: #56616b;
-  --npb: #7fcce5;
-  --npb-wash: rgba(127, 204, 229, 0.24);
-  --pencil: #1d5c8c;
-  --pencil-hover: #174b73;
-  --on-pencil: #ffffff;
-  --red: #b42a22;
-  --caution-bg: #fbf1d3;
-  --caution-edge: #c9971c;
-  --paper-shadow: 0 1px 2px rgba(22, 34, 46, 0.08), 0 14px 34px -14px rgba(22, 34, 46, 0.28);
-  --gutter: 16px;
+  --bg: #e8edf5;
+  --aurora-a: rgba(72, 140, 255, 0.55);
+  --aurora-b: rgba(40, 205, 190, 0.38);
+  --aurora-c: rgba(255, 160, 110, 0.42);
+  --aurora-d: rgba(120, 170, 255, 0.4);
+  --grain: 0.05;
+  --sheen: rgba(255, 255, 255, 0.6);
+  --rim: rgba(255, 255, 255, 1);
+  --cursor-glow: rgba(110, 170, 255, 0.35);
+
+  --glass: rgba(255, 255, 255, 0.52);
+  --glass-strong: rgba(250, 252, 255, 0.86);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-shine: rgba(255, 255, 255, 0.95);
+  --glass-shadow: inset 0 1px 0 var(--glass-shine), 0 1px 2px rgba(16, 24, 40, 0.06), 0 24px 48px -24px rgba(16, 24, 40, 0.3);
+  --blur: blur(24px) saturate(180%);
+
+  --text: #0b1220;
+  --text-soft: #2a3445;
+  --muted: #4b5567;
+  --line: rgba(15, 23, 42, 0.09);
+  --fill: rgba(255, 255, 255, 0.55);
+  --fill-hover: rgba(255, 255, 255, 0.85);
+  --input: rgba(255, 255, 255, 0.9);
+
+  --accent: #2563eb;
+  --accent-top: #5b9dff;
+  --accent-bottom: #2b63f0;
+  --accent-glow: rgba(43, 99, 240, 0.45);
+  --accent-wash: rgba(37, 99, 235, 0.12);
+  --on-accent: #ffffff;
+
+  --positive: #12805c;
+  --danger: #c8261c;
+  --danger-wash: rgba(200, 38, 28, 0.1);
+  --caution-bg: #fff6dc;
+  --caution-edge: #f0c14b;
+  --caution-ink: #6b4200;
+  --error-bg: #fff0ee;
+  --error-edge: #f0a59b;
+  --error-ink: #9b1c14;
+
+  --page-shadow: 0 1px 2px rgba(16, 24, 40, 0.12), 0 30px 60px -24px rgba(16, 24, 40, 0.45);
+  --float: 0 20px 50px -20px rgba(16, 24, 40, 0.45);
+  --radius-lg: 22px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --dock: 360px;
+  --rail: 128px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   color-scheme: light;
 }
 
+/* Dark: when the system asks for it (unless switched to light here), or when switched to
+   dark here. The switch sets data-theme on <html>. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --desk: #161b20;
-    --rule: #2c353d;
-    --paper: #20272e;
-    --ink: #e6ebef;
-    --ink-soft: #9aa6b0;
-    --npb: #5fb8d6;
-    --npb-wash: rgba(95, 184, 214, 0.2);
-    --pencil: #8dd0ec;
-    --pencil-hover: #a9dcf1;
-    --on-pencil: #0c2233;
-    --red: #f08a82;
-    --caution-bg: #3a3017;
-    --caution-edge: #d9a93a;
-    --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -14px rgba(0, 0, 0, 0.7);
+  :root:not([data-theme="light"]) {
+    --bg: #04060b;
+    --aurora-a: rgba(40, 110, 255, 0.7);
+    --aurora-b: rgba(16, 190, 175, 0.42);
+    --aurora-c: rgba(255, 120, 60, 0.26);
+    --aurora-d: rgba(60, 130, 255, 0.4);
+    --grain: 0.07;
+    --sheen: rgba(255, 255, 255, 0.11);
+    --rim: rgba(255, 255, 255, 0.6);
+    --cursor-glow: rgba(70, 130, 255, 0.28);
+
+    --glass: rgba(14, 18, 28, 0.46);
+    --glass-strong: rgba(14, 18, 28, 0.88);
+    --glass-edge: rgba(255, 255, 255, 0.09);
+    --glass-shine: rgba(255, 255, 255, 0.1);
+    --glass-shadow: inset 0 1px 0 var(--glass-shine), 0 24px 60px -24px rgba(0, 0, 0, 0.85);
+    --blur: blur(28px) saturate(160%);
+
+    --text: #eef2fa;
+    --text-soft: #cdd5e3;
+    --muted: #9aa5b9;
+    --line: rgba(255, 255, 255, 0.08);
+    --fill: rgba(255, 255, 255, 0.06);
+    --fill-hover: rgba(255, 255, 255, 0.11);
+    --input: rgba(0, 0, 0, 0.3);
+
+    --accent: #6ea2ff;
+    --accent-glow: rgba(70, 130, 255, 0.55);
+    --accent-wash: rgba(90, 150, 255, 0.16);
+
+    --positive: #4ade80;
+    --danger: #ff8077;
+    --danger-wash: rgba(255, 90, 80, 0.14);
+    --caution-bg: #33290f;
+    --caution-edge: #8f6c1c;
+    --caution-ink: #ffdc8f;
+    --error-bg: #3a1513;
+    --error-edge: #8a2e27;
+    --error-ink: #ffb8b0;
+
+    --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 40px 80px -30px rgba(0, 0, 0, 0.9);
+    --float: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #04060b;
+  --aurora-a: rgba(40, 110, 255, 0.7);
+  --aurora-b: rgba(16, 190, 175, 0.42);
+  --aurora-c: rgba(255, 120, 60, 0.26);
+  --aurora-d: rgba(60, 130, 255, 0.4);
+  --grain: 0.07;
+  --sheen: rgba(255, 255, 255, 0.11);
+  --rim: rgba(255, 255, 255, 0.6);
+  --cursor-glow: rgba(70, 130, 255, 0.28);
+
+  --glass: rgba(14, 18, 28, 0.46);
+  --glass-strong: rgba(14, 18, 28, 0.88);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --glass-shine: rgba(255, 255, 255, 0.1);
+  --glass-shadow: inset 0 1px 0 var(--glass-shine), 0 24px 60px -24px rgba(0, 0, 0, 0.85);
+  --blur: blur(28px) saturate(160%);
+
+  --text: #eef2fa;
+  --text-soft: #cdd5e3;
+  --muted: #9aa5b9;
+  --line: rgba(255, 255, 255, 0.08);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill-hover: rgba(255, 255, 255, 0.11);
+  --input: rgba(0, 0, 0, 0.3);
+
+  --accent: #6ea2ff;
+  --accent-glow: rgba(70, 130, 255, 0.55);
+  --accent-wash: rgba(90, 150, 255, 0.16);
+
+  --positive: #4ade80;
+  --danger: #ff8077;
+  --danger-wash: rgba(255, 90, 80, 0.14);
+  --caution-bg: #33290f;
+  --caution-edge: #8f6c1c;
+  --caution-ink: #ffdc8f;
+  --error-bg: #3a1513;
+  --error-edge: #8a2e27;
+  --error-ink: #ffb8b0;
+
+  --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 40px 80px -30px rgba(0, 0, 0, 0.9);
+  --float: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
 }
 
 /* Base -------------------------------------------------------------------- */
@@ -54,21 +166,117 @@ html {
 
 body {
   margin: 0;
-  background: var(--desk);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
   font-family: "Readex Pro Variable", system-ui, sans-serif;
-  font-size: 1rem;
+  font-size: 0.875rem;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {
-  outline: 3px solid var(--npb);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-wash);
+}
+
+.icon {
+  flex: none;
+}
+
+/* Only on wide screens (side panel), or only on narrow ones (bottom sheet). */
+@media (max-width: 1023.98px) {
+  .wide-only {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .narrow-only {
+    display: none !important;
+  }
 }
 
 .desk {
   min-height: 100dvh;
-  background: var(--desk);
+}
+
+.mark {
+  display: block;
+  flex: none;
+}
+
+/* The glowing background ---------------------------------------------------
+   Plain gradients that fade out: no blur filter, so it costs nothing to draw.
+   It drifts only on the start screen, and only on wide screens. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg);
+}
+
+.aurora::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(42% 38% at 18% 14%, var(--aurora-a), transparent 70%),
+    radial-gradient(36% 34% at 88% 26%, var(--aurora-b), transparent 70%),
+    radial-gradient(40% 36% at 66% 96%, var(--aurora-c), transparent 70%),
+    radial-gradient(30% 30% at 30% 80%, var(--aurora-d), transparent 70%),
+    radial-gradient(26% 34% at 90% 68%, var(--aurora-b), transparent 70%);
+}
+
+/* A fine grain, as on paper, so the glow doesn't band. */
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+@media (min-width: 1024px) {
+  .aurora--live::before {
+    animation: drift 28s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(-3%, -2%, 0) rotate(0deg) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 3%, 0) rotate(8deg) scale(1.08);
+  }
+}
+
+/* Glass ----------------------------------------------------------------------- */
+.glass,
+.bar,
+.panel,
+.toolbar,
+.notice,
+.zoom-group,
+.segmented {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Without blur, see-through panels would show what's behind them: make them solid. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass: var(--glass-strong);
+  }
 }
 
 /* Buttons ----------------------------------------------------------------- */
@@ -76,182 +284,273 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5em;
-  min-height: 44px;
-  padding: 0.55em 1em;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 18px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
   font: inherit;
   font-weight: 500;
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color 150ms ease-out,
+    box-shadow 200ms ease-out,
+    filter 150ms ease-out,
+    transform 200ms var(--spring);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .btn:disabled {
-  cursor: progress;
-  opacity: 0.75;
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .btn-primary {
-  background: var(--pencil);
-  color: var(--on-pencil);
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: var(--on-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.15),
+    0 8px 22px -8px var(--accent-glow);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--pencil-hover);
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.15),
+    0 12px 30px -8px var(--accent-glow);
 }
 
 .btn-secondary {
-  background: var(--paper);
-  border-color: var(--rule);
-  color: var(--ink);
+  background: var(--fill);
+  border-color: var(--glass-edge);
+}
+
+.btn-secondary:hover:not(:disabled),
+.btn-secondary[aria-pressed="true"] {
+  background: var(--fill-hover);
 }
 
 .btn-delete {
-  background: var(--paper);
-  border-color: color-mix(in srgb, var(--red) 45%, var(--rule));
-  color: var(--red);
+  background: var(--danger-wash);
+  color: var(--danger);
 }
 
 .btn-delete:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--red) 9%, var(--paper));
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--ink);
-  padding-inline: 0.7em;
+  padding-inline: 12px;
 }
 
-.btn-ghost:hover {
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+.btn-ghost:hover:not(:disabled) {
+  background: var(--fill-hover);
+}
+
+.btn-icon {
+  min-width: 40px;
+  padding: 0;
 }
 
 .btn-large {
-  font-size: 1.0625rem;
-  padding: 0.75em 1.4em;
+  min-height: 52px;
+  padding: 0 26px;
+  font-size: 1rem;
+}
+
+/* Fingers need bigger targets than a mouse. */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+  .btn-icon {
+    min-width: 44px;
+  }
 }
 
 .quiet-link {
-  color: var(--ink-soft);
+  color: var(--muted);
   text-underline-offset: 3px;
 }
 
 .quiet-link:hover {
-  color: var(--ink);
+  color: var(--text);
 }
 
-/* Top bar ----------------------------------------------------------------- */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px var(--gutter);
-  padding-top: max(8px, env(safe-area-inset-top));
-  background: color-mix(in srgb, var(--desk) 90%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--rule);
-}
-
-.topbar--plain {
-  position: static;
-  justify-content: space-between;
-  background: transparent;
-  backdrop-filter: none;
-  border-bottom: 0;
-  padding-block: 14px;
-}
-
-.brand {
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: #ffffff;
+  font-size: 0.6875rem;
   font-weight: 600;
-  font-size: 1.0625rem;
-  letter-spacing: -0.01em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 10px -4px var(--accent-glow);
 }
 
-.doc-title {
-  flex: 1;
-  min-width: 0;
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.notice-text {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Start screen ---------------------------------------------------------------- */
+.landing {
   display: flex;
   flex-direction: column;
-  line-height: 1.25;
+  min-height: 100dvh;
 }
 
-.doc-name {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.landing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(1200px, calc(100% - 24px));
+  margin: max(12px, env(safe-area-inset-top)) auto 0;
+  padding: 10px 18px 10px 12px;
+  border-radius: 18px;
 }
 
-.doc-pages {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
+.landing-bar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.wide-only {
-  display: none;
+/* Changing screens (start screen and editor): the old one softly recedes, the new one
+   settles in, and the mark glides between the two top bars. */
+::view-transition-old(root) {
+  animation: screen-out 360ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
-@media (min-width: 640px) {
-  .wide-only {
-    display: inline;
+::view-transition-new(root) {
+  animation: screen-in 560ms var(--ease) both;
+}
+
+@keyframes screen-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(8px);
   }
 }
 
-/* Upload screen: a blank sheet on the desk -------------------------------- */
-.upload-main {
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+    filter: blur(8px);
+  }
+}
+
+::view-transition-group(brand-mark) {
+  animation-duration: 600ms;
+  animation-timing-function: var(--ease);
+}
+
+.brand .mark,
+.bar-mark .mark {
+  view-transition-name: brand-mark;
+}
+
+/* Switching light and dark: the new look is revealed in a growing circle (set from the
+   script); the usual cross-fade is off for this one. */
+html.theme-switching::view-transition-old(root),
+html.theme-switching::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html.theme-switching::view-transition-new(root) {
+  z-index: 1;
+}
+
+.theme-switch .icon {
+  transition: transform 500ms var(--spring);
+}
+
+.theme-switch:hover .icon {
+  transform: rotate(-20deg) scale(1.1);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.landing-main {
+  flex: 1;
   display: grid;
-  justify-items: center;
-  padding: 8px var(--gutter) 48px;
+  place-items: center;
+  padding: 40px 16px 64px;
 }
 
-.sheet {
-  display: flex;
-  flex-direction: column;
-  width: min(100%, 640px);
-  min-height: min(700px, calc(100dvh - 120px));
-  padding: clamp(28px, 8vw, 76px) clamp(24px, 7vw, 68px) clamp(24px, 5vw, 44px);
-  background: var(--paper);
-  border-radius: 2px;
-  box-shadow: var(--paper-shadow);
-  outline: 2px dashed transparent;
-  outline-offset: 10px;
-  transition: outline-color 120ms ease-out;
+.hero {
+  display: grid;
+  gap: 48px;
+  width: min(1200px, 100%);
+  align-items: center;
 }
 
-.sheet--dragging {
-  outline-color: var(--npb);
+@media (min-width: 1024px) {
+  .hero {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 56px;
+  }
 }
 
-.sheet-title {
-  margin: 0 0 0.5em;
-  font-size: clamp(2.125rem, 1.3rem + 3.6vw, 3.5rem);
-  font-weight: 500;
-  line-height: 1.34;
-  letter-spacing: -0.02em;
+.hero-title {
+  margin: 0 0 22px;
+  font-size: clamp(2.375rem, 1.2rem + 5vw, 5.25rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
-/* The headline wears the editor's own selection box. */
+/* The headline wears the editor's own selection: a glowing box and a caret. */
 .selection {
-  padding: 0 0.1em;
-  background: var(--npb-wash);
-  box-shadow: inset 0 0 0 1.5px var(--npb);
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
+  display: inline-block;
+  padding: 0 0.14em 0.04em;
+  border-radius: 0.14em;
+  background: var(--accent-wash);
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 0 48px -6px var(--accent-glow);
 }
 
 .caret {
   display: inline-block;
-  width: 3px;
-  height: 0.92em;
-  margin-inline-start: 0.08em;
-  vertical-align: -0.1em;
-  background: var(--ink);
+  width: 0.06em;
+  height: 0.86em;
+  margin-inline-start: 0.06em;
+  vertical-align: -0.08em;
+  border-radius: 2px;
+  background: var(--accent);
   animation: blink 1.1s steps(1) infinite;
 }
 
@@ -261,33 +560,45 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .caret {
-    animation: none;
-  }
-  .sheet {
-    transition: none;
-  }
-}
-
-.lede {
-  margin: 0;
-  max-width: 32em;
-  font-size: 1.125rem;
+.hero-lede {
+  max-width: 34em;
+  margin: 0 0 30px;
+  font-size: clamp(1rem, 0.95rem + 0.3vw, 1.1875rem);
   line-height: 1.6;
-  color: var(--ink-soft);
+  color: var(--text-soft);
 }
 
-.upload-actions {
+.dropzone {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 18px;
-  margin-top: 2.25rem;
+  max-width: 560px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  transition:
+    box-shadow 200ms ease-out,
+    border-color 200ms ease-out,
+    transform 300ms var(--spring);
+}
+
+@media (hover: none) {
+  .dropzone .btn-primary {
+    flex: 1;
+  }
+}
+
+.landing--dragging .dropzone {
+  border-color: var(--accent);
+  box-shadow:
+    var(--glass-shadow),
+    0 0 0 6px var(--accent-wash),
+    0 0 60px -10px var(--accent-glow);
+  transform: scale(1.02);
 }
 
 .hint {
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 /* Phones and tablets can't drag files onto a page. */
@@ -298,79 +609,500 @@ body {
 }
 
 .upload-status {
-  min-height: 3.5rem;
-  margin-top: 1.25rem;
+  flex-basis: 100%;
 }
 
-.progress {
-  max-width: 22rem;
+.upload-status:empty {
+  display: none;
 }
 
 .progress::before {
   content: "";
   display: block;
-  height: 4px;
-  background: var(--npb-wash);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-hover);
 }
 
 .progress-bar {
-  height: 4px;
-  margin-top: -4px;
-  background: var(--npb);
+  height: 6px;
+  margin-top: -6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-top), var(--accent-bottom));
+  box-shadow: 0 0 16px var(--accent-glow);
   transition: width 150ms linear;
 }
 
 .progress-bar--full {
   width: 100%;
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .progress-label {
   display: block;
   margin-top: 8px;
-  font-size: 0.9375rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.error {
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.facts li {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--fill);
+  border: 1px solid var(--glass-edge);
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+}
+
+/* A file dragged over the window: the whole screen becomes the drop target. It takes no
+   pointer events, so the window keeps counting drag enters and leaves. */
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  animation: veil-in 220ms ease-out;
+}
+
+.drop-frame {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  width: min(760px, 100%);
+  height: min(440px, 70vh);
+  border: 2px dashed var(--accent);
+  border-radius: 36px;
+  background: var(--accent-wash);
+  box-shadow:
+    0 0 90px -10px var(--accent-glow),
+    inset 0 0 70px -20px var(--accent-glow);
+  color: var(--text);
+  font-size: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  animation:
+    frame-in 450ms var(--spring),
+    frame-breathe 1.6s ease-in-out 450ms infinite alternate;
+}
+
+.drop-frame p {
   margin: 0;
-  max-width: 32em;
-  color: var(--red);
 }
 
-.notice {
+.drop-frame .icon {
+  color: var(--accent);
+  animation: lift 1s ease-in-out infinite alternate;
+}
+
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes frame-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes frame-breathe {
+  to {
+    transform: scale(1.015);
+    box-shadow:
+      0 0 120px -10px var(--accent-glow),
+      inset 0 0 90px -20px var(--accent-glow);
+  }
+}
+
+@keyframes lift {
+  to {
+    transform: translateY(-8px);
+  }
+}
+
+/* The demo: a sample page whose lines are retyped under a glass loupe. */
+.demo {
+  position: relative;
+  container-type: inline-size;
+  justify-self: center;
+  width: min(100%, 540px);
+  aspect-ratio: 1 / 0.96;
+  perspective: 1600px;
+}
+
+.demo-sheet {
+  position: absolute;
+  inset: 5% 13% 6% 5%;
+  padding: 8% 7%;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #14161a;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 2.45cqi;
+  box-shadow: var(--page-shadow);
+  transform: rotateY(calc(-9deg + var(--tx, 0) * 9deg)) rotateX(calc(4deg - var(--ty, 0) * 7deg)) rotateZ(-1deg);
+  transform-style: preserve-3d;
+  transition: transform 700ms var(--ease);
+}
+
+/* Light glancing off the paper, sliding as the page tilts. */
+.demo-sheet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    calc(115deg + var(--tx, 0) * 25deg),
+    rgba(255, 255, 255, 0) 25%,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(255, 255, 255, 0) 62%
+  );
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.demo-sheet--behind {
+  inset: 9% 5% 2% 15%;
+  padding: 0;
+  background: #f1f4f9;
+  transform: rotateY(calc(-9deg + var(--tx, 0) * 6deg)) rotateX(calc(4deg - var(--ty, 0) * 5deg)) rotateZ(3.5deg) translateZ(-80px);
+  opacity: 0.85;
+}
+
+.demo-sheet p {
   margin: 0;
-  max-width: 32em;
-  color: var(--ink-soft);
 }
 
-.fine-print {
-  margin: auto 0 0;
-  padding-top: 3rem;
-  max-width: 36em;
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: var(--ink-soft);
+.demo-title {
+  text-align: center;
+  font-size: 1.55em;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-/* Viewer ------------------------------------------------------------------ */
+.demo-sheet .demo-subtitle {
+  margin-bottom: 1.4em;
+  text-align: center;
+  font-size: 0.85em;
+  color: #5b6170;
+}
+
+.demo-para {
+  margin: 1.2em 0;
+}
+
+.demo-line {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 0.15em;
+  margin-inline-start: -0.15em;
+  border-radius: 2px;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition:
+    background-color 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+.demo-line--on {
+  background: rgba(47, 107, 255, 0.14);
+  box-shadow:
+    inset 0 0 0 1px #2f6bff,
+    0 0 0 3px rgba(47, 107, 255, 0.16);
+}
+
+.demo-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid #c9ced8;
+  font-size: 0.92em;
+}
+
+.demo-table p {
+  padding: 0.35em 0.6em;
+  border-bottom: 1px solid #c9ced8;
+}
+
+.demo-table p:nth-child(odd) {
+  border-inline-end: 1px solid #c9ced8;
+}
+
+.demo-table p:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.demo-signs {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2.6em;
+  font-size: 0.9em;
+}
+
+.demo-signs p {
+  width: 40%;
+  padding-top: 0.4em;
+  border-top: 1px solid #14161a;
+}
+
+/* The loupe: a lens floating above the page, showing the line large. */
+.demo-loupe {
+  translate: calc(var(--tx, 0) * 22px) calc(var(--ty, 0) * 14px);
+  position: absolute;
+  top: 30%;
+  inset-inline-end: 0;
+  width: 68%;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 3.2cqi 3.6cqi;
+  border-radius: 5cqi;
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 0 0 6px rgba(255, 255, 255, 0.18),
+    0 30px 60px -20px rgba(10, 20, 50, 0.6);
+  color: #14161a;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 5.6cqi;
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  transition:
+    opacity 300ms ease-out,
+    transform 500ms var(--spring),
+    translate 700ms var(--ease),
+    top 600ms var(--ease);
+  /* The line runs on past the lens's start edge: fade it there. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%);
+  mask-image: linear-gradient(to right, transparent, #000 18%);
+}
+
+.demo-loupe--on {
+  opacity: 1;
+  transform: none;
+}
+
+.demo-loupe-text {
+  flex: none;
+  white-space: pre;
+}
+
+.demo-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin: 0 1px;
+  vertical-align: -0.12em;
+  background: #2f6bff;
+  animation: blink 1s steps(1) infinite;
+}
+
+.demo-check {
+  translate: calc(var(--tx, 0) * 12px) calc(var(--ty, 0) * 8px);
+  position: absolute;
+  inset-inline-start: 2%;
+  bottom: 3%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 250ms ease-out,
+    transform 400ms var(--spring),
+    translate 700ms var(--ease);
+}
+
+.demo-check svg {
+  color: var(--positive);
+}
+
+.demo-check--on {
+  opacity: 1;
+  transform: none;
+}
+
+/* Editor: the bar, then the pages beside (wide) or above (narrow) the panel. */
 .viewer {
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  min-height: 0;
   overflow: hidden;
+}
+
+.bar {
+  /* Above the pages and panels, so the Help bubble under it shows in full. */
+  position: relative;
+  z-index: 10;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+  margin: max(8px, env(safe-area-inset-top)) 8px 0;
+  padding: 6px;
+  border-radius: 18px;
+}
+
+@media (min-width: 1024px) {
+  .bar {
+    margin: 12px 12px 0;
+    min-height: 60px;
+    padding: 8px;
+  }
+}
+
+.bar-divider {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin-inline: 6px;
+  background: var(--line);
+}
+
+.bar-mark {
+  flex: none;
+  margin-inline-end: 8px;
+}
+
+.doc-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  padding-inline-start: 4px;
+}
+
+.doc-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar-actions .btn-primary {
+  margin-inline-start: 4px;
+}
+
+.bar-actions .count {
+  margin-inline-start: 2px;
+}
+
+@media (max-width: 1023.98px) {
+  .bar .btn-primary {
+    min-width: 44px;
+    padding: 0;
+  }
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dock {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--dock);
+    gap: 12px;
+    padding: 0 12px 12px;
+  }
+  .dock {
+    min-height: 0;
+    gap: 12px;
+    padding-top: 12px;
+  }
+  .dock > .panel {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    border-radius: var(--radius-lg);
+  }
+  /* Pages fade out at the edges of their area instead of being cut. */
+  .pages {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  }
 }
 
 .banner {
   flex: none;
-  max-width: 860px;
-  margin: 14px auto 0;
-  margin-inline: max(var(--gutter), calc((100% - 860px) / 2));
+  width: min(860px, calc(100% - 24px));
+  margin: 12px auto 0;
   padding: 10px 14px;
   background: var(--caution-bg);
-  border-inline-start: 3px solid var(--caution-edge);
-  font-size: 0.9375rem;
+  border: 1px solid var(--caution-edge);
+  border-radius: var(--radius-sm);
+  color: var(--caution-ink);
 }
 
 /* The one scroll area: pages can be wider than the screen when zoomed in. */
@@ -385,22 +1117,39 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 18px;
   width: max-content;
   min-width: 100%;
-  padding: 24px var(--gutter) 160px;
+  padding: 12px 12px 20px;
+}
+
+@media (min-width: 640px) {
+  .pages-inner {
+    gap: 32px;
+    padding: 28px 24px 96px;
+  }
 }
 
 .page-wrap {
+  position: relative;
   flex: none;
   margin: 0;
+  animation: page-rise 800ms var(--ease) var(--delay, 0ms) both;
+}
+
+@keyframes page-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
 }
 
 /* PDF pages are always shown on white, as printed, even in dark mode. */
 .page {
   position: relative;
+  border-radius: 3px;
   background: #ffffff;
-  box-shadow: var(--paper-shadow);
+  box-shadow: var(--page-shadow);
   overflow: hidden;
 }
 
@@ -410,11 +1159,103 @@ body {
   height: 100%;
   user-select: none;
   -webkit-user-select: none;
+  transition: opacity 300ms ease-out;
 }
 
 .page--loading img,
 .page--failed img {
   opacity: 0;
+}
+
+/* After a change the previous image stays on top until the new one has loaded. */
+.page img.page-prev {
+  position: absolute;
+  inset: 0;
+}
+
+/* Where a change was just made: a warm glow that rises and fades. */
+.change-flash {
+  position: absolute;
+  border-radius: 3px;
+  pointer-events: none;
+  animation: change-flash 2.6s var(--ease) forwards;
+}
+
+@keyframes change-flash {
+  0% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.change-flash {
+  background: rgba(245, 158, 11, 0.16);
+  box-shadow:
+    inset 0 0 0 1.5px #f59e0b,
+    0 0 0 5px rgba(245, 158, 11, 0.16),
+    0 0 36px rgba(245, 158, 11, 0.55);
+}
+
+@keyframes lock-on {
+  from {
+    background-color: rgba(47, 107, 255, 0.4);
+    box-shadow:
+      inset 0 0 0 1.5px #2f6bff,
+      0 0 0 16px rgba(47, 107, 255, 0),
+      0 0 60px rgba(47, 107, 255, 0.6);
+  }
+}
+
+/* The selected lines while the server checks the change: light passing along them. */
+.viewer--working .line-box--selected {
+  background-image: linear-gradient(100deg, transparent 20%, rgba(47, 107, 255, 0.4) 50%, transparent 80%);
+  background-size: 250% 100%;
+  animation: sheen 1.1s linear infinite;
+}
+
+.spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* While a page loads: a soft light passing over the paper. */
+.page--loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(47, 107, 255, 0.07) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: sheen 1.4s linear infinite;
+}
+
+@keyframes sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .page-overlay {
@@ -429,298 +1270,72 @@ body {
   place-content: center;
   justify-items: center;
   gap: 8px;
-  color: #56616b;
+  color: #4b5567;
 }
 
 .page-failed p {
   margin: 0;
 }
 
+.page-failed .btn-secondary {
+  background: #eef2f8;
+  border-color: #d9e0ea;
+  color: #0b1220;
+}
+
 .page-wrap figcaption {
-  margin-top: 8px;
+  margin-top: 10px;
   text-align: center;
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
+  font-size: 0.75rem;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-/* Text boxes over the page, in non-photo blue. Fixed colors: pages are always white. */
+/* Text you can change, over the page. Fixed colors: pages are always white. */
 .line-box {
   position: absolute;
   padding: 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: 3px;
   background: transparent;
-  cursor: pointer;
+  cursor: text;
   -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 160ms ease-out;
 }
 
 @media (hover: hover) {
   .line-box:hover {
-    background: rgba(127, 204, 229, 0.18);
-    box-shadow: inset 0 0 0 1px rgba(63, 167, 207, 0.75);
+    background: rgba(47, 107, 255, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(47, 107, 255, 0.5);
   }
 }
 
 .viewer--show-text .line-box {
-  background: rgba(127, 204, 229, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(63, 167, 207, 0.6);
+  background: rgba(47, 107, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(47, 107, 255, 0.34);
 }
 
 .viewer--show-text .line-box--uncertain,
 .line-box--uncertain.line-box--selected {
-  outline: 1.5px dashed #c9971c;
+  outline: 1.5px dashed #b7791f;
   outline-offset: -1.5px;
 }
 
+/* A newly selected line locks on: its glow closes in from a wide ring. */
 .line-box.line-box--selected {
-  background: rgba(127, 204, 229, 0.34);
-  box-shadow: inset 0 0 0 1.5px #3aa7cf;
+  animation: lock-on 550ms var(--ease);
+  background: rgba(47, 107, 255, 0.15);
+  box-shadow:
+    inset 0 0 0 1.5px #2f6bff,
+    0 0 0 4px rgba(47, 107, 255, 0.18),
+    0 0 26px rgba(47, 107, 255, 0.35);
 }
 
 .line-box:focus-visible {
-  outline: 2px solid #1d5c8c;
+  outline: 2px solid #2f6bff;
   outline-offset: 1px;
-}
-
-/* Bottom of the screen: view controls, and the selected line's details below them. */
-.viewer-bottom {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 0 var(--gutter) max(var(--gutter), env(safe-area-inset-bottom));
-  pointer-events: none;
-  z-index: 20;
-}
-
-.viewer-bottom > * {
-  pointer-events: auto;
-}
-
-.view-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-control,
-.zoom-group {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  box-shadow: 0 4px 14px -6px rgba(22, 34, 46, 0.35);
-}
-
-.btn-control {
-  min-width: 44px;
-  padding: 0;
-  color: var(--ink);
-}
-
-.btn-control:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.btn-control[aria-pressed="true"] {
-  background: var(--npb-wash);
-  border-color: var(--npb);
-}
-
-.zoom-group {
-  display: flex;
-  align-items: center;
-}
-
-.zoom-group .btn-control {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-}
-
-.zoom-level {
-  min-width: 3.25em;
-  text-align: center;
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.btn-icon {
-  min-width: 44px;
-  padding: 0;
-}
-
-.line-panel {
-  width: min(100%, 460px);
-  max-height: 46dvh;
-  overflow: auto;
-  padding: 10px 16px 16px;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  box-shadow: 0 12px 32px -12px rgba(22, 34, 46, 0.4);
-}
-
-@media (max-width: 600px) {
-  .viewer-bottom {
-    padding-inline: 0;
-    padding-bottom: 0;
-  }
-  .view-controls {
-    margin-inline-end: var(--gutter);
-    margin-bottom: 6px;
-  }
-  .view-controls:last-child {
-    margin-bottom: max(var(--gutter), env(safe-area-inset-bottom));
-  }
-  .line-panel {
-    width: 100%;
-    border-radius: 14px 14px 0 0;
-    border-bottom: 0;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-  }
-}
-
-.line-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.line-panel h2 {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-}
-
-.line-text {
-  margin: 2px 0 12px;
-  font-size: 1.25rem;
-  line-height: 1.6;
-  text-align: start;
-  overflow-wrap: anywhere;
-}
-
-.line-warning {
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  background: var(--caution-bg);
-  border-inline-start: 3px solid var(--caution-edge);
-  font-size: 0.875rem;
-}
-
-.line-style {
-  display: grid;
-  grid-template-columns: repeat(4, auto);
-  justify-content: start;
-  gap: 4px 24px;
-  margin: 0;
-}
-
-@media (max-width: 420px) {
-  .line-style {
-    grid-template-columns: repeat(2, auto);
-  }
-}
-
-.line-style dt {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
-.line-style dd {
-  margin: 0;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.swatch {
-  display: inline-block;
-  width: 0.85em;
-  height: 0.85em;
-  margin-inline-end: 0.35em;
-  vertical-align: -0.08em;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-}
-
-.line-others h3 {
-  margin: 14px 0 4px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-}
-
-.line-others ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.875rem;
-}
-
-.line-others li + li {
-  margin-top: 2px;
-}
-
-/* Editing ------------------------------------------------------------------ */
-.line-edit {
-  display: block;
-  width: 100%;
-  margin: 6px 0 8px;
-  padding: 10px 12px;
-  font: inherit;
-  font-size: 1.125rem;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1.5px solid var(--npb);
-  border-radius: 8px;
-  resize: vertical;
-  text-align: start;
-}
-
-.line-edit:focus {
-  outline: 3px solid var(--npb-wash);
-  outline-offset: 0;
-}
-
-.where {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.where-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  font-size: 0.9375rem;
-  cursor: pointer;
-}
-
-.where-option--on {
-  border-color: var(--pencil);
-  background: var(--npb-wash);
-}
-
-.where-option input {
-  accent-color: var(--pencil);
-  margin: 0;
-}
-
-.where-option:has(input:focus-visible) {
-  outline: 2px solid var(--pencil);
-  outline-offset: 2px;
 }
 
 .viewer--placing .page {
@@ -731,55 +1346,813 @@ body {
   pointer-events: none;
 }
 
-/* The mark where added text will start: a caret the height of a line of text. */
+/* The mark where added text will start: a glowing caret the height of a line. */
 .spot {
   position: absolute;
   width: 2px;
-  height: 18px;
-  margin: -9px 0 0 -1px;
-  background: var(--pencil);
-  box-shadow: 0 0 0 3px var(--npb-wash);
+  height: 20px;
+  margin: -10px 0 0 -1px;
+  border-radius: 1px;
+  background: #2f6bff;
+  box-shadow:
+    0 0 0 3px rgba(47, 107, 255, 0.2),
+    0 0 18px rgba(47, 107, 255, 0.6);
+  animation: blink 1.1s steps(1) infinite;
   pointer-events: none;
 }
 
+/* The magnifier: a round glass lens showing the page larger, just above the pointer. */
+.lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  border-radius: 50%;
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 0 7px rgba(255, 255, 255, 0.28),
+    0 0 0 8px rgba(15, 23, 42, 0.12),
+    0 24px 50px -12px rgba(5, 10, 30, 0.6);
+  opacity: 0;
+  scale: 0.85;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease-out,
+    scale 300ms var(--spring);
+}
+
+.lens--on {
+  opacity: 1;
+  scale: 1;
+}
+
+/* The glass's shine, and a dot where the pointer is. */
+.lens::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 42%);
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.9),
+    inset 0 -10px 24px -10px rgba(15, 23, 42, 0.35);
+}
+
+.lens::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: #2f6bff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 10px rgba(47, 107, 255, 0.8);
+}
+
+/* Where a change was made, drawn over the page while comparing. */
+.change-outline {
+  position: absolute;
+  border: 2px solid #f59e0b;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.12);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.45);
+  pointer-events: none;
+}
+
+/* Zoom: floating at the foot of the pages on wide screens; in the toolbar on phones. */
+.zoom-group {
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+}
+
+.zoom-group .btn[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.toolbar .zoom-group {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.zoom-level {
+  min-width: 3.25em;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-zoom {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* It floats over the pages: nearly solid, so it reads on white. */
+.canvas-zoom .zoom-group {
+  padding: 3px;
+  background: var(--glass-strong);
+  box-shadow: var(--glass-shadow), var(--float);
+}
+
+@media (max-width: 1023.98px) {
+  .canvas-zoom {
+    display: none;
+  }
+}
+
+/* Comparing with the original. */
+.compare-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.segmented button {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: #ffffff;
+  box-shadow: 0 6px 16px -6px var(--accent-glow);
+}
+
+/* Panels ------------------------------------------------------------------
+   Wide screens: a glass column beside the pages. Narrow: a sheet under them. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  color: var(--text);
+  animation: panel-in 260ms var(--ease);
+}
+
+.panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel :is(p, h2, h3, dl, ul, ol, figure) {
+  margin: 0;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+}
+
+@media (max-width: 1023.98px) {
+  .dock > .panel {
+    max-height: 58dvh;
+    overflow-y: auto;
+    border-width: 1px 0 0;
+    border-radius: 26px 26px 0 0;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    background: var(--glass-strong);
+  }
+  .home-panel {
+    display: none !important;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dock {
+    align-items: center;
+  }
+  .dock > .panel {
+    width: min(100%, 580px);
+    border-width: 1px 1px 0;
+  }
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px -8px -4px 0;
+}
+
+.panel-title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.panel-subtitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.panel-lede {
+  color: var(--text-soft);
+}
+
+.panel-note {
+  color: var(--muted);
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: auto;
+  padding-top: 18px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* The tools, when nothing is selected (wide screens). */
+.home-panel {
+  gap: 18px;
+  padding-top: 20px;
+}
+
+.home-panel .panel-title {
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+}
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: var(--fill);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    box-shadow 200ms ease-out,
+    transform 200ms var(--spring);
+}
+
+.tool:hover {
+  background: var(--fill-hover);
+  transform: translateY(-1px);
+}
+
+.tool:active {
+  transform: scale(0.98);
+}
+
+/* The tool's icon on a small glass-blue tile. */
+.tool .icon {
+  box-sizing: content-box;
+  padding: 9px;
+  border-radius: 11px;
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 6px 14px -6px var(--accent-glow);
+}
+
+.tool[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.tool-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-note {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* An on/off switch: blue when on. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--line);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background-color 200ms ease-out;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 250ms var(--spring);
+}
+
+[aria-pressed="true"] > .switch {
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+}
+
+[aria-pressed="true"] > .switch::after {
+  transform: translateX(14px);
+}
+
+/* The toolbar under the pages on phones and tablets, when no panel is open. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 8px max(8px, env(safe-area-inset-bottom));
+  padding: 4px;
+  border-radius: 22px;
+  background: var(--glass-strong);
+}
+
+@media (min-width: 640px) {
+  .toolbar {
+    align-self: center;
+    width: min(100%, 560px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .toolbar {
+    display: none;
+  }
+}
+
+.toolbar-item {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.toolbar-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbar-item[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* The count sits on the icon's corner, so the label stays on one line. */
+.toolbar-item .count {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: calc(50% + 4px);
+}
+
+.toolbar .zoom-group {
+  flex: none;
+  margin-inline-start: 4px;
+  padding-inline-start: 6px;
+  border-inline-start: 1px solid var(--line);
+  border-radius: 0;
+}
+
+/* Messages: at the top of the side panel, or just above the sheet on phones.
+   Confirmations are glass; warnings and errors are solid, so they never fade. */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 16px;
+  border-radius: var(--radius);
+  animation: panel-in 260ms var(--ease);
+}
+
+.notice p {
+  flex: 1;
+  margin: 0;
+  padding-block: 8px;
+}
+
+.notice--done p::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-inline-end: 10px;
+  border-radius: 50%;
+  background: var(--positive);
+  box-shadow: 0 0 10px var(--positive);
+  vertical-align: 0.05em;
+}
+
+.notice-detail {
+  display: block;
+  margin-inline-start: 18px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.notice--warning,
+.notice--error {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--float);
+}
+
+.notice--warning {
+  background: var(--caution-bg);
+  border-color: var(--caution-edge);
+  color: var(--caution-ink);
+}
+
+.notice--error {
+  background: var(--error-bg);
+  border-color: var(--error-edge);
+  color: var(--error-ink);
+}
+
+.notice .btn-icon {
+  color: inherit;
+}
+
+@media (max-width: 1023.98px) {
+  .notice {
+    position: absolute;
+    inset-inline: 10px;
+    bottom: calc(100% + 10px);
+    z-index: 5;
+    background: var(--glass-strong);
+    box-shadow: var(--glass-shadow), var(--float);
+  }
+  .notice--warning {
+    background: var(--caution-bg);
+  }
+  .notice--error {
+    background: var(--error-bg);
+  }
+}
+
+/* The loupe: the selected line, magnified from the page. ------------------ */
+.loupe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.loupe-lens {
+  position: relative;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 0 0 5px var(--fill),
+    0 18px 40px -18px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* The glass's own shine, over the print. */
+.loupe-lens::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 38%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.06),
+    inset 0 -8px 20px -12px rgba(15, 23, 42, 0.25);
+  pointer-events: none;
+}
+
+.loupe-scroll {
+  display: flex;
+  padding: 14px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.loupe-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.loupe-scroll img {
+  display: block;
+  flex: none;
+  max-width: none;
+  margin-inline: auto;
+  background: #ffffff;
+}
+
+.loupe figcaption {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* A question that must be answered: a glass dialog over a dimmed, blurred screen. ---- */
+.dialog {
+  width: min(460px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 26px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow), var(--float);
+  color: var(--text);
+  animation: dialog-in 380ms var(--spring);
+}
+
+/* The backdrop doesn't see the page's colour tokens in every browser: plain colours. */
+.dialog::backdrop {
+  background: rgba(4, 6, 11, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: veil-in 220ms ease-out;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}
+
+.dialog-title {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.dialog-text {
+  margin: 0 0 20px;
+  color: var(--text-soft);
+  font-size: 0.9375rem;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A line's details ---------------------------------------------------------- */
+.line-text {
+  font-size: 1rem;
+  line-height: 1.55;
+  text-align: start;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+}
+
+.line-warning {
+  padding: 10px 12px;
+  background: var(--caution-bg);
+  border: 1px solid var(--caution-edge);
+  border-radius: var(--radius-sm);
+  color: var(--caution-ink);
+  font-size: 0.8125rem;
+}
+
+/* Font, size, color, style: one glass box split by hairlines, two by two. */
+.line-style {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: var(--fill);
+}
+
+.line-style > div {
+  min-width: 0;
+  padding: 9px 12px;
+}
+
+.line-style > div:nth-child(even) {
+  border-inline-start: 1px solid var(--line);
+}
+
+.line-style > div:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+.line-style dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.line-style dd {
+  margin: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-inline-end: 0.4em;
+  vertical-align: -0.1em;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--glass-edge), 0 0 0 2px var(--line);
+}
+
+.line-others h3 {
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.line-others ul {
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.line-others li + li {
+  margin-top: 2px;
+}
+
+/* Editing ------------------------------------------------------------------ */
+.line-edit {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+  resize: vertical;
+  text-align: start;
+  transition:
+    border-color 150ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+.line-edit:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 4px var(--accent-wash),
+    0 0 24px -6px var(--accent-glow);
+}
+
+.line-edit::placeholder {
+  color: var(--muted);
+}
+
+.where {
+  display: flex;
+  gap: 8px;
+}
+
+.where-option,
+.style-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: var(--fill);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+
+.where-option--on,
+.style-option--on {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.where-option input,
+.style-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.where-option:has(input:focus-visible),
+.style-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .style-choice {
-  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
   padding: 0;
   border: 0;
 }
 
 .style-choice legend {
   padding: 0;
-  margin-bottom: 6px;
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.style-choice > .btn {
+  align-self: flex-start;
 }
 
 .style-option {
-  display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9375rem;
-}
-
-.style-option--on {
-  border-color: var(--pencil);
-  background: var(--npb-wash);
+  padding: 10px 14px;
 }
 
 .style-option input {
-  margin: 3px 0 0;
-  accent-color: var(--pencil);
-}
-
-.style-option:has(input:focus-visible) {
-  outline: 2px solid var(--pencil);
-  outline-offset: 2px;
+  margin-top: 3px;
 }
 
 .style-option-text {
@@ -790,109 +2163,59 @@ body {
 
 .style-option-sample {
   font-size: 0.8125rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .picked-list {
-  margin: 0 0 8px;
   padding: 0;
   list-style: none;
 }
 
 .picked-list li {
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  background: var(--npb-wash);
-  border-radius: 6px;
-  font-size: 0.9375rem;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: var(--accent-wash);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .edit-note {
-  margin: 0 0 10px;
   font-size: 0.8125rem;
-  color: var(--ink-soft);
+  color: var(--muted);
 }
 
 .edit-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
 }
 
-.line-panel .error {
-  margin: 0 0 4px;
-  font-size: 0.9375rem;
+.panel .error {
+  font-size: 0.875rem;
 }
 
-.viewer-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: min(100%, 460px);
-  padding: 6px 6px 6px 14px;
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-inline-start: 4px solid var(--npb);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px -10px rgba(22, 34, 46, 0.4);
-}
-
-.viewer-notice p {
-  flex: 1;
-  margin: 0;
-  font-size: 0.9375rem;
-}
-
-.viewer-notice--warning {
-  border-inline-start-color: var(--caution-edge);
-}
-
-.viewer-notice--error {
-  border-inline-start-color: var(--red);
-}
-
-@media (max-width: 600px) {
-  .viewer-notice {
-    width: calc(100% - 2 * var(--gutter));
-    margin-inline: var(--gutter);
-  }
-}
-
-/* Changes: the count on the button, the list, and comparing with the original. */
-
-.count {
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--npb-wash);
-  border: 1px solid var(--npb);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.4;
-  text-align: center;
-}
-
+/* Changes: the list. */
 .changes-list {
-  margin: 0 0 4px;
   padding: 0;
   list-style: none;
-  max-height: 40vh;
-  overflow-y: auto;
 }
 
 .changes-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--rule);
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.changes-list li:first-child {
+  padding-top: 0;
 }
 
 .changes-list li:last-child {
@@ -904,7 +2227,6 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  font-size: 0.9375rem;
 }
 
 .change-text > span:first-child {
@@ -912,109 +2234,451 @@ body {
 }
 
 .change-meta {
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .change--undone .change-text > span:first-child {
-  color: var(--ink-soft);
+  color: var(--muted);
   text-decoration: line-through;
-}
-
-.compare-bar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px var(--gutter);
-  border-bottom: 1px solid var(--rule);
-}
-
-.segmented {
-  display: inline-flex;
-  padding: 3px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: var(--paper);
-}
-
-.segmented button {
-  min-height: 36px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--pencil);
-  color: var(--on-pencil);
-}
-
-.segmented button:focus-visible {
-  outline: 2px solid var(--pencil);
-  outline-offset: 2px;
-}
-
-/* Where a change was made, drawn over the page while comparing. */
-.change-outline {
-  position: absolute;
-  border: 2px solid #e0a100;
-  border-radius: 2px;
-  background: rgba(255, 196, 0, 0.12);
-  pointer-events: none;
 }
 
 /* A close look at one change: before and after. */
 .check-summary {
-  margin: 0 0 8px;
-  font-size: 0.9375rem;
   overflow-wrap: anywhere;
 }
 
-.check-shot {
-  margin: 0 0 8px;
-}
-
 .check-shot figcaption {
-  margin-bottom: 3px;
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
-.check-shot img {
-  display: block;
-  width: 100%;
-  height: auto;
+/* Each picture is the spot magnified, in a white glass-rimmed frame like the loupe's; a
+   long line scrolls (and glides) sideways inside it. */
+.check-frame {
+  position: relative;
+  border-radius: 16px;
   background: #ffffff;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 0 0 5px var(--fill),
+    0 16px 36px -18px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
 }
 
-/* Phones: the top bar holds Close, Undo, Redo, Changes and Download; the file's name
-   needs the rest of the room. */
-@media (max-width: 480px) {
-  .topbar {
-    gap: 4px;
-  }
+.check-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+  pointer-events: none;
+}
 
-  .topbar .download-label,
-  .doc-pages {
+.check-strip {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.check-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.check-strip img {
+  display: block;
+  flex: none;
+  max-width: none;
+  margin-inline: auto;
+  background: #ffffff;
+}
+
+@media (max-width: 1023.98px) {
+  .dock > .check-panel {
+    max-height: 82dvh;
+  }
+}
+
+/* Pages: a list beside the pages (wide screens), or a chip that opens a panel of them. --- */
+.page-rail {
+  display: none;
+}
+
+/* Wide enough: a list of the pages beside them, for files with more than one. */
+@media (min-width: 1280px) {
+  .workspace--rail {
+    grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock);
+  }
+  .workspace--rail .page-rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+  }
+  /* The list is there: the chip isn't needed. */
+  .workspace--rail .page-chip {
     display: none;
   }
 }
 
-/* Checking a change is the task at hand: room for both images and the buttons. */
-.line-panel.check-panel {
-  max-height: 82dvh;
+.thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 18px;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-.check-shot img {
-  max-height: 110px;
-  object-fit: contain;
+.thumbs--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 14px;
+  padding: 2px;
+  overflow: visible;
+}
+
+.thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 8px 18px -10px rgba(0, 0, 0, 0.45);
+  transition:
+    box-shadow 200ms ease-out,
+    transform 250ms var(--spring);
+}
+
+.thumb:hover img {
+  transform: translateY(-2px);
+}
+
+.thumb[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.thumb[aria-current="page"] img {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 6px var(--accent-wash),
+    0 10px 24px -8px var(--accent-glow);
+}
+
+/* The chip over the pages: which page is in view, and the way to the others. Nearly solid,
+   since it floats over a page. */
+.page-chip {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 16px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow), var(--float);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.page-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .page-chip {
+    min-height: 40px;
+  }
+}
+
+/* Help: the button's first-time bubble, and the guided tour. ------------------------------ */
+.help-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.help-hint {
+  position: absolute;
+  top: calc(100% + 12px);
+  inset-inline-end: -8px;
+  z-index: 30;
+  width: max-content;
+  max-width: 220px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--accent-top), var(--accent-bottom));
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: start;
+  box-shadow: 0 12px 30px -10px var(--accent-glow);
+  cursor: pointer;
+  animation:
+    hint-in 500ms var(--spring) 600ms both,
+    hint-bob 2.4s ease-in-out 1.2s infinite;
+}
+
+/* The bubble's little pointer, aimed at the button. */
+.help-hint::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  inset-inline-end: 22px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px 0 0 0;
+  background: var(--accent-top);
+  transform: rotate(45deg);
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.9);
+  }
+}
+
+@keyframes hint-bob {
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+/* The tour: the whole screen, with one part lit and a glass card explaining it. */
+.tour {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.tour::backdrop {
+  background: transparent;
+}
+
+/* The lit part: everything around it is dimmed by its huge shadow. */
+.tour-spot {
+  position: absolute;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 40px 4px var(--accent-glow),
+    0 0 0 200vmax rgba(3, 6, 14, 0.62);
+  pointer-events: none;
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    width 450ms var(--ease),
+    height 450ms var(--ease);
+}
+
+.tour-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(360px, calc(100vw - 24px));
+  padding: 20px 20px 16px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow), var(--float);
+  opacity: 0;
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    opacity 250ms ease-out;
+}
+
+.tour-card--placed {
+  opacity: 1;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  box-shadow: inset 0 0 0 1px var(--glass-edge);
+  transition:
+    width 300ms var(--ease),
+    background-color 300ms ease-out;
+}
+
+.tour-dot--on {
+  width: 20px;
+  background: linear-gradient(90deg, var(--accent-top), var(--accent-bottom));
+}
+
+.tour-title {
+  margin: 0 0 6px;
+  padding-inline-end: 28px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.tour-text {
+  margin: 0 0 16px;
+  color: var(--text-soft);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tour-count {
+  margin-inline-end: auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tour-close {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 10px;
+}
+
+/* Light that follows the mouse ------------------------------------------------
+   Lit glass gets the pointer's position (--lx, --ly, set from pointerLight.ts): a soft
+   sheen behind its content, and a brighter rim near the pointer. These properties don't
+   inherit, so only the lit surfaces restyle when the mouse moves. */
+@property --lx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --ly {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --cx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@property --cy {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -9999px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.bar, .dock > .panel, .landing-bar, .dropzone, .canvas-zoom .zoom-group, .tool, .facts li) {
+    position: relative;
+    background-image: radial-gradient(340px circle at var(--lx) var(--ly), var(--sheen), transparent 70%);
+  }
+
+  :is(.bar, .dock > .panel, .landing-bar, .dropzone, .canvas-zoom .zoom-group, .tool, .facts li)::before {
+    --lx: inherit;
+    --ly: inherit;
+    content: "";
+    position: absolute;
+    inset: -1px;
+    padding: 1px;
+    border-radius: inherit;
+    background: radial-gradient(180px circle at var(--lx) var(--ly), var(--rim), transparent 75%);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* A scrolling panel would clip a rim drawn outside it: draw it on its edge instead. */
+  .dock > .panel::before {
+    inset: 0;
+  }
+
+  .aurora--live {
+    background: radial-gradient(560px circle at var(--cx) var(--cy), var(--cursor-glow), transparent 70%), var(--bg);
+  }
+}
+
+/* Less motion, when asked: everything stays still. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }

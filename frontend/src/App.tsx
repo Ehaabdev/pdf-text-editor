@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { ApiError, deleteDocument, getDocument, type DocInfo } from "./api";
 import UploadScreen from "./components/UploadScreen";
 import Viewer from "./components/Viewer";
@@ -22,6 +23,13 @@ function recalledDoc(): string | null {
   }
 }
 
+/** Change screens with a soft cross-fade (and the mark gliding between the two top bars),
+ *  where the browser can; at once with reduced motion. */
+function transition(update: () => void) {
+  if (!document.startViewTransition || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return update();
+  document.startViewTransition(() => flushSync(update));
+}
+
 export default function App() {
   const [doc, setDoc] = useState<DocInfo | null>(null);
   const [restoring, setRestoring] = useState(() => recalledDoc() !== null);
@@ -42,17 +50,29 @@ export default function App() {
 
   function open(d: DocInfo) {
     rememberDoc(d.id);
-    setNotice(null);
-    setDoc(d);
+    transition(() => {
+      setNotice(null);
+      setDoc(d);
+    });
   }
 
   function close() {
     if (doc) void deleteDocument(doc.id);
     rememberDoc(null);
-    setDoc(null);
+    transition(() => setDoc(null));
   }
 
-  if (restoring) return <div className="desk" aria-busy="true" />;
-  if (doc) return <Viewer doc={doc} onClose={close} onChange={setDoc} />;
-  return <UploadScreen onOpen={open} notice={notice} />;
+  return (
+    <>
+      {/* The glowing background everything floats on. It drifts only on the start screen. */}
+      <div className={`aurora${doc || restoring ? "" : " aurora--live"}`} aria-hidden="true" />
+      {restoring ? (
+        <div className="desk" aria-busy="true" />
+      ) : doc ? (
+        <Viewer doc={doc} onClose={close} onChange={setDoc} />
+      ) : (
+        <UploadScreen onOpen={open} notice={notice} />
+      )}
+    </>
+  );
 }

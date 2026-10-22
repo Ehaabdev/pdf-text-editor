@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, addLine, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
+import { CLOSE, Icon } from "./Icon";
+import Loupe from "./Loupe";
 
 type Look = Pick<TextSpan, "font" | "size" | "color" | "bold" | "italic">;
 
@@ -23,15 +25,23 @@ type Props = {
   onEdited: (outcome: EditOutcome, change: Change) => void;
   onDelete: () => void;
   onSelectMore: () => void;
+  /** The server is checking this panel's change. */
+  onWorking?: (working: boolean) => void;
 };
 
 type Mode = "view" | "edit" | "add";
 
-export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore }: Props) {
+export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onWorking }: Props) {
   const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState(line.display);
   const [where, setWhere] = useState<"below" | "above">("below");
   const [saving, setSaving] = useState(false);
+
+  // Tell the page while the server works on this change (and stop if the panel closes).
+  useEffect(() => {
+    onWorking?.(saving);
+  }, [saving, onWorking]);
+  useEffect(() => () => onWorking?.(false), [onWorking]);
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -82,15 +92,15 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
 
   return (
-    <section className="line-panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
-      <div className="line-panel-head">
-        <h2>{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
+    <section className="panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
+      <div className="panel-head">
+        <h2 className="panel-title">{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon d={CLOSE} />
         </button>
       </div>
+
+      <Loupe doc={doc} page={page} line={line} />
 
       {mode !== "view" ? (
         <form
@@ -149,7 +159,8 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           )}
           <div className="edit-actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving ? "Saving…" : mode === "add" ? "Add line" : "Save change"}
+              {saving && <span className="spinner" aria-hidden="true" />}
+              {saving ? "Checking the change…" : mode === "add" ? "Add line" : "Save change"}
             </button>
             <button className="btn btn-secondary" type="button" disabled={saving} onClick={() => show("view")}>
               Cancel
@@ -213,6 +224,7 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               Add a line
             </button>
             <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
+              {deleting && <span className="spinner" aria-hidden="true" />}
               {deleting ? "Deleting…" : "Delete line"}
             </button>
             <button className="btn btn-ghost" onClick={onSelectMore} disabled={deleting}>

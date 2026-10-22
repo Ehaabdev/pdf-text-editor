@@ -166,6 +166,16 @@ Known limits:
 
 Redrawing every word of every line with its own text, as a stress test, gives a median ink agreement of 0.93 with the original (1 px slack). Arabic lines score lowest. Their letters come out slightly differently spaced than Word's, though the text stays correct; short lines also score low from sub-pixel shifts alone. Normal edits redraw only the changed words.
 
+## The website
+
+- A list of small page pictures sits beside the pages; on phones, the page number button opens it.
+- A selected line shows in the panel magnified from the page itself, with its font, size and color.
+- The magnifier (its button, or the M key) shows the print up close under the mouse.
+- Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). The Delete key deletes the selected lines.
+- A change lights up on the page once its new image is showing.
+- Closing a file whose changes weren't downloaded asks first, and the browser warns before the tab closes.
+- Light and dark looks. The ? button gives a short tour.
+
 ## How it works
 
 - `backend/`: Python. FastAPI serves the API, and PyMuPDF renders pages and reads text. pikepdf, HarfBuzz and fontTools do the editing. Page images are rendered by the engine that reads the file, so the preview matches it.
