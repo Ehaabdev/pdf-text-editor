@@ -122,6 +122,11 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   function edited(outcome: EditOutcome, change: Change) {
     clearSelection();
+    // Saved as it already was: the server made no new version, so there's nothing to light up.
+    if (outcome.document.revision === doc.revision) {
+      setNotice({ text: "Nothing changed: the text is the same as before.", tone: "done" });
+      return;
+    }
     onChange(outcome.document);
     lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
