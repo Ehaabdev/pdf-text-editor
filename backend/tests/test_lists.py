@@ -58,6 +58,35 @@ def test_a_wrapped_item_takes_the_next_number_only_after_its_last_line():
     assert got[second.id] == {"below": "2.", "above": None}
 
 
+def test_a_bullet_whose_wrapped_lines_start_under_the_bullet():
+    """Some documents wrap an item's text back under its bullet (a hanging line). The
+    item's last line is still its last line: a new line after it is the next bullet."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    long = "Automation of customer conversations using a chatbot built by the team for"
+    rows = [
+        (72, 100, "Before the list there is a line of plain text that is long enough to"),
+        (72, 116, "reach the right side of the page, as body text does in a document."),
+        (80, 140, "•"), (96, 140, "WhatsApp Business API"),
+        (80, 156, "•"), (96, 156, long),
+        (72, 172, "powerful chatbots with no code"),
+        (80, 188, "•"), (96, 188, long),
+        (72, 204, "every customer, and to monitor the chats at the same time as the team"),
+        (72, 220, "conversations."),
+    ]
+    for x, y, t in rows:
+        page.insert_text((x, y), t, fontsize=11, fontname="helv")
+    src = doc.tobytes()
+    lines = page_lines(pymupdf.open("pdf", src)[0])
+    got = markers(src, 0, lines)
+    by_text = {l.text[2:14] if not l.text[0].isalnum() else l.text[:12]: got.get(l.id) for l in lines}
+    bullet = by_text["WhatsApp Bus"]["below"]  # as the PDF's font names it
+    assert by_text["WhatsApp Bus"] == {"below": bullet, "above": bullet}
+    assert by_text["conversation"] == {"below": bullet, "above": None}
+    assert by_text["powerful cha"] == {"below": bullet, "above": None}
+    assert by_text["Before the l"] is None
+
+
 pytestmark = pytest.mark.skipif(not HAVE_FONTS, reason="the fonts of the test documents aren't installed")
 
 

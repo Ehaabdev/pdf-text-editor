@@ -414,10 +414,12 @@ def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joine
     # Its middle at the tap's height; on the row of text already there, if it's close
     # (an empty table cell next to a filled one).
     baseline = tap.y + (base - (ref_box.y0 + ref_box.y1) / 2)
-    row = [l for l in all_lines if _pdf_rect(l.bbox, page).y0 - 0.25 * height <= tap.y <= _pdf_rect(l.bbox, page).y1 + 0.25 * height]
+    # Anywhere the new text would reach into a row of text, it goes on that row.
+    row = [l for l in all_lines if _pdf_rect(l.bbox, page).y0 - 0.75 * height <= tap.y <= _pdf_rect(l.bbox, page).y1 + 0.75 * height]
     if row:
-        nearest = min(row, key=lambda l: abs((_pdf_rect(l.bbox, page).x0 + _pdf_rect(l.bbox, page).x1) / 2 - tap.x))
+        nearest = min(row, key=lambda l: abs((_pdf_rect(l.bbox, page).y0 + _pdf_rect(l.bbox, page).y1) / 2 - tap.y))
         baseline = _baseline(nearest, rp)
+        row = [l for l in row if abs(_baseline(l, rp) - baseline) < 0.5 * height]
     natural = sum(w.width for w in visual) + sum(gaps)
     # Its start at the tap; on the edge of text just above or below, if it's close.
     start_x = tap.x
@@ -429,6 +431,14 @@ def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joine
     close = [e for e in edges if abs(e - tap.x) < 8]
     if close:
         start_x = min(close, key=lambda e: abs(e - tap.x))
+    # Just after a line's end on the same row: a space after it, as if one were typed.
+    space = _space_width(rp, ref)
+    for l in row:
+        r = _pdf_rect(l.bbox, page)
+        if not rtl and r.x0 < start_x < r.x1 + space and tap.x >= r.x1 - 0.5:
+            start_x = r.x1 + space
+        elif rtl and r.x0 - space < start_x < r.x1 and tap.x <= r.x0 + 0.5:
+            start_x = r.x0 - space
     start = start_x if not rtl else start_x - natural
     x = start
     for w, gap in zip(visual, gaps + [0.0]):
@@ -690,9 +700,9 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
         if abs((r.y0 + r.y1) / 2 - (box.y0 + box.y1) / 2) > 0.15 * height and distance < 8 * l.style.size:
             raise EditRejected(f"{no_room}: it would be crowded against other text.")
         # On the same row, close by (another column's text): it would read as one line.
-        if distance < 4 * l.style.size:
-            hint = " To add words to that line, select the line and choose Edit text." if ref_box is None else ""
-            raise EditRejected(f"{no_room}: it would sit right next to other text on the same row.{hint}")
+        # Text placed at a tapped spot may join the row's line: it only mustn't touch it.
+        if distance < (0.1 * l.style.size if ref_box is None else 4 * l.style.size):
+            raise EditRejected(f"{no_room}: it would sit right next to other text on the same row.")
     for info in page.get_image_info():
         r = pymupdf.Rect(info["bbox"]) * ~page_matrix(page)  # images come unrotated, like text
         r.normalize()

@@ -10,6 +10,7 @@ edit of that item's marker; if one can't be made exactly, nothing is changed.
 import io
 import re
 from dataclasses import dataclass
+from statistics import median
 
 import pikepdf
 import pymupdf
@@ -108,8 +109,8 @@ def place(line: Line, lines: list[Line], rp: Replay) -> Place | None:
                 break
             if found is None and abs(_start(above, rp) - _start(line, rp)) > 1.5:
                 return None
-        if item is None or abs(_start(line, rp) - item.text_edge) > 1.5:
-            return None
+        if item is None:
+            return None  # whether the line is one of the item's is decided below
     marker = item.marker_text
     edge = item.marker_edges[1] if item_line.rtl else item.marker_edges[0]
     height = item_line.written[3] - item_line.written[1]
@@ -120,9 +121,23 @@ def place(line: Line, lines: list[Line], rp: Replay) -> Place | None:
         key=lambda l: l.written[1],
     )
 
+    # Where the page's long lines end, to tell a line that ran to the edge and wrapped (the
+    # usual end, not the farthest: a footer often reaches further out).
+    widest = max(l.written[2] - l.written[0] for l in lines)
+    long_lines = [l for l in lines if l.written[2] - l.written[0] >= 0.5 * widest]
+    far_right = median([l.written[2] for l in long_lines if not l.rtl] or [l.written[2] for l in lines])
+    far_left = median([l.written[0] for l in long_lines if l.rtl] or [l.written[0] for l in lines])
+    size = item_line.style.size
+
     def continues(prev: Line, nxt: Line, text_edge: float) -> bool:
-        """A later line of the same item: close under it, starting where its text starts."""
-        return 0 <= nxt.written[1] - prev.written[3] < 0.8 * height and _item_of(nxt, rp, lines) is None and abs(_start(nxt, rp) - text_edge) <= 1.5
+        """A later line of the same item: close under it, with no marker of its own, and
+        starting where the item's text starts, or anywhere when the line above it ran
+        to the edge and wrapped (a hanging line under the bullet)."""
+        if not (0 <= nxt.written[1] - prev.written[3] < 0.8 * height) or _item_of(nxt, rp, lines) is not None:
+            return False
+        if abs(_start(nxt, rp) - text_edge) <= 1.5:
+            return True
+        return (far_left + 3 * size > prev.written[0]) if prev.rtl else (prev.written[2] > far_right - 3 * size)
 
     own, j = [item_line], 0
     while j < len(under) and continues(own[-1], under[j], item.text_edge):

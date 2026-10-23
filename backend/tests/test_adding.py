@@ -256,18 +256,20 @@ def test_arabic_text_runs_left_from_the_tap(source):
 
 
 @pytest.mark.parametrize("source", ADDITIONS)
-def test_tapping_in_the_empty_end_of_a_line_joins_that_line(source):
-    """Text tapped onto a row with a short line on it reads as part of that line (as any
-    reader of the page would take it); close to its end, it's refused with a way out."""
+@pytest.mark.parametrize("gap, rows", [(150, 0.0), (10, 0.0), (1, 0.0), (60, 0.6)])
+def test_tapping_in_the_empty_end_of_a_line_joins_that_line(source, gap, rows):
+    """Text tapped onto a row with a short line on it goes on that row (a tap a little
+    above or below it too), and reads as part of that line, as any reader of the page
+    would take it. Right after the line's end, it starts a space after it."""
     src = ADDITIONS[source]
     page_no, line = find(src, "3. Book")
-    middle = (line.bbox[1] + line.bbox[3]) / 2
-    result = add_line(src, page_no, "Done", line.id, line.text, at=(line.bbox[2] + 150, middle))
+    height = line.bbox[3] - line.bbox[1]
+    tap = (line.bbox[2] + gap, (line.bbox[1] + line.bbox[3]) / 2 + rows * height)
+    result = add_line(src, page_no, "Done", line.id, line.text, at=tap)
     joined = find(result.pdf, "3. Book")[1]
     assert comparable(joined.text) == comparable(line.text + " Done")
     assert len(page_lines(pymupdf.open("pdf", result.pdf)[page_no])) == len(page_lines(pymupdf.open("pdf", src)[page_no]))
-    with pytest.raises(EditRejected, match="Edit text"):
-        add_line(src, page_no, "Done", line.id, line.text, at=(line.bbox[2] + 10, middle))
+    assert result.marks[0][1] - line.bbox[2] >= min(gap, 2.0) - 0.01
 
 
 def test_tapping_on_text_is_refused():
