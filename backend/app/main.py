@@ -258,6 +258,8 @@ async def edit_line(doc_id: str, edit: EditRequest):
     src = store.current_path(meta).read_bytes()
     try:
         result = await run_in_threadpool(replace_line, src, edit.page, edit.lineId, edit.oldText, edit.newText)
+        if not edit.newText.strip():  # emptied: deleted, so a list counts on without it
+            result = await run_in_threadpool(renumber_after_delete, src, result, [(edit.page, edit.lineId, edit.oldText)])
     except EditRejected as e:
         raise HTTPException(422, str(e))
     if result.pdf == src:

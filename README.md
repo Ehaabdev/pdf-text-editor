@@ -124,7 +124,7 @@ These checks are tested on turned pages (/Rotate), cropped pages, and pages whos
 
 On the website: click a line and choose Delete line. To delete several, Shift-click or Ctrl-click them, or tap "Select more lines" on a phone. The Delete key works too. Emptying a line's text in the edit box also deletes it.
 
-Deleting every line of every test document and private sample, one at a time, succeeds for all 635, with no warnings.
+Deleting every line of every test document and private sample (656 lines), one at a time, succeeds for all. The text below moves up into the space for 464 of them; for 163 nothing is below. For 29 the space stays, with the reason: mostly a box drawn around the text, or very tight table cells.
 
 ## Adding text
 
@@ -134,7 +134,7 @@ Deleting every line of every test document and private sample, one at a time, su
 - **Making room:** first the text below (adding above: the line itself and the text below it) moves down one line spacing, as in a word processor (see [Moving text](#moving-text)); then the new line goes into the room made. Where the text can't move, the line still goes in if there's room for it at full line spacing; squeezed in, it's refused with the reason.
 - **Spacing:** one line spacing away. It's measured in the line's paragraph; failing that, it's the page's most common spacing for that font; failing that, the font's own line height, which Word uses for single spacing.
 - **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
-- **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Unticked, text under an item lines up with the item's text.
+- **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Where English and Arabic items take turns (1., ١., 2., ٢.), each list counts on past the other language's lines. Unticked, text under an item lines up with the item's text.
 
 **At a tapped spot** (the "Add text anywhere" button, then tap the page):
 - **Position:** the text starts at the mark. English runs right from it, Arabic runs left.
@@ -154,7 +154,7 @@ Before it is accepted:
 - nothing outside it changes by a single pixel (MuPDF and PDFium);
 - MuPDF sees the same shapes and links, and no other page changes.
 
-Adding a line under every line of every test document and private sample (656 lines): 161 are added. The rest are refused before anything is written, almost all for lack of room in the middle of paragraphs. None fails a check.
+Adding a line under every line of every test document and private sample (656 lines): 379 are added (161 before text could move), 313 of them by moving the text below. The rest are refused before anything is written: mostly a full page (93), text too long for one line (44), a full table cell (23), or lines and shapes in the way. None fails a check. On purpose, six lines that used to fit into the gap after them, on full pages of the Chrome test documents, are now refused: they only fitted squeezed in, closer than a line spacing.
 
 Known limits:
 - one line at a time;

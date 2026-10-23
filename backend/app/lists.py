@@ -136,22 +136,29 @@ def place(line: Line, lines: list[Line], rp: Replay) -> Place | None:
     expected = marker if bullet else shifted(marker, 1, roman)
     followers: list[tuple[Line, str]] = []
     prev, prev_edge = own[-1], item.text_edge
+    skipped = 0.0  # height of the other language's text passed over since the last item
     while j < len(under) and expected is not None:
         other = under[j]
-        if followers and continues(prev, other, prev_edge):
+        theirs = _item_of(other, rp, lines)
+        lined_up = theirs is not None and abs((theirs.marker_edges[1] if other.rtl else theirs.marker_edges[0]) - edge) <= 1.5
+        if lined_up and theirs.marker_text == expected and other.written[1] - prev.written[3] <= 2.5 * height + skipped:
+            followers.append((other, theirs.marker_text))
+            roman = roman or bool(re.fullmatch(r"\(?[ivxIVX]{2,5}[.)]|[.)][ivxIVX]{2,5}\)?", theirs.marker_text))
+            expected = marker if bullet else shifted(theirs.marker_text, 1, roman)
+            prev, prev_edge, skipped = other, theirs.text_edge, 0.0
+            j += 1
+            continue
+        if followers and not skipped and continues(prev, other, prev_edge):
             prev = other  # a later line of the item before
             j += 1
             continue
-        theirs = _item_of(other, rp, lines)
-        if theirs is None or theirs.marker_text != expected or other.written[1] - prev.written[3] > 2.5 * height:
-            break
-        if abs((theirs.marker_edges[1] if other.rtl else theirs.marker_edges[0]) - edge) > 1.5:
-            break
-        followers.append((other, theirs.marker_text))
-        roman = roman or bool(re.fullmatch(r"\(?[ivxIVX]{2,5}[.)]|[.)][ivxIVX]{2,5}\)?", theirs.marker_text))
-        expected = marker if bullet else shifted(theirs.marker_text, 1, roman)
-        prev, prev_edge = other, theirs.text_edge
-        j += 1
+        if other.rtl != item_line.rtl:
+            # The other language in between, as in a two-language contract where the
+            # English and Arabic items take turns: the list goes on after it.
+            skipped += (other.written[3] - other.written[1]) + 2.5 * height
+            j += 1
+            continue
+        break
     return Place(item_line, marker, item_line is line, own[-1] is line, roman, followers, own)
 
 
@@ -231,24 +238,37 @@ def renumber_after_delete(src: bytes, result: EditResult, targets: list[tuple[in
         lines = page_lines(doc[page_no])
         with pikepdf.open(io.BytesIO(src)) as p:
             rp = replay(p, page_no)
-        gone = 0  # numbered items deleted so far, going down the list
-        last = None
+        # Each list with a whole item deleted: going down it, every item left counts down
+        # by the deleted items above it (delete 1 and 3 of 5: 2, 4, 5 become 1, 2, 3).
+        renumber: list[tuple[Line, str, str]] = []
+        covered: set[str] = set()
         for line in lines:
-            if line.id not in ids:
+            if line.id not in ids or line.id in covered:
                 continue
             spot = place(line, lines, rp)
             if spot is None or not spot.first or not (len(spot.marker) > 1 or spot.marker.isalnum()):
                 continue
-            # The whole item is deleted: its marker line and any later lines of it.
-            if all(l.id in ids for l in spot.own):
-                gone += 1
-                last = spot
-        if not gone or last is None:
+            if not all(l.id in ids for l in spot.own):
+                continue  # only part of the item: it stays an item
+            items = [(spot.item_line, spot.marker, spot.own)]
+            for l, m in spot.followers:
+                theirs = place(l, lines, rp)
+                items.append((l, m, theirs.own if theirs else [l]))
+            gone = 0
+            for item_line, marker, own in items:
+                covered.add(item_line.id)
+                if all(x.id in ids for x in own):
+                    gone += 1
+                elif gone:
+                    new = shifted(marker, -gone, spot.roman)
+                    if new is None:
+                        renumber = []
+                        break
+                    renumber.append((item_line, marker, new))
+        if not renumber:
             continue
-        followers = [(l, m) for l, m in last.followers if l.id not in ids]
         try:
-            for old_line, old_marker in followers:
-                new_marker = shifted(old_marker, -gone, last.roman)
+            for old_line, old_marker, new_marker in renumber:
                 now = _find(pdf, page_no, old_line)
                 if new_marker is None or now is None or old_marker not in now.text:
                     raise EditRejected("not found")

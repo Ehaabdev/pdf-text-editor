@@ -113,6 +113,34 @@ def test_a_line_outside_a_list_is_refused():
         add_item(src, 0, "Not an item", ref.id, ref.text)
 
 
+def test_a_two_language_list_whose_items_take_turns():
+    """English and Arabic items alternate (1., ١., 2., ٢., …): each list counts on past the
+    other language's lines, in its own digits."""
+    src = (FIXTURES / "chrome" / "bilingual-contract-chrome.pdf").read_bytes()
+    ref = find(src, "١. النطاق")
+    result = add_item(src, 0, "تأكيد الموعد مع العميل", ref.id, ref.text)
+    markers_now = [t.split(" ")[0] for t in texts(result.pdf) if t[:1] in "12345١٢٣٤٥٦"]
+    assert markers_now == ["1.", "١.", "٢.", "2.", "٣.", "3.", "٤.", "4.", "٥.", "5.", "٦."]
+
+
+def test_deleting_items_apart_counts_each_down_by_those_above_it():
+    """Delete items 1 and 3 of 5: 2, 4, 5 become 1, 2, 3 (not 2, 2, 3)."""
+    src = ADDITIONS["word"]
+    ref = find(src, "3. Book")
+    src = add_item(src, 0, "Send the minutes", ref.id, ref.text).pdf
+    ref = find(src, "4. Send")
+    src = add_item(src, 0, "Plan the next meeting", ref.id, ref.text).pdf
+    first, third = find(src, "1. Confirm"), find(src, "3. Book")
+    targets = [(0, first.id, first.text), (0, third.id, third.text)]
+    result = renumber_after_delete(src, delete_lines(src, targets), targets)
+    english = [t for t in texts(result.pdf) if t[:2] in ("1.", "2.", "3.", "4.", "5.") and t.isascii()]
+    assert english == [
+        "1. Share the draft budget with finance",
+        "2. Send the minutes",
+        "3. Plan the next meeting",
+    ]
+
+
 def test_deleting_an_item_counts_the_rest_down():
     src = ADDITIONS["word"]
     gone = find(src, "2. Share")
