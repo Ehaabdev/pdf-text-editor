@@ -89,9 +89,6 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
           {APP_NAME}
         </span>
         <span className="landing-bar-end">
-          <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
-            Source code
-          </a>
           <ThemeSwitch />
         </span>
       </header>
@@ -176,6 +173,13 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
           <Demo />
         </section>
       </main>
+
+      {/* The AGPL asks that users can get the source: a small link is enough. */}
+      <footer className="landing-foot">
+        <a className="fine-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
+          Source code
+        </a>
+      </footer>
     </div>
   );
 }

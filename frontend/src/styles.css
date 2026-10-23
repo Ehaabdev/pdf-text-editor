@@ -378,15 +378,6 @@ body {
   }
 }
 
-.quiet-link {
-  color: var(--muted);
-  text-underline-offset: 3px;
-}
-
-.quiet-link:hover {
-  color: var(--text);
-}
-
 .count {
   display: inline-grid;
   place-items: center;
@@ -435,6 +426,25 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The source code link: there, but barely noticed. */
+.landing-foot {
+  padding: 0 16px max(10px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 0.6875rem;
+}
+
+.fine-link {
+  color: var(--muted);
+  opacity: 0.7;
+  text-decoration: none;
+}
+
+.fine-link:hover,
+.fine-link:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 /* Changing screens (start screen and editor): the old one softly recedes, the new one
@@ -1361,6 +1371,19 @@ html.theme-switching::view-transition-new(root) {
   pointer-events: none;
 }
 
+/* Adding text: where a new line will go, across its paragraph (the text below moves down). */
+.spot-band {
+  position: absolute;
+  border: 1.5px dashed #2f6bff;
+  border-radius: 3px;
+  background: rgba(47, 107, 255, 0.08);
+  pointer-events: none;
+}
+
+.spot-plan {
+  font-weight: 500;
+}
+
 /* The magnifier: a round glass lens showing the page larger, just above the pointer. */
 .lens {
   position: absolute;
@@ -2086,12 +2109,6 @@ html.theme-switching::view-transition-new(root) {
   color: var(--muted);
 }
 
-.where {
-  display: flex;
-  gap: 8px;
-}
-
-.where-option,
 .style-option {
   display: flex;
   align-items: center;
@@ -2107,19 +2124,16 @@ html.theme-switching::view-transition-new(root) {
     background-color 150ms ease-out;
 }
 
-.where-option--on,
 .style-option--on {
   border-color: var(--accent);
   background: var(--accent-wash);
 }
 
-.where-option input,
 .style-option input {
   margin: 0;
   accent-color: var(--accent);
 }
 
-.where-option:has(input:focus-visible),
 .style-option:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -2159,6 +2173,19 @@ html.theme-switching::view-transition-new(root) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* "Make it item 4.": a new line in a list joins it. */
+.item-option {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.item-note {
+  flex-basis: 100%;
+  padding-left: 26px;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 
 .style-option-sample {

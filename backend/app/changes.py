@@ -28,7 +28,7 @@ class EditRejected(Exception):
 
 
 def fail(why: str):
-    raise EditRejected(f"The change couldn't be made exactly ({why}), so nothing was changed.")
+    raise EditRejected(f"Not saved: a safety check found that {why}. Your page is unchanged.")
 
 
 @dataclass

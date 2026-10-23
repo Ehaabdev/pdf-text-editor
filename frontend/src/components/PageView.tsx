@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getLines, pageImageUrl, type DocInfo, type PageLines, type TextLine } from "../api";
+import { getLines, pageImageUrl, type DocInfo, type PageLines, type SpotPlan, type TextLine } from "../api";
 
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
 const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
@@ -21,6 +21,8 @@ type Props = {
   /** Adding text: a tap anywhere on the page puts the mark there (page points, as displayed). */
   placing: boolean;
   spot: { x: number; y: number } | null;
+  /** What adding at the spot will do: a new line's band is outlined where it will go. */
+  preview?: SpotPlan | null;
   onPlace: (x: number, y: number) => void;
   /** Comparing: which stored version to show (0 is the original), with editing off. */
   version?: number;
@@ -34,7 +36,7 @@ type Props = {
 /** One image of the page: which revision and version it shows, and its URLs. */
 type Layer = { key: string; revision: number; src: string; srcSet: string };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, onPlace, version, outlines = [], flash, magnifier }: Props) {
+export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
   const [attempt, setAttempt] = useState(0);
@@ -183,7 +185,20 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
             })}
           </div>
         )}
-        {spot && (
+        {/* A new line goes in a band across its paragraph; text placed or joined starts at the mark. */}
+        {preview && (preview.kind === "item" || preview.kind === "line") && (
+          <span
+            className="spot-band"
+            style={{
+              left: pct(preview.box[0], size.width),
+              top: pct(preview.box[1], size.height),
+              width: pct(preview.box[2] - preview.box[0], size.width),
+              height: pct(preview.box[3] - preview.box[1], size.height),
+            }}
+            aria-hidden="true"
+          />
+        )}
+        {spot && !(preview && (preview.kind === "item" || preview.kind === "line")) && (
           <span className="spot" style={{ left: pct(spot.x, size.width), top: pct(spot.y, size.height) }} aria-hidden="true" />
         )}
         {state === "failed" && (

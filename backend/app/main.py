@@ -3,7 +3,8 @@ import logging
 import re
 import sys
 from contextlib import asynccontextmanager
-from pathlib import PurePath
+from functools import lru_cache
+from pathlib import Path, PurePath
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -16,6 +17,8 @@ from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
+from .lists import add_item, markers, renumber_after_delete
+from .spots import plan as plan_spot
 from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NoSuchVersion, NothingToUndo, StaleRevision
 from .textlayout import line_json, lines_for
 
@@ -158,14 +161,34 @@ def page_image(doc_id: str, page_no: int, width: int = Query(1200), version: int
 @app.get("/api/documents/{doc_id}/pages/{page_no}/lines")
 def page_text_lines(doc_id: str, page_no: int):
     meta = _get_meta(doc_id)
+    path = store.current_path(meta)
     try:
-        width, height, lines = lines_for(store.current_path(meta), page_no)
+        width, height, lines = lines_for(path, page_no)
     except IndexError:
         raise HTTPException(404, "That page doesn't exist.")
+    items = _list_markers(str(path), path.stat().st_mtime_ns, page_no)
     return JSONResponse(
-        {"width": width, "height": height, "lines": [line_json(l) for l in lines]},
+        # "item": the marker a new list item would get below or above the line, if it's in a list.
+        {"width": width, "height": height, "lines": [{**line_json(l), "item": items.get(l.id)} for l in lines]},
         headers={"Cache-Control": "private, max-age=3600"},
     )
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/spot")
+def spot_plan(doc_id: str, page_no: int, x: float, y: float):
+    """What adding text at (x, y), in points as displayed, would do: a new list item, a new
+    line (the text below moving down), text joining a line, or text where clicked."""
+    meta = _get_meta(doc_id)
+    src = store.current_path(meta).read_bytes()
+    try:
+        return plan_spot(src, page_no, x, y).json()
+    except IndexError:
+        raise HTTPException(404, "That page doesn't exist.")
+
+
+@lru_cache(maxsize=64)
+def _list_markers(path: str, mtime_ns: int, page_no: int) -> dict:
+    return markers(Path(path).read_bytes(), page_no, list(lines_for(path, page_no)[2]))
 
 
 class EditRequest(BaseModel):
@@ -196,6 +219,8 @@ class AdditionRequest(BaseModel):
     where: str = Field(default="below", pattern="^(below|above)$")
     # Or a point on the page as displayed, in points: the text starts there.
     at: tuple[float, float] | None = None
+    # As a new item of the line's list: numbered on, with the items after it renumbered.
+    item: bool = False
 
 
 class RevisionRequest(BaseModel):
@@ -211,6 +236,16 @@ def _short(text: str, n: int = 40) -> str:
     text = " ".join(text.split())
     text = text if len(text) <= n else text[: n - 1] + "…"
     return "\u2068" + text + "\u2069"
+
+
+def _outcome(meta, result) -> dict:
+    """The reply to a change: the document now, and what to tell the user about it."""
+    return {
+        "document": _document_json(meta, describe_file(store.current_path(meta))),
+        "warnings": result.warnings,
+        "lookalikes": result.lookalikes,
+        "moved": result.moved,  # lines that moved down (to make room) or up (into the space)
+    }
 
 
 def _entry(kind: str, summary: str, result) -> dict:
@@ -236,10 +271,12 @@ async def edit_line(doc_id: str, edit: EditRequest):
     src = store.current_path(meta).read_bytes()
     try:
         result = await run_in_threadpool(replace_line, src, edit.page, edit.lineId, edit.oldText, edit.newText)
+        if not edit.newText.strip():  # emptied: deleted, so a list counts on without it
+            result = await run_in_threadpool(renumber_after_delete, src, result, [(edit.page, edit.lineId, edit.oldText)])
     except EditRejected as e:
         raise HTTPException(422, str(e))
     if result.pdf == src:
-        return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
+        return _outcome(meta, result)
     if edit.newText.strip():
         entry = _entry("edit", f"Changed “{_short(edit.oldText)}” to “{_short(result.text)}”", result)
     else:
@@ -248,7 +285,7 @@ async def edit_line(doc_id: str, edit: EditRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, edit.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
+    return _outcome(meta, result)
 
 
 @app.post("/api/documents/{doc_id}/deletions")
@@ -261,6 +298,7 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
     targets = [(l.page, l.lineId, l.oldText) for l in body.lines]
     try:
         result = await run_in_threadpool(delete_lines, src, targets)
+        result = await run_in_threadpool(renumber_after_delete, src, result, targets)
     except EditRejected as e:
         raise HTTPException(422, str(e))
     n = len(body.lines)
@@ -269,7 +307,7 @@ async def delete_document_lines(doc_id: str, body: DeletionRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
+    return _outcome(meta, result)
 
 
 @app.post("/api/documents/{doc_id}/additions")
@@ -282,7 +320,10 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
         raise HTTPException(422, "Add one line at a time.")
     src = store.current_path(meta).read_bytes()
     try:
-        result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
+        if body.item and body.at is None:
+            result = await run_in_threadpool(add_item, src, body.page, body.text, body.lineId, body.oldText, body.where)
+        else:
+            result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("add", f"Added “{_short(result.text)}”", result)
@@ -290,7 +331,7 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
         raise HTTPException(409, _STALE)
-    return {"document": _document_json(meta, describe_file(store.current_path(meta))), "warnings": result.warnings, "lookalikes": result.lookalikes}
+    return _outcome(meta, result)
 
 
 @app.post("/api/documents/{doc_id}/undo")

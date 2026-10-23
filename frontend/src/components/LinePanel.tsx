@@ -35,6 +35,8 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState(line.display);
   const [where, setWhere] = useState<"below" | "above">("below");
+  // In a list, a new line becomes the list's next item unless this is unticked.
+  const [asItem, setAsItem] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Tell the page while the server works on this change (and stop if the panel closes).
@@ -45,8 +47,10 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
-  function show(next: Mode) {
+  function show(next: Mode, side: "below" | "above" = "below") {
     setMode(next);
+    setWhere(side);
+    setAsItem(true);
     setDraft(next === "add" ? "" : line.display);
     setError(null);
   }
@@ -80,7 +84,7 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     setSaving(true);
     setError(null);
     try {
-      if (mode === "add") onEdited(await addLine(doc, page, line, draft, where), "added");
+      if (mode === "add") onEdited(await addLine(doc, page, line, draft, where, asItem && !!marker), "added");
       else onEdited(await editLine(doc, page, line, draft), draft.trim() === "" ? "deleted" : "changed");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
@@ -90,11 +94,15 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   }
 
   const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
+  const addTitle = where === "below" ? "Add line below" : "Add line above";
+  // The marker the new line gets as the list's next item, when the line is in a list.
+  const marker = line.item?.[where] ?? null;
+  const bullet = marker !== null && marker.length === 1 && !/[\p{L}\p{N}]/u.test(marker);
 
   return (
-    <section className="panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : "Selected line"}>
+    <section className="panel" aria-label={mode === "edit" ? "Edit line" : mode === "add" ? addTitle : "Selected line"}>
       <div className="panel-head">
-        <h2 className="panel-title">{mode === "edit" ? "Edit line" : mode === "add" ? "Add a line" : `Line on page ${page + 1}`}</h2>
+        <h2 className="panel-title">{mode === "edit" ? "Edit line" : mode === "add" ? addTitle : `Line on page ${page + 1}`}</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
           <Icon d={CLOSE} />
         </button>
@@ -109,16 +117,6 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
             void save();
           }}
         >
-          {mode === "add" && (
-            <div className="where" role="radiogroup" aria-label="Where the new line goes">
-              {(["below", "above"] as const).map((w) => (
-                <label key={w} className={`where-option${where === w ? " where-option--on" : ""}`}>
-                  <input type="radio" name="where" value={w} checked={where === w} onChange={() => setWhere(w)} disabled={saving} />
-                  {w === "below" ? "Below this line" : "Above this line"}
-                </label>
-              ))}
-            </div>
-          )}
           <textarea
             ref={box}
             className="line-edit"
@@ -141,9 +139,16 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               }
             }}
           />
+          {mode === "add" && marker && (
+            <label className={`style-option item-option${asItem ? " style-option--on" : ""}`}>
+              <input type="checkbox" checked={asItem} onChange={(e) => setAsItem(e.target.checked)} disabled={saving} />
+              {bullet ? `Make it a list item (${marker})` : `Make it item ${marker}`}
+              {!bullet && asItem && <span className="item-note">Any items after it are renumbered.</span>}
+            </label>
+          )}
           <p className="edit-note">
             {mode === "add"
-              ? `Uses ${style} of this line. Nothing on the page moves to make room, so a new line fits best after a paragraph's last line.`
+              ? `Uses ${style} of this line. The text below moves down to make room.`
               : `Keeps ${style}.`}
           </p>
           {mode === "edit" && line.uncertain && (
@@ -220,8 +225,11 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
             <button className="btn btn-primary" onClick={() => show("edit")} disabled={deleting}>
               Edit text
             </button>
-            <button className="btn btn-secondary" onClick={() => show("add")} disabled={deleting}>
-              Add a line
+            <button className="btn btn-secondary" onClick={() => show("add", "below")} disabled={deleting}>
+              Add line below
+            </button>
+            <button className="btn btn-secondary" onClick={() => show("add", "above")} disabled={deleting}>
+              Add line above
             </button>
             <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
               {deleting && <span className="spinner" aria-hidden="true" />}

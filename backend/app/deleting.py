@@ -2,8 +2,9 @@
 
 A line's glyphs are taken out of the page's instructions (each replaced by an equal
 spacing number, so nothing else moves), together with its underlines, strikethroughs
-and highlights, and the links that only cover deleted text. The lines below don't move
-up: the space stays, as in other PDF editors.
+and highlights, and the links that only cover deleted text. Then the text below moves up
+into the space, as in a word processor (moving.py), as a second checked step; where that
+can't be done exactly, the space stays and the user is told why.
 
 Deleting needs no fonts and no layout, so it works on lines that can't be edited
 (rotated text, unreadable letters, fonts not on the server). Before it is accepted:
@@ -18,7 +19,8 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
-from . import decorations
+from . import decorations, moving
+from .adding import _baseline, _lines_above, _lines_below
 from .changes import (
     EditRejected,
     LinkChange,
@@ -34,15 +36,18 @@ from .changes import (
     render,
     rewrite,
     to_display,
+    to_pdf,
     write_page,
 )
 from .editing import EditResult, comparable
+from .moving import MoveRefused
 from .pdfcontent import Unsupported, matches_trace, replay
 from .textlayout import Line, page_lines
 
 
-def delete_lines(src: bytes, targets: list[tuple[int, str, str]]) -> EditResult:
-    """targets: (page index, line id, the line's text as the user saw it)."""
+def delete_lines(src: bytes, targets: list[tuple[int, str, str]], close_gap: bool = True) -> EditResult:
+    """targets: (page index, line id, the line's text as the user saw it). With close_gap,
+    the text below then moves up into the space, where that can be done exactly."""
     mu = pymupdf.open("pdf", src)
     pdf = pikepdf.open(io.BytesIO(src))
     by_page: dict[int, list[tuple[str, str]]] = {}
@@ -101,7 +106,58 @@ def delete_lines(src: bytes, targets: list[tuple[int, str, str]]) -> EditResult:
     marks = [(page_no, *l.bbox) for page_no, (chosen, *_rest) in plans.items() for l in chosen]
     if _left_behind(result, plans):
         warnings.append("Something drawn under the deleted text (a line or a colored box) is still there. Check the page.")
-    return EditResult(result, list(dict.fromkeys(warnings)), "", areas, marks)
+    moved = 0
+    if close_gap:
+        for page_no, (chosen, lines, rp, *_rest) in plans.items():
+            try:
+                closed = _close_gap(result, page_no, chosen, lines, rp, mu[page_no])
+            except MoveRefused as e:
+                warnings.append(f"The space stays empty: {e}.")
+                continue
+            if closed is not None:
+                result, more, count, _shift = closed
+                areas += more
+                moved += count
+    return EditResult(result, list(dict.fromkeys(warnings)), "", areas, marks, moved=moved)
+
+
+def _close_gap(deleted: bytes, page_no: int, chosen: list[Line], lines: list[Line], rp, page: pymupdf.Page):
+    """Move the text below the deleted lines up into their space (in `deleted`, the file
+    with them gone). The line after them takes the first one's place, except after a
+    paragraph's last lines: then the next paragraph keeps its gap to the line above."""
+    base = {l.id: _baseline(l, rp) for l in lines}
+    chosen = sorted(chosen, key=lambda l: -base[l.id])
+    top, bottom = chosen[0], chosen[-1]
+    ids = {l.id for l in chosen}
+    rects = {l.id: to_pdf(page, l.bbox) for l in lines}
+    left = min(rects[l.id][0] for l in chosen)
+    right = max(rects[l.id][2] for l in chosen)
+    # One block: no line left between the deleted ones.
+    for l in lines:
+        r = rects[l.id]
+        if l.id not in ids and base[bottom.id] < base[l.id] < base[top.id] and min(r[2], right) > max(r[0], left):
+            raise MoveRefused("the deleted lines aren't next to each other")
+    anchor = (left, min(rects[l.id][1] for l in chosen), right, max(rects[l.id][3] for l in chosen))
+    size = max(l.style.size for l in chosen)
+    crop = moving._crop(pikepdf.open(io.BytesIO(deleted)), page_no)
+    cx0, cx1, _cell = moving.column_of(anchor, rp, crop)
+    below = sorted(
+        (l for l in lines if l.id not in ids and base[l.id] < base[bottom.id] - 0.1 and min(rects[l.id][2], cx1) > max(rects[l.id][0], cx0)),
+        key=lambda l: -base[l.id],
+    )
+    if not below:
+        return None
+    nxt = below[0]
+    prev = next((l for l in _lines_above(top, lines) if l.id not in ids), None)
+    same_paragraph = next((l for l in _lines_below(bottom, lines) if l.id not in ids), None) is nxt
+    if prev is not None and not same_paragraph:
+        shift = base[prev.id] - base[bottom.id]
+    else:
+        shift = base[top.id] - base[nxt.id]
+    if shift <= 0.01:
+        return None
+    cut = (base[bottom.id] + base[nxt.id]) / 2
+    return moving.shift_below(deleted, page_no, anchor, size, cut, -shift)
 
 
 def _left_behind(new_bytes: bytes, plans: dict) -> bool:

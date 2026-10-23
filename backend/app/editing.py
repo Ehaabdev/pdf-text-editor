@@ -84,6 +84,8 @@ class EditResult:
     # Fonts that weren't available and the look-alikes used instead, for the user to
     # check: {"font", "substitute", "sameWidths"}.
     lookalikes: list[dict] = field(default_factory=list)
+    # Lines moved down (to make room for a new line) or up (into a deleted line's space).
+    moved: int = 0
 
 
 def clean_text(text: str) -> str:

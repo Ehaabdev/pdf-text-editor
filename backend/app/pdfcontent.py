@@ -202,6 +202,20 @@ class DrawnPath:
         return self.op in ("S", "s", "B", "B*", "b", "b*")
 
 
+@dataclass
+class DrawnImage:
+    """A picture (an image, an inline image, or a form without text) drawn by one instruction."""
+
+    op: int
+    ctm: Matrix
+    bbox: tuple[float, float, float, float]  # PDF user space
+
+
+def _box_of(m: Matrix, x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
+    pts = [apply(m, x, y) for x, y in ((x0, y0), (x1, y0), (x0, y1), (x1, y1))]
+    return (min(x for x, _ in pts), min(y for _, y in pts), max(x for x, _ in pts), max(y for _, y in pts))
+
+
 _CONSTRUCT = {"m", "l", "c", "v", "y", "h", "re"}
 _PAINT = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*", "n"}
 
@@ -223,6 +237,8 @@ class Replay:
     open_states: int = 0
     stray_restore: bool = False
     open_text: bool = False
+    images: list[DrawnImage] = field(default_factory=list)  # in drawing order
+    shadings: list[int] = field(default_factory=list)  # sh instructions: they fill the clip, wherever it is
 
 
 def _number(x) -> float:
@@ -252,9 +268,12 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
     paths: list[DrawnPath] = []
     path_start, subpaths, clip = None, [], False  # the path being built
     stray_restore = in_text = False
+    images: list[DrawnImage] = []
+    shadings: list[int] = []
 
     for k, ins in enumerate(instructions):
         if isinstance(ins, pikepdf.ContentStreamInlineImage):
+            images.append(DrawnImage(k, ctm, _box_of(ctm, 0, 0, 1, 1)))
             continue
         operands, op = ins.operands, str(ins.operator)
         if op in _CONSTRUCT:
@@ -340,8 +359,20 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
             tm = tlm
         elif op == "Do":
             xo = xobjects.get(operands[0]) if operands else None
-            if xo is not None and str(xo.get("/Subtype", "")) == "/Form" and _has_text(xo):
+            subtype = str(xo.get("/Subtype", "")) if xo is not None else ""
+            if subtype == "/Form" and _has_text(xo):
                 raise Unsupported("Some text on this page is inside an embedded object, which can't be edited yet.")
+            if subtype == "/Image":
+                images.append(DrawnImage(k, ctm, _box_of(ctm, 0, 0, 1, 1)))
+            elif subtype == "/Form":
+                try:
+                    x0, y0, x1, y1 = (_number(v) for v in xo.BBox)
+                    m = tuple(_number(v) for v in xo.get("/Matrix", [1, 0, 0, 1, 0, 0]))
+                    images.append(DrawnImage(k, ctm, _box_of(mul(m, ctm), min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))))
+                except (AttributeError, TypeError, ValueError):
+                    images.append(DrawnImage(k, ctm, (-1e9, -1e9, 1e9, 1e9)))  # unknown size: everywhere
+        elif op == "sh":
+            shadings.append(k)
 
         if op in ("Tj", "TJ", "'", '"'):
             if op in ("'", '"'):
@@ -371,7 +402,7 @@ def replay(pdf: pikepdf.Pdf, page_index: int) -> Replay:
                     adv = font.width(code) + (1000 * (st["Tc"] + tw) / fs if fs else 0.0)
                     glyphs.append(DrawnGlyph(k, item_index, pos, code, (trm[4], trm[5]), adv, paint, ctm))
                     tm = mul((1, 0, 0, 1, adv / 1000 * fs * th, 0), tm)
-    return Replay(instructions, glyphs, fonts, et_after, paths, len(stack), stray_restore, in_text)
+    return Replay(instructions, glyphs, fonts, et_after, paths, len(stack), stray_restore, in_text, images, shadings)
 
 
 def _has_text(xobject) -> bool:

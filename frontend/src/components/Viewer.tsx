@@ -9,6 +9,7 @@ import {
   type DocInfo,
   type EditOutcome,
   type PickedLine,
+  type SpotPlan,
   type TextLine,
 } from "../api";
 import AddTextPanel, { type Spot } from "./AddTextPanel";
@@ -50,6 +51,9 @@ type HistoryEntry = DocInfo["history"][number];
 // Every change the server accepts has passed its checks, among them that nothing outside
 // the changed lines differs by a single pixel.
 const CHECKED = "Checked: nothing else on the page changed.";
+// When text moved to make room (or into a deleted line's space), it was also checked to
+// look exactly the same at its new place.
+const CHECKED_MOVED = "Checked: the text that moved looks exactly the same, and nothing else changed.";
 
 // The Help button's "New here?" bubble shows until the tour is opened or a line is picked.
 const HELP_SEEN = "pdfedit.helpSeen";
@@ -111,7 +115,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const subs = (outcome.lookalikes ?? []).map((l) => l.substitute);
     const warnings = outcome.warnings.filter((w) => !subs.some((s) => w.includes(s)));
     setNotice(
-      warnings.length ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" } : { text: what, tone: "done", detail: CHECKED },
+      warnings.length
+        ? { text: `${what} ${warnings.join(" ")}`, tone: "warning" }
+        : { text: what, tone: "done", detail: outcome.moved ? CHECKED_MOVED : CHECKED },
     );
   }
 
@@ -131,8 +137,13 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     onChange(outcome.document);
     lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
+    const moved = (outcome.moved ?? 0) > 0;
     report(
-      change === "deleted" ? "Line deleted. The space it used stays empty." : change === "added" ? "Line added." : "Line changed.",
+      change === "deleted"
+        ? moved ? "Line deleted. The text below moved up." : "Line deleted."
+        : change === "added"
+          ? moved ? "Line added. The text below moved down to make room." : "Line added."
+          : "Line changed.",
       outcome,
     );
   }
@@ -161,7 +172,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       clearSelection();
       onChange(outcome.document);
       lightUp(outcome.document, outcome.document.history.at(-1));
-      report(lines.length === 1 ? "Line deleted. The space it used stays empty." : `${lines.length} lines deleted. The space they used stays empty.`, outcome);
+      const moved = (outcome.moved ?? 0) > 0 ? " The text below moved up." : "";
+      report(lines.length === 1 ? `Line deleted.${moved}` : `${lines.length} lines deleted.${moved}`, outcome);
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't delete. Try again.", tone: "error" });
     } finally {
@@ -209,6 +221,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   // Adding text: tap a spot on a page, then type.
   const [placing, setPlacing] = useState(false);
   const [spot, setSpot] = useState<Spot | null>(null);
+  // What adding at the spot will do (a new item, a new line, joining a line, or there):
+  // the page shows where.
+  const [spotPlan, setSpotPlan] = useState<SpotPlan | null>(null);
   // Pages: the list beside the pages (wide screens), or a panel of them (from the page chip).
   const [showPages, setShowPages] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -219,6 +234,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function stopPlacing() {
     setPlacing(false);
     setSpot(null);
+    setSpotPlan(null);
   }
   const zoom = ZOOMS[zoomStep];
 
@@ -509,11 +525,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           spot={spot}
           onClose={stopPlacing}
           onWorking={setWorking}
+          onPlan={setSpotPlan}
           onAdded={(outcome) => {
             stopPlacing();
             onChange(outcome.document);
             lightUp(outcome.document, outcome.document.history.at(-1));
-            report("Text added.", outcome);
+            report((outcome.moved ?? 0) > 0 ? "Text added. The text below moved down to make room." : "Text added.", outcome);
             offerCheck(outcome);
           }}
         />
@@ -527,7 +544,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </div>
           <p className="panel-lede">
             <span className="wide-only">Click</span>
-            <span className="narrow-only">Tap</span> the page where the new text should start.
+            <span className="narrow-only">Tap</span> the page where you want the new text. Under a list it becomes the
+            next item; between lines, the text below moves down to make room.
           </p>
         </section>
       )
@@ -669,6 +687,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     onSelect={(line, more) => select(i, line, more)}
                     placing={placing}
                     spot={spot?.page === i ? spot : null}
+                    preview={spot?.page === i && spotPlan ? spotPlan : null}
                     onPlace={(x, y) => setSpot({ page: i, x, y })}
                     version={shownVersion}
                     outlines={outlines(i)}

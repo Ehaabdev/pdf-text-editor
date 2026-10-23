@@ -1,5 +1,4 @@
 import type { DocInfo } from "../api";
-import { SOURCE_URL } from "../config";
 import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon, MAGNIFIER } from "./Icon";
 
 type Props = {
@@ -39,7 +38,7 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
         <>
           <h2 className="panel-title">Edit this PDF</h2>
           <p className="panel-lede">
-            Click a line on the page to change it, add a line next to it, or delete it. Shift-click to pick several
+            Click a line on the page to change it, add a line below or above it, or delete it. Shift-click to pick several
             lines.
           </p>
 
@@ -48,7 +47,7 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
               <Icon d={ADD_TEXT} />
               <span className="tool-text">
                 <span className="tool-name">Add text</span>
-                <span className="tool-note">Click anywhere on a page to place new text.</span>
+                <span className="tool-note">Click where you want it on the page.</span>
               </span>
             </button>
             <button className="tool" aria-pressed={showText} onClick={onToggleText}>
@@ -99,9 +98,6 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
 
       <footer className="panel-foot">
         <p>Your file is deleted an hour after you last use it.</p>
-        <a className="quiet-link" href={SOURCE_URL} target="_blank" rel="noreferrer">
-          Source code
-        </a>
       </footer>
     </section>
   );
