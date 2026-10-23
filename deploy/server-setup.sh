@@ -5,6 +5,8 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a  # restart services after upgrades without asking
+# A new server installs its own updates at first: wait for them instead of failing.
+echo 'DPkg::Lock::Timeout "900";' > /etc/apt/apt.conf.d/99wait-for-lock
 # Keep the firewall rules across restarts, without asking.
 echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections
 echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections
