@@ -18,5 +18,14 @@ MIN_RENDER_WIDTH = 200
 MAX_RENDER_WIDTH = 3200
 MAX_RENDER_PIXELS = 20_000_000
 
+# Limits that keep a small public server usable (limits.py, storage.py).
+RATE_UPLOADS_PER_HOUR = int(os.environ.get("PDFEDIT_RATE_UPLOADS_PER_HOUR", "30"))
+RATE_CHANGES_PER_HOUR = int(os.environ.get("PDFEDIT_RATE_CHANGES_PER_HOUR", "300"))
+RATE_READS_PER_MINUTE = int(os.environ.get("PDFEDIT_RATE_READS_PER_MINUTE", "900"))
+HEAVY_JOBS = int(os.environ.get("PDFEDIT_HEAVY_JOBS", "2"))  # changes and uploads at once
+MAX_VERSIONS = int(os.environ.get("PDFEDIT_MAX_VERSIONS", "60"))  # stored changes per file
+MAX_DOC_BYTES = int(os.environ.get("PDFEDIT_MAX_DOC_MB", "300")) * 1024 * 1024  # all its versions
+MAX_TOTAL_BYTES = int(os.environ.get("PDFEDIT_MAX_TOTAL_MB", "4000")) * 1024 * 1024  # every file stored
+
 # Cached data that can be rebuilt (font index).
 CACHE_DIR = Path(os.environ.get("PDFEDIT_CACHE_DIR", BASE_DIR / ".cache"))

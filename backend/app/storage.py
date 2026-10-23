@@ -42,6 +42,18 @@ class NoSuchVersion(Exception):
     pass
 
 
+class TooManyChanges(Exception):
+    """The file keeps a full copy per change; this one has as many as it may keep."""
+
+
+class StorageFull(Exception):
+    """The server's space for files is used up, until older files are deleted."""
+
+
+def _size(folder: Path) -> int:
+    return sum(f.stat().st_size for f in folder.glob("*") if f.is_file())
+
+
 @dataclass
 class DocumentMeta:
     id: str
@@ -81,6 +93,8 @@ class DocumentStore:
         tmp.replace(path)
 
     def create(self, data: bytes, name: str) -> DocumentMeta:
+        if sum(_size(d) for d in self.root.iterdir() if d.is_dir()) + len(data) > config.MAX_TOTAL_BYTES:
+            raise StorageFull()
         doc_id = secrets.token_urlsafe(16)
         folder = self._dir(doc_id)
         folder.mkdir()
@@ -118,6 +132,10 @@ class DocumentStore:
             if meta.revision != expected_revision:
                 raise StaleRevision(doc_id)
             folder = self._dir(doc_id)
+            # Each change keeps a full copy: only so many, and only so much, per file.
+            kept = [f for f in folder.glob("v*.pdf") if int(f.stem[1:]) <= meta.version]
+            if meta.version + 1 > config.MAX_VERSIONS or sum(f.stat().st_size for f in kept) + len(data) > config.MAX_DOC_BYTES:
+                raise TooManyChanges(doc_id)
             for old in folder.glob("v*.pdf"):
                 if int(old.stem[1:]) > meta.version:
                     old.unlink(missing_ok=True)

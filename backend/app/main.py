@@ -12,14 +12,14 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config
+from . import config, limits
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .lists import add_item, markers, renumber_after_delete
 from .spots import plan as plan_spot
-from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NoSuchVersion, NothingToUndo, StaleRevision
+from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NoSuchVersion, NothingToUndo, StaleRevision, StorageFull, TooManyChanges
 from .textlayout import line_json, lines_for
 
 # Arabic and other non-Latin text must never crash logging on a Windows console.
@@ -60,6 +60,38 @@ async def reject_oversized_uploads(request: Request, call_next):
         if int(length) > config.MAX_UPLOAD_BYTES + 64 * 1024:
             return JSONResponse({"detail": _too_large_message()}, status_code=413)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def limit_visitors(request: Request, call_next):
+    """How often one visitor may upload, change and look at pages; heavy jobs one or two
+    at a time (limits.py)."""
+    kind = limits.kind_of(request.method, request.url.path)
+    if kind is None:
+        return await call_next(request)
+    visitor = request.client.host if request.client else "unknown"
+    if not limits.limiter.allow(visitor, kind):
+        return JSONResponse({"detail": limits.MESSAGES[kind]}, status_code=429, headers={"Retry-After": "60"})
+    if kind not in limits.HEAVY:
+        return await call_next(request)
+    async with limits.heavy_gate():
+        return await call_next(request)
+
+
+@app.exception_handler(TooManyChanges)
+async def _too_many_changes(request: Request, exc: TooManyChanges):
+    return JSONResponse(
+        {"detail": "This file has had as many changes as it can keep. Download it, then open the downloaded file to keep editing."},
+        status_code=409,
+    )
+
+
+@app.exception_handler(StorageFull)
+async def _storage_full(request: Request, exc: StorageFull):
+    return JSONResponse(
+        {"detail": "The server is full right now. Files are deleted an hour after their last use, so try again a little later."},
+        status_code=503,
+    )
 
 
 def _too_large_message() -> str:

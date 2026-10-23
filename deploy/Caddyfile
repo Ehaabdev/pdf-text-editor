@@ -1,0 +1,8 @@
+# https for the site (Caddy gets and renews the certificate itself), in front of the app.
+{{DOMAIN}} {
+	encode zstd gzip
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy 127.0.0.1:8000
+}
