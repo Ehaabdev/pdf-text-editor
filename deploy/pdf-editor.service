@@ -1,0 +1,26 @@
+[Unit]
+Description=PDF Editor (the website and its server)
+After=network.target
+
+[Service]
+User=pdfeditor
+Group=pdfeditor
+WorkingDirectory=/opt/pdf-editor/backend
+Environment=PDFEDIT_DATA_DIR=/var/lib/pdf-editor/data
+Environment=PDFEDIT_CACHE_DIR=/var/lib/pdf-editor/cache
+Environment=PDFEDIT_FRONTEND_DIST=/opt/pdf-editor/frontend/dist
+# One process (stored files and their versions are kept consistent within it); Caddy in
+# front passes each visitor's address on, for the per-visitor limits.
+ExecStart=/opt/pdf-editor/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=3
+
+# It may write only its own data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/pdf-editor
+
+[Install]
+WantedBy=multi-user.target

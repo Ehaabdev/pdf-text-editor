@@ -274,6 +274,14 @@ powershell -ExecutionPolicy Bypass -File export.ps1
 python print_chrome.py
 ```
 
+## Putting it online
+
+`deploy/` puts the site on a small Linux server, such as Oracle Cloud's Always Free one (Ubuntu 24.04):
+- **Once, on the server:** `sudo bash server-setup.sh`. It installs Python, the fonts that may be installed on Linux (Microsoft's core fonts, Carlito and Caladea), Caddy for https, the app's own user and folders, and opens ports 80 and 443.
+- **Each time, from this PC (Git Bash):** `deploy/push.sh ubuntu@<server address> <domain>`. It builds the website, sends only committed files (never `samples/` or local data), installs the exact package versions the tests passed with (`backend/requirements.lock`), and restarts the app. Caddy gets the https certificate for the domain itself.
+
+The app runs as a service (`deploy/pdf-editor.service`) that may write only `/var/lib/pdf-editor`. Its log: `journalctl -u pdf-editor`. Limits per visitor, per file and in total (below) keep one person, or a script, from wearing the server out. Fonts that can't be installed on Linux (Calibri, Windows' Arabic fonts) are replaced by look-alikes, with the "Does it look right?" check.
+
 ## Settings (environment variables)
 
 | Variable | Default | Meaning |
@@ -283,5 +291,12 @@ python print_chrome.py
 | `PDFEDIT_MAX_UPLOAD_MB` | `20` | Largest file accepted |
 | `PDFEDIT_MAX_PAGES` | `50` | Most pages accepted |
 | `PDFEDIT_DOC_TTL_MINUTES` | `60` | Delete files this long after last use |
+| `PDFEDIT_RATE_UPLOADS_PER_HOUR` | `30` | Files one visitor may open per hour |
+| `PDFEDIT_RATE_CHANGES_PER_HOUR` | `300` | Changes (and undo, redo) one visitor may make per hour |
+| `PDFEDIT_RATE_READS_PER_MINUTE` | `900` | Page images and the like one visitor may load per minute |
+| `PDFEDIT_HEAVY_JOBS` | `2` | Changes and uploads worked on at once; more wait their turn |
+| `PDFEDIT_MAX_VERSIONS` | `60` | Changes kept per file (each keeps a full copy); then: download, and open the download |
+| `PDFEDIT_MAX_DOC_MB` | `300` | Space all of a file's versions may take |
+| `PDFEDIT_MAX_TOTAL_MB` | `4000` | Space all stored files may take; new uploads wait until older files are deleted |
 | `VITE_APP_NAME` | `PDF Editor` | Name shown on the website. Set it in `frontend/.env.local` for a branded deployment |
 | `VITE_SOURCE_URL` | this repository | Link to the source code shown on the website |

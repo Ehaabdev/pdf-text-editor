@@ -19,6 +19,9 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture
 def client():
+    from app import limits
+
+    limits.limiter = limits.RateLimiter()  # each test starts as a new visitor
     with TestClient(app) as c:
         yield c
 
