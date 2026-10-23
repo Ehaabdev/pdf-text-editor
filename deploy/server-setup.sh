@@ -4,6 +4,10 @@
 # firewall. Run once, on the server:  sudo bash server-setup.sh
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a  # restart services after upgrades without asking
+# Keep the firewall rules across restarts, without asking.
+echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections
+echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections
 
 apt-get update
 apt-get install -y software-properties-common
