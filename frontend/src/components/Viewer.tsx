@@ -9,6 +9,7 @@ import {
   type DocInfo,
   type EditOutcome,
   type PickedLine,
+  type SpotPlan,
   type TextLine,
 } from "../api";
 import AddTextPanel, { type Spot } from "./AddTextPanel";
@@ -220,6 +221,9 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   // Adding text: tap a spot on a page, then type.
   const [placing, setPlacing] = useState(false);
   const [spot, setSpot] = useState<Spot | null>(null);
+  // What adding at the spot will do (a new item, a new line, joining a line, or there):
+  // the page shows where.
+  const [spotPlan, setSpotPlan] = useState<SpotPlan | null>(null);
   // Pages: the list beside the pages (wide screens), or a panel of them (from the page chip).
   const [showPages, setShowPages] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -230,6 +234,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function stopPlacing() {
     setPlacing(false);
     setSpot(null);
+    setSpotPlan(null);
   }
   const zoom = ZOOMS[zoomStep];
 
@@ -520,25 +525,27 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           spot={spot}
           onClose={stopPlacing}
           onWorking={setWorking}
+          onPlan={setSpotPlan}
           onAdded={(outcome) => {
             stopPlacing();
             onChange(outcome.document);
             lightUp(outcome.document, outcome.document.history.at(-1));
-            report("Text added.", outcome);
+            report((outcome.moved ?? 0) > 0 ? "Text added. The text below moved down to make room." : "Text added.", outcome);
             offerCheck(outcome);
           }}
         />
       ) : (
-        <section className="panel" aria-label="Add text anywhere">
+        <section className="panel" aria-label="Add text">
           <div className="panel-head">
-            <h2 className="panel-title">Add text anywhere</h2>
+            <h2 className="panel-title">Add text</h2>
             <button className="btn btn-ghost btn-icon" onClick={stopPlacing} aria-label="Stop adding text">
               <Icon d={CLOSE} />
             </button>
           </div>
           <p className="panel-lede">
             <span className="wide-only">Click</span>
-            <span className="narrow-only">Tap</span> the page where the new text should start.
+            <span className="narrow-only">Tap</span> the page where you want the new text. Under a list it becomes the
+            next item; between lines, the text below moves down to make room.
           </p>
         </section>
       )
@@ -680,6 +687,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     onSelect={(line, more) => select(i, line, more)}
                     placing={placing}
                     spot={spot?.page === i ? spot : null}
+                    preview={spot?.page === i && spotPlan ? spotPlan : null}
                     onPlace={(x, y) => setSpot({ page: i, x, y })}
                     version={shownVersion}
                     outlines={outlines(i)}
@@ -738,7 +746,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 {!compare && (
                   <button className="toolbar-item" aria-pressed={placing} onClick={togglePlacing}>
                     <Icon d={ADD_TEXT} />
-                    <span>Add text anywhere</span>
+                    <span>Add text</span>
                   </button>
                 )}
                 {!compare && (

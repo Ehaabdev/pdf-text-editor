@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, addTextAt, getLines, type DocInfo, type EditOutcome, type TextLine } from "../api";
+import { ApiError, addLine, addTextAt, getLines, spotPlan, type DocInfo, type EditOutcome, type SpotPlan, type TextLine } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 import { CLOSE, Icon } from "./Icon";
 
@@ -12,6 +12,8 @@ type Props = {
   onAdded: (outcome: EditOutcome) => void;
   /** The server is checking the new text. */
   onWorking?: (working: boolean) => void;
+  /** What adding at the spot will do, once known: the page shows where it goes. */
+  onPlan?: (plan: SpotPlan | null) => void;
 };
 
 type Style = { key: string; line: TextLine; distance: number };
@@ -38,13 +40,18 @@ function stylesNear(lines: TextLine[], spot: Spot): Style[] {
 
 const SHOWN = 4;
 
-export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }: Props) {
+export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking, onPlan }: Props) {
   const [lines, setLines] = useState<TextLine[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [plan, setPlan] = useState<SpotPlan | null>(null);
+  // In a list, the new line becomes its next item unless this is unticked.
+  const [asItem, setAsItem] = useState(true);
+  // A new line next to a line couldn't be made: placing the text exactly at the spot instead.
+  const [offerSpot, setOfferSpot] = useState(false);
 
   // Tell the page while the server works on this change (and stop if the panel closes).
   useEffect(() => {
@@ -65,18 +72,37 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }:
   }, [doc, spot.page]);
 
   const styles = useMemo(() => (lines ? stylesNear(lines, spot) : []), [lines, spot]);
-  // A new spot: the nearest style again.
+  // A new spot: the nearest style again, and what adding there will do.
   useEffect(() => {
     setChoice(null);
     setOpen(false);
     setError(null);
+    setOfferSpot(false);
+    setAsItem(true);
+    setPlan(null);
+    onPlan?.(null);
     box.current?.focus();
-  }, [spot.page, spot.x, spot.y]);
+    let alive = true;
+    spotPlan(doc, spot.page, spot.x, spot.y)
+      .then((p) => {
+        if (!alive) return;
+        setPlan(p);
+        onPlan?.(p);
+      })
+      .catch(() => alive && setPlan({ kind: "free", lineId: null, oldText: null, where: "below", marker: null, box: [spot.x, spot.y, spot.x, spot.y], label: "Your text goes where you clicked." }));
+    return () => {
+      alive = false;
+    };
+  }, [doc, spot.page, spot.x, spot.y, onPlan]);
+  useEffect(() => () => onPlan?.(null), [onPlan]);
 
   const chosen = styles.find((s) => s.key === choice) ?? styles[0];
+  // A new line next to a line takes that line's style; joined or placed text, a chosen one.
+  const ref = plan && (plan.kind === "item" || plan.kind === "line") ? lines?.find((l) => l.id === plan.lineId) ?? null : null;
+  const bullet = plan?.marker != null && plan.marker.length === 1 && !/[\p{L}\p{N}]/u.test(plan.marker);
 
-  async function save() {
-    if (saving || !chosen) return;
+  async function save(atSpot = false) {
+    if (saving || !plan) return;
     if (!draft.trim()) {
       setError("Type the text to add.");
       return;
@@ -84,9 +110,15 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }:
     setSaving(true);
     setError(null);
     try {
-      onAdded(await addTextAt(doc, spot.page, chosen.line, draft, [spot.x, spot.y]));
+      if (ref && !atSpot) {
+        onAdded(await addLine(doc, spot.page, ref, draft, plan.where, plan.kind === "item" && asItem));
+      } else if (chosen) {
+        onAdded(await addTextAt(doc, spot.page, ref ?? chosen.line, draft, [spot.x, spot.y]));
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+      // The next best thing: the text exactly where it was clicked, nothing moving.
+      setOfferSpot(!!ref && !atSpot);
     } finally {
       setSaving(false);
     }
@@ -96,13 +128,17 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }:
   const shown = !open ? (chosen ? [chosen] : []) : more ? styles : styles.slice(0, SHOWN);
 
   return (
-    <section className="panel" aria-label="Add text here">
+    <section className="panel" aria-label="Add text">
       <div className="panel-head">
-        <h2 className="panel-title">Add text here</h2>
+        <h2 className="panel-title">Add text</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Stop adding text">
           <Icon d={CLOSE} />
         </button>
       </div>
+      {/* What will happen, in plain words: the page shows where. */}
+      <p className="panel-lede spot-plan" aria-live="polite">
+        {plan ? plan.label : "Working out where it goes…"}
+      </p>
 
       <form
         onSubmit={(e) => {
@@ -132,6 +168,20 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }:
           }}
         />
 
+        {plan?.kind === "item" && plan.marker && (
+          <label className={`style-option item-option${asItem ? " style-option--on" : ""}`}>
+            <input type="checkbox" checked={asItem} onChange={(e) => setAsItem(e.target.checked)} disabled={saving} />
+            {bullet ? `Make it a list item (${plan.marker})` : `Make it item ${plan.marker}`}
+            {!bullet && asItem && <span className="item-note">Any items after it are renumbered.</span>}
+          </label>
+        )}
+
+        {ref ? (
+          <p className="edit-note">
+            Uses the font ({fontLabel(ref.font)}), size ({pointSize(ref.size)}) and color of “
+            <span dir="auto">{ref.display.length > 32 ? `${ref.display.slice(0, 32)}…` : ref.display}</span>”.
+          </p>
+        ) : (
         <fieldset className="style-choice" disabled={saving}>
           <legend>In the style of</legend>
           {lines === null && !error && <p className="edit-note">Reading the page…</p>}
@@ -172,18 +222,24 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking }:
             </button>
           )}
         </fieldset>
+        )}
 
         <p className="edit-note">
-          The text starts at the mark: English runs right from it, Arabic runs left. Nothing on the page moves to make
-          room. Tap elsewhere on the page to move the mark.
+          <span className="wide-only">Click</span>
+          <span className="narrow-only">Tap</span> somewhere else on the page to put it there instead.
         </p>
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
+        {offerSpot && (
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void save(true)}>
+            Place it exactly where I clicked instead
+          </button>
+        )}
         <div className="edit-actions">
-          <button className="btn btn-primary" type="submit" disabled={saving || !chosen}>
+          <button className="btn btn-primary" type="submit" disabled={saving || !plan || (!ref && !chosen)}>
             {saving && <span className="spinner" aria-hidden="true" />}
             {saving ? "Checking the change…" : "Add text"}
           </button>

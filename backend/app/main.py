@@ -18,6 +18,7 @@ from .adding import add_line
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .lists import add_item, markers, renumber_after_delete
+from .spots import plan as plan_spot
 from .storage import DocumentMeta, DocumentNotFound, DocumentStore, NoSuchVersion, NothingToUndo, StaleRevision
 from .textlayout import line_json, lines_for
 
@@ -171,6 +172,18 @@ def page_text_lines(doc_id: str, page_no: int):
         {"width": width, "height": height, "lines": [{**line_json(l), "item": items.get(l.id)} for l in lines]},
         headers={"Cache-Control": "private, max-age=3600"},
     )
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/spot")
+def spot_plan(doc_id: str, page_no: int, x: float, y: float):
+    """What adding text at (x, y), in points as displayed, would do: a new list item, a new
+    line (the text below moving down), text joining a line, or text where clicked."""
+    meta = _get_meta(doc_id)
+    src = store.current_path(meta).read_bytes()
+    try:
+        return plan_spot(src, page_no, x, y).json()
+    except IndexError:
+        raise HTTPException(404, "That page doesn't exist.")
 
 
 @lru_cache(maxsize=64)

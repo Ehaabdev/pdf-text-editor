@@ -191,6 +191,31 @@ export function addLine(doc: DocInfo, page: number, line: TextLine, text: string
   });
 }
 
+/** What adding text at a clicked spot would do, worked out by the server before anything
+ *  is written: a new list item or a new line next to a line (the text below moving down),
+ *  text joining a line on its row, or text where clicked. */
+export type SpotPlan = {
+  kind: "item" | "line" | "join" | "free";
+  lineId: string | null;
+  oldText: string | null;
+  where: "below" | "above";
+  marker: string | null;
+  /** Where it goes, in points as displayed: for item and line, the new line's band. */
+  box: [number, number, number, number];
+  label: string;
+};
+
+export async function spotPlan(doc: DocInfo, page: number, x: number, y: number): Promise<SpotPlan> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/documents/${doc.id}/pages/${page}/spot?x=${x.toFixed(2)}&y=${y.toFixed(2)}&r=${doc.revision}`);
+  } catch {
+    throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0);
+  }
+  if (!res.ok) throw await errorFrom(res);
+  return res.json();
+}
+
 /** Add text at a point on the page (in points, as displayed), in the style of a line. */
 export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: string, at: [number, number]): Promise<EditOutcome> {
   return postJson(`/api/documents/${doc.id}/additions`, {

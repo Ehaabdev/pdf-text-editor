@@ -365,6 +365,9 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
             raise MoveRefused("text below runs into a line or border that has to stay")
         moving = [p for p in moving if p.box[1] >= stop - 0.01]
     if not moving:
+        # Nothing to move in a table cell: the new line itself must still fit above its border.
+        if cell and cell_floor is not None and dy > 0 and anchor[1] - dy < cell_floor + 0.3 * size:
+            raise MoveRefused("the table cell is full (cells don't grow yet)")
         return None
     # A clipping path moves when everything it clips moves (Chrome cuts the gaps in an
     # underline, under a "g" or "p", with a page-sized clip that has holes in it).

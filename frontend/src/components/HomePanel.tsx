@@ -46,8 +46,8 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
             <button className="tool" aria-pressed={placing} onClick={onAddText}>
               <Icon d={ADD_TEXT} />
               <span className="tool-text">
-                <span className="tool-name">Add text anywhere</span>
-                <span className="tool-note">Click anywhere on a page to place new text.</span>
+                <span className="tool-name">Add text</span>
+                <span className="tool-note">Click where you want it on the page.</span>
               </span>
             </button>
             <button className="tool" aria-pressed={showText} onClick={onToggleText}>

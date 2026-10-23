@@ -25,8 +25,8 @@ export function editorSteps(narrow: boolean): Step[] {
       targets: () => (narrow ? [] : [q(".dock > .panel")]),
     },
     {
-      title: "Add text anywhere",
-      text: narrow ? "Turn this on, then tap where the new text should start." : "Turn this on, then click where the new text should start.",
+      title: "Add text",
+      text: `Turn this on, then ${narrow ? "tap" : "click"} where you want the new text. Under a list it becomes the next item; between lines, the text below moves down to make room; in empty space it goes right there. A dotted outline shows where before anything changes.`,
       targets: () => [tool(0)],
     },
     {

@@ -1371,6 +1371,19 @@ html.theme-switching::view-transition-new(root) {
   pointer-events: none;
 }
 
+/* Adding text: where a new line will go, across its paragraph (the text below moves down). */
+.spot-band {
+  position: absolute;
+  border: 1.5px dashed #2f6bff;
+  border-radius: 3px;
+  background: rgba(47, 107, 255, 0.08);
+  pointer-events: none;
+}
+
+.spot-plan {
+  font-weight: 500;
+}
+
 /* The magnifier: a round glass lens showing the page larger, just above the pointer. */
 .lens {
   position: absolute;

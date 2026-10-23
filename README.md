@@ -136,12 +136,14 @@ Deleting every line of every test document and private sample (656 lines), one a
 - **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
 - **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Where English and Arabic items take turns (1., ١., 2., ٢.), each list counts on past the other language's lines. Unticked, text under an item lines up with the item's text.
 
-**At a tapped spot** (the "Add text anywhere" button, then tap the page):
-- **Position:** the text starts at the mark. English runs right from it, Arabic runs left.
-- **Snapping:** it lines up with text already on that row (an empty table cell next to a filled one), or with the edge of text just above or below, if it's close.
-- **Style:** you choose from the styles on that page; the nearest is chosen first.
+**Where you click** (the "Add text" button, then click the page): `backend/app/spots.py` works out what adding there means, and the website says so, with a dotted outline on the page, before anything is written:
+- **On a line, between two lines, or just under one:** a new line there, below or above that line, as above (the text below moves down; under a list item's last line, the list's next item).
+- **Beside a line, on its row:** the text joins that line, before its first word or after its last; just after the end, it starts a space after it, as if one were typed.
+- **In empty space** (an empty table cell, a margin, a blank area): the text starts at the mark. English runs right from it, Arabic runs left. It lines up with the edge of text just above or below, if it's close; you choose from the styles on that page, the nearest first.
+- Text doesn't reach across a table's border: a click in an empty cell stays in that cell.
+- When a new line can't be made there (a full table cell, a full page), the website offers to place the text exactly where you clicked instead.
 
-New text is drawn after the page's own drawing, with the page's state restored. Where nothing had to move, the page's own instructions are kept byte for byte. At a tapped spot nothing moves to make room, and in either case the new line is refused, with the reason, where it would:
+New text is drawn after the page's own drawing, with the page's state restored. Where nothing had to move, the page's own instructions are kept byte for byte. Text placed in empty space or joining a line moves nothing, and in every case the new text is refused, with the reason, where it would:
 - touch other text, a picture, a form field or a line;
 - cross a border out of its table cell;
 - sit half a row off nearby text;
