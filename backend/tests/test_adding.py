@@ -255,6 +255,21 @@ def test_arabic_text_runs_left_from_the_tap(source):
     assert abs((new.bbox[1] + new.bbox[3]) / 2 - tap[1]) < 0.5 * (new.bbox[3] - new.bbox[1])
 
 
+@pytest.mark.parametrize("source", ADDITIONS)
+def test_tapping_in_the_empty_end_of_a_line_joins_that_line(source):
+    """Text tapped onto a row with a short line on it reads as part of that line (as any
+    reader of the page would take it); close to its end, it's refused with a way out."""
+    src = ADDITIONS[source]
+    page_no, line = find(src, "3. Book")
+    middle = (line.bbox[1] + line.bbox[3]) / 2
+    result = add_line(src, page_no, "Done", line.id, line.text, at=(line.bbox[2] + 150, middle))
+    joined = find(result.pdf, "3. Book")[1]
+    assert comparable(joined.text) == comparable(line.text + " Done")
+    assert len(page_lines(pymupdf.open("pdf", result.pdf)[page_no])) == len(page_lines(pymupdf.open("pdf", src)[page_no]))
+    with pytest.raises(EditRejected, match="Edit text"):
+        add_line(src, page_no, "Done", line.id, line.text, at=(line.bbox[2] + 10, middle))
+
+
 def test_tapping_on_text_is_refused():
     src = ADDITIONS["word"]
     page_no, line = find(src, "Planning")

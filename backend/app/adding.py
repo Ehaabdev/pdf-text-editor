@@ -390,7 +390,7 @@ def _moved_line_id(moved_src: bytes, page_no: int, ref: Line, shift, page: pymup
     for l in page_lines(pymupdf.open("pdf", moved_src)[page_no]):
         if comparable(l.text) == comparable(ref.text) and all(abs(a - b) <= 0.5 for a, b in zip(l.bbox, expected)):
             return l.id
-    raise EditRejected("The change couldn't be made exactly (the line moved out of place), so nothing was changed.")
+    fail("the line would have moved out of place")
 
 
 def _crowded(baseline: float, box: pymupdf.Rect, ref: Line, lines: list[Line], rp: Replay, page: pymupdf.Page, spacing: float) -> bool:
@@ -444,7 +444,8 @@ def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joine
         raise EditRejected("The new text is too long to fit there. Shorten it, or start it further " + ("right." if rtl else "left."))
     new_box = pymupdf.Rect(x0, baseline - (base - ref_box.y0), x1, baseline + (ref_box.y1 - base))
     _check_room(new_box, None, ref, page, all_lines, rp, pdf, page_no, "there")
-    return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts)
+    # On a row with text already, the new text reads as part of that line: allowed.
+    return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, may_join=True)
 
 
 def _text_area(page: pymupdf.Page, lines: list[Line]) -> tuple[float, float]:
@@ -458,7 +459,7 @@ def _text_area(page: pymupdf.Page, lines: list[Line]) -> tuple[float, float]:
     return min(left, paper.x0 + (paper.x1 - right)), max(right, paper.x1 - (left - paper.x0))
 
 
-def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base=None, markers=frozenset()) -> EditResult:
+def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base=None, markers=frozenset(), may_join=False) -> EditResult:
     """Draw the new words (and the reference line's own space glyph in the gaps), then check.
     A list marker copied from its item sits as far off the new baseline as off its own
     item's (marker_base): the item's first line, not always the reference line."""
@@ -518,7 +519,7 @@ def _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline,
     result = out.getvalue()
 
     added = sum(len(r.glyphs) for r in runs)
-    area, mark = _verify(src, result, page_no, rp, all_lines, expected, new_box, added)
+    area, mark = _verify(src, result, page_no, rp, all_lines, expected, new_box, added, may_join)
     return EditResult(result, list(dict.fromkeys(fonts.warnings)), expected, [(page_no, *area)], [(page_no, *mark)], list(fonts.lookalikes.values()))
 
 
@@ -690,7 +691,8 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
             raise EditRejected(f"{no_room}: it would be crowded against other text.")
         # On the same row, close by (another column's text): it would read as one line.
         if distance < 4 * l.style.size:
-            raise EditRejected(f"{no_room}: it would sit right next to other text on the same row.")
+            hint = " To add words to that line, select the line and choose Edit text." if ref_box is None else ""
+            raise EditRejected(f"{no_room}: it would sit right next to other text on the same row.{hint}")
     for info in page.get_image_info():
         r = pymupdf.Rect(info["bbox"]) * ~page_matrix(page)  # images come unrotated, like text
         r.normalize()
@@ -725,9 +727,11 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
             raise EditRejected(f"{no_room}: it would cross a line or a shape on the page.")
 
 
-def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines: list[Line], text: str, box: pymupdf.Rect, added: int) -> tuple:
+def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines: list[Line], text: str, box: pymupdf.Rect, added: int, may_join: bool = False) -> tuple:
     """Check the addition; return the area (as displayed) outside which nothing changed,
-    and the new line's box, to show people."""
+    and the new line's box, to show people. With may_join (text placed at a tapped spot),
+    it may read as part of a line already on its row: that line, then, reads as before
+    with the new text at its start or end."""
     old_doc, new_doc = pymupdf.open("pdf", old_bytes), pymupdf.open("pdf", new_bytes)
     old_page, page = old_doc[page_no], new_doc[page_no]
     try:
@@ -761,11 +765,25 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     # It reads back as typed, as a line of its own; the other lines read as before.
     new_lines = page_lines(page)
     mine = [l for l in new_lines if pymupdf.Rect(l.bbox).intersects(area) and comparable(l.text) == comparable(text)]
+    before = sorted(comparable(l.text) for l in lines)
+    joined_to = None
+    if len(mine) != 1 and may_join:
+        for l in new_lines:
+            if not pymupdf.Rect(l.bbox).intersects(area):
+                continue
+            for old in lines:
+                if comparable(l.text) in (comparable(f"{old.text} {text}"), comparable(f"{text} {old.text}")) and abs(old.bbox[1] - l.bbox[1]) < 0.6 * (old.bbox[3] - old.bbox[1]):
+                    mine, joined_to = [l], old
+                    break
+            if joined_to is not None:
+                break
     if len(mine) != 1:
         got = " | ".join(l.text for l in new_lines if pymupdf.Rect(l.bbox).intersects(area))
-        fail(f"it read back as “{got}”")
+        fail(f"the page would read the new text as “{got}”, not as you typed it")
     others = sorted(comparable(l.text) for l in new_lines if l is not mine[0])
-    if others != sorted(comparable(l.text) for l in lines):
+    if joined_to is not None:
+        before.remove(comparable(joined_to.text))
+    if others != before:
         fail("the lines around it would read differently")
     # PDFium finds its letters there too.
     doc = pdfium.PdfDocument(new_bytes)
@@ -783,4 +801,5 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     check_drawings(old_page, page, [], rp)
     check_links(old_page, page, [])
     check_other_pages(old_bytes, new_bytes, {page_no})
-    return tuple(area), tuple(mine[0].bbox)
+    mark = to_display(page, tuple(box)) if joined_to is not None else pymupdf.Rect(mine[0].bbox)
+    return tuple(area), tuple(mark)
