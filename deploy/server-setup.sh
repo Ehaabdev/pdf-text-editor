@@ -40,10 +40,16 @@ mkdir -p /opt/pdf-editor/incoming /var/lib/pdf-editor/data /var/lib/pdf-editor/c
 chown -R pdfeditor:pdfeditor /var/lib/pdf-editor
 chown -R "${SUDO_USER:-ubuntu}" /opt/pdf-editor
 
-# Oracle's Ubuntu images let only SSH in: let web visitors in too (ports 80 and 443).
+# Oracle's Ubuntu images let only SSH in: let web visitors in too (ports 80 and 443),
+# above the rule that rejects everything else (rules apply top to bottom).
 for port in 80 443; do
-  iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null \
-    || iptables -I INPUT 6 -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+  while iptables -D INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null; do :; done
+  reject="$(iptables -L INPUT -n --line-numbers | awk '$2 == "REJECT" { print $1; exit }')"
+  if [ -n "$reject" ]; then
+    iptables -I INPUT "$reject" -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+  else
+    iptables -A INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+  fi
 done
 netfilter-persistent save
 
