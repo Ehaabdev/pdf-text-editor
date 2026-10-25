@@ -12,6 +12,7 @@ import pymupdf
 import pytest
 
 from app import exporting
+from app.adding import add_line
 from app.editing import comparable, replace_line
 from app.fonts import library
 from app.rows import Spot, add_row
@@ -85,6 +86,14 @@ def test_a_lira_sign_no_font_here_has(no_fonts):
     result = replace_line(WORD, page_no, line.id, line.text, line.text.replace("2009", "2009 (₺)"))
     assert find_line(result.pdf, "2009 (₺)") is not None
     assert sorted((n["substitute"], n["letters"]) for n in result.lookalikes) == [("DejaVu Sans", "₺"), ("Selawik", "()")]
+
+
+@pytest.mark.parametrize("page_no, find, text", [(1, "Genel Müdür", "Satış Departmanı"), (0, "İstanbul, 21", "Ref: 2026/İST-44")])
+def test_a_new_line_under_a_right_aligned_one_lines_up_with_it(page_no, find, text):
+    line = next(l for l in page_lines(pymupdf.open("pdf", WORD)[page_no]) if find in l.text)
+    result = add_line(WORD, page_no, text, line.id, line.text, "below")
+    new = next(l for l in page_lines(pymupdf.open("pdf", result.pdf)[page_no]) if comparable(l.text) == comparable(text))
+    assert abs(new.bbox[2] - line.bbox[2]) < 0.5
 
 
 def test_turkish_amounts_become_numbers_in_excel():

@@ -1107,6 +1107,11 @@ def _collides(line: Line, lines: list[Line], page: pymupdf.Page, old: tuple[floa
     return False
 
 
+def _middle(page: pymupdf.Page) -> float:
+    """The middle of the page as displayed, in PDF x."""
+    return (pymupdf.Point(page.rect.width / 2, 0) * ~page_matrix(page)).x
+
+
 def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[tuple[float, float]]:
     """Left and right ink edges (PDF x) of the nearby lines in the same column: the
     lines just above and below that overlap this one, i.e. probably its paragraph."""
@@ -1117,12 +1122,14 @@ def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[
         return r
     me = edges(line)
     height = me.height or 1.0
+    # The page's text area: the widest column (a table's cells and boxes are inside it).
+    body = max((l.column for l in lines if l.column), key=lambda c: c[1] - c[0], default=None)
     out = []
     for other in lines:
         if other is line:
             continue
-        if line.column and other.column and max(abs(a - b) for a, b in zip(line.column, other.column)) > 1.0:
-            continue  # another column, or a table's cell: not its paragraph
+        if body and _same(line.column, body) and not _same(other.column, body):
+            continue  # a line of the page's text doesn't take its shape from a table's cells (a total under a table)
         r = edges(other)
         overlap = min(r.x1, me.x1) - max(r.x0, me.x0)
         if overlap > 0.5 * min(r.width, me.width) and abs(r.y0 - me.y0) < 3 * height and abs(r.height - height) < 0.5 * height:
@@ -1130,7 +1137,13 @@ def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[
     return out
 
 
-def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: float, neighbours) -> str:
+def _same(a, b) -> bool:
+    return a is not None and b is not None and max(abs(x - y) for x, y in zip(a, b)) <= 1.0
+
+
+def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: float, neighbours, middle: float | None = None) -> str:
+    """How the line is laid out: "left", "right", "center" or "justify". `middle`: the
+    page's middle (PDF x)."""
     u0, u1 = old[0].u0, old[-1].u1
     gaps = [b.u0 - a.u1 for a, b in zip(old, old[1:]) if b.u0 - a.u1 > 0.3 * space]
     if line.kashida:
@@ -1143,7 +1156,7 @@ def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: 
         at_left, at_right = u0 - left < 1.5, right - u1 < 1.5
         # A block against the far side (an address or a signature at the right of an
         # English letter): its lines end together and start apart.
-        side = _against_one_side(line, column, space, left, right)
+        side = _against_one_side(line, column, space, left, right, middle)
         starts, ends = [u0] + [a for a, _ in neighbours], [u1] + [b for _, b in neighbours]
         if side == "right" and max(ends) - min(ends) < 1.5 and max(starts) - min(starts) > 1.5:
             return "right"
@@ -1167,16 +1180,18 @@ def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: 
         return "justify"
     if not touches_left and not touches_right and abs((u0 - left) - (right - u1)) < 3:
         return "center"
-    return _against_one_side(line, column, space, u0, u1) or ("right" if line.rtl else "left")
+    return _against_one_side(line, column, space, u0, u1, middle) or ("right" if line.rtl else "left")
 
 
-def _against_one_side(line: Line, column: tuple[float, float], space: float, x0: float, x1: float) -> str | None:
+def _against_one_side(line: Line, column: tuple[float, float], space: float, x0: float, x1: float, middle: float | None = None) -> str | None:
     """"right" for a line (or a paragraph, from x0 to x1) set against the right edge of
     its column though its language starts on the left: a date or a signature at the
     right of an English letter; "left" for the mirror case in Arabic. It reaches that
     edge and stays well away from the other, past a quarter of the column: an indented
     line that happens to reach the far edge doesn't count."""
     left, right = column
+    if middle is not None and abs((x0 + x1) / 2 - middle) < 2:
+        return None  # centered on the page (a header), whatever the column found says
     far = 0.25 * (right - left)
     if not line.rtl and right - x1 < 2.5 + space and x0 - left > far:
         return "right"
@@ -1315,7 +1330,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             gaps.append(typical)
         joined.append(is_joined)
 
-    mode = _alignment(line, old_visual, column, space, _paragraph_edges(line, all_lines, page))
+    mode = _alignment(line, old_visual, column, space, _paragraph_edges(line, all_lines, page), _middle(page))
     u0, u1 = old_visual[0].u0, old_visual[-1].u1
     natural = sum(w.width for w in visual) + sum(gaps)
     stretchable = [i for i, j in enumerate(joined) if not j]

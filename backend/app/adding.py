@@ -49,6 +49,7 @@ from .editing import (
     Word,
     _original_first,
     _alignment,
+    _middle,
     _bracket_insides,
     _glyph_texts,
     _looks,
@@ -639,7 +640,7 @@ def _column(ref: Line, old: list[Word], page: pymupdf.Page) -> tuple[float, floa
 def _mode(ref: Line, old: list[Word], column, space: float, neighbours, page: pymupdf.Page, lines: list[Line]) -> str:
     """center, end (flush to the edge a line doesn't start from: a right-aligned English
     line) or start. A justified paragraph's last line is start-aligned, and so is a new one."""
-    mode = _alignment(ref, sorted(old, key=lambda w: w.u0), column, space, neighbours)
+    mode = _alignment(ref, sorted(old, key=lambda w: w.u0), column, space, neighbours, _middle(page))
     if mode == "center":
         return "center"
     if mode == "justify":
@@ -820,9 +821,10 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
             fail("other text on the page would have changed")
 
     # Nothing outside the new line changes, in two engines, and the new line shows. The
-    # new letters may reach above the line's usual height: marks stacked on an Arabic
-    # letter (أُ), drawn by a stand-in placed higher than the page's font would.
-    area = (to_display(page, tuple(box)) + (-3, -3, 3, 3)) | to_display(page, ink_box(new_rp, range(len(rp.glyphs), len(new_rp.glyphs))))
+    # new letters may reach above or below the line's usual height (marks stacked on an
+    # Arabic letter, أُ, drawn higher by another font), never past its ends.
+    reach = ink_box(new_rp, range(len(rp.glyphs), len(new_rp.glyphs)))
+    area = (to_display(page, tuple(box)) + (-3, -3, 3, 3)) | to_display(page, (box.x0, min(box.y0, reach[1]), box.x1, max(box.y1, reach[3])))
     old_mu, old_pf = render(old_bytes, page_no)
     new_mu, new_pf = render(new_bytes, page_no)
     if outside(old_mu, new_mu, [tuple(area)], 2.0, 0) or outside(old_pf, new_pf, [tuple(area)], 2.0, 1):
