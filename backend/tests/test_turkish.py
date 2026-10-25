@@ -77,6 +77,16 @@ def test_a_new_row_as_on_the_server(no_fonts):
     assert result.lookalikes == []
 
 
+def test_a_lira_sign_no_font_here_has(no_fonts):
+    # The Segoe UI line's copy has no "₺", nor has Selawik (its look-alike) or Liberation
+    # Sans: DejaVu Sans draws it, and the user is told. The brackets, not in the copy
+    # either, come from Selawik.
+    page_no, line = find_line(WORD, "Şirketimiz 2009")
+    result = replace_line(WORD, page_no, line.id, line.text, line.text.replace("2009", "2009 (₺)"))
+    assert find_line(result.pdf, "2009 (₺)") is not None
+    assert sorted((n["substitute"], n["letters"]) for n in result.lookalikes) == [("DejaVu Sans", "₺"), ("Selawik", "()")]
+
+
 def test_turkish_amounts_become_numbers_in_excel():
     assert exporting._value("1.250,00 ₺") == (1250.0, '#,##0.00 "₺"')
     assert exporting._value("10.220,00 TL") == (10220.0, '#,##0.00 "TL"')
@@ -93,3 +103,6 @@ def test_word_and_powerpoint_know_the_language():
     word = exporting.export(WORD, "teklif.pdf", "docx").data
     xml = ZipFile(io.BytesIO(word)).read("word/document.xml").decode("utf-8")
     assert 'w:val="tr-TR"' in xml and 'w:val="en-US"' not in xml
+    deck = exporting.export(WORD, "teklif.pdf", "pptx").data
+    slide = ZipFile(io.BytesIO(deck)).read("ppt/slides/slide1.xml").decode("utf-8")
+    assert 'lang="tr-TR"' in slide
