@@ -820,9 +820,10 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
             fail("other text on the page would have changed")
 
     # Nothing outside the new line changes, in two engines, and the new line shows. The
-    # new letters may reach above the line's usual height: marks stacked on an Arabic
-    # letter (أُ), drawn by a stand-in placed higher than the page's font would.
-    area = (to_display(page, tuple(box)) + (-3, -3, 3, 3)) | to_display(page, ink_box(new_rp, range(len(rp.glyphs), len(new_rp.glyphs))))
+    # new letters may reach above or below the line's usual height (marks stacked on an
+    # Arabic letter, أُ, drawn higher by another font), never past its ends.
+    reach = ink_box(new_rp, range(len(rp.glyphs), len(new_rp.glyphs)))
+    area = (to_display(page, tuple(box)) + (-3, -3, 3, 3)) | to_display(page, (box.x0, min(box.y0, reach[1]), box.x1, max(box.y1, reach[3])))
     old_mu, old_pf = render(old_bytes, page_no)
     new_mu, new_pf = render(new_bytes, page_no)
     if outside(old_mu, new_mu, [tuple(area)], 2.0, 0) or outside(old_pf, new_pf, [tuple(area)], 2.0, 1):
