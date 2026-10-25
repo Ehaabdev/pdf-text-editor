@@ -87,3 +87,108 @@ def test_downloads_have_their_own_limit():
 @pytest.mark.parametrize("name, expected", [("a.pdf", "a"), ("A.PDF", "A"), ("report", "report"), ("../x.pdf", "x")])
 def test_file_names(name, expected):
     assert exporting.stem(name) == expected
+
+
+# Excel -----------------------------------------------------------------------------------
+
+from openpyxl import load_workbook  # noqa: E402
+
+from app.tables import find_tables  # noqa: E402
+from app.textlayout import page_lines  # noqa: E402
+
+WORD = FIXTURES / "word"
+
+
+def sheets(pdf: bytes):
+    return load_workbook(io.BytesIO(exporting.export(pdf, "x.pdf", "xlsx").data)).worksheets
+
+
+def test_an_arabic_table_reads_right_to_left_in_excel():
+    (ws,) = sheets((WORD / "arabic-quotation-word.pdf").read_bytes())
+    assert ws.sheet_view.rightToLeft  # its first column on the right, as on the page
+    assert [c.value for c in ws[1]] == ["الخدمة", "الكمية", "سعر الوحدة (ريال)", "الإجمالي (ريال)"]
+    assert ws["A2"].value == "رسائل تسويقية عبر WhatsApp"
+    assert ws["B2"].value == 10000 and ws["D2"].value == 1700.0 and ws["D2"].number_format == "#,##0.00"
+    assert ws["A1"].fill.fgColor.rgb == "FFDEEAF6"  # the header's shading
+    assert ws["D6"].font.bold  # the total
+
+
+def test_numbers_become_numbers():
+    (ws,) = sheets((WORD / "english-styles-word.pdf").read_bytes())
+    assert [c.value for c in ws[1]] == ["Metric", "July", "August", "September"]
+    assert ws["B2"].value == 120400 and ws["B3"].value == 0.981 and ws["B3"].number_format == "0.0%"
+    assert ws["B4"].value == "55 s"  # not a plain number: stays text
+    (ws,) = sheets((WORD / "french-quote-word.pdf").read_bytes())
+    assert ws["D2"].value == 2157.6 and ws["D2"].number_format == '#,##0.00 "€"'
+
+
+def test_a_table_split_by_its_text_is_one_cell():
+    # The bilingual contract's Arabic notice line is drawn in three pieces: read right to left.
+    page = pymupdf.open(WORD / "bilingual-contract-word.pdf")[0]
+    (table,) = find_tables(page, page_lines(page))
+    cell = next(c for c in table.cells if c.row == 4 and c.col == 1)
+    from app.flow import paragraphs
+
+    assert [p.text for p in paragraphs(cell.lines, cell.bbox[0], cell.bbox[2])] == ["٤. الإشعارات: تُرسل جميع الإشعارات إلى legal@example.com."]
+
+
+def _grid(merged_header: bool) -> bytes:
+    doc = pymupdf.open()
+    page = doc.new_page()
+    xs, ys = [72, 200, 330, 460], [100, 130, 160, 190]
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    for i, x in enumerate(xs):
+        top = ys[1] if merged_header and 0 < i < len(xs) - 1 else ys[0]
+        page.draw_line((x, top), (x, ys[-1]))
+    page.insert_text((80, 120), "Quarterly totals", fontsize=11)
+    for r, y in enumerate((150, 180)):
+        for c, x in enumerate(xs[:-1]):
+            page.insert_text((x + 8, y), f"{(r + 1) * 100 + c}", fontsize=11)
+    return doc.tobytes()
+
+
+def test_cells_without_a_border_between_them_are_merged():
+    page = pymupdf.open("pdf", _grid(merged_header=True))[0]
+    (table,) = find_tables(page, page_lines(page))
+    header = next(c for c in table.cells if c.row == 0)
+    assert (header.rowspan, header.colspan) == (1, 3)
+    (ws,) = sheets(_grid(merged_header=True))
+    assert [str(r) for r in ws.merged_cells.ranges] == ["A1:C1"]
+    assert ws["A1"].value == "Quarterly totals" and ws["C3"].value == 202
+
+
+def test_a_table_without_borders_is_found_by_its_columns():
+    doc = pymupdf.open()
+    page = doc.new_page()
+    rows = [("Item", "Qty", "Price"), ("Paper", "10", "4.50"), ("Ink", "2", "19.90"), ("Pens", "12", "6.00")]
+    for r, row in enumerate(rows):
+        for c, text in enumerate(row):
+            page.insert_text((72 + c * 150, 100 + r * 20), text, fontsize=11)
+    (ws,) = sheets(doc.tobytes())
+    assert [[c.value for c in row] for row in ws.iter_rows()] == [["Item", "Qty", "Price"], ["Paper", 10, 4.5], ["Ink", 2, 19.9], ["Pens", 12, 6.0]]
+
+
+def test_a_pdf_without_tables_gives_its_text():
+    ws_list = sheets(make_pdf(2))
+    assert [ws.title for ws in ws_list] == ["Page 1", "Page 2"]
+    assert ws_list[1]["A1"].value == "Page 2"
+
+
+@pytest.mark.parametrize(
+    "text, value, fmt",
+    [
+        ("1,700.00", 1700.0, "#,##0.00"),
+        ("0.17", 0.17, "0.00"),
+        ("98.1%", 0.981, "0.0%"),
+        ("89,90 €", 89.9, '0.00 "€"'),
+        ("1 450,00 €", 1450.0, '#,##0.00 "€"'),
+        ("SAR 4,542.50", 4542.5, '"SAR "#,##0.00'),
+        ("12", 12, None),
+        ("007", "007", None),
+        ("+966 55 123 4567", "+966 55 123 4567", None),
+        ("21/10/2026", "21/10/2026", None),
+    ],
+)
+def test_cell_values(text, value, fmt):
+    assert exporting._value(text) == (value, fmt)

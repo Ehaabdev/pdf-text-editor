@@ -3,16 +3,25 @@
 - "jpg", "png": a picture of every page (one file, or a zip of them).
 - "pptx-pictures": PowerPoint, every page a slide showing a picture of it: it looks the
   same, but its text can't be edited.
+- "xlsx": Excel, a sheet for every table (tables.py), numbers as numbers.
+
+Text in Word, PowerPoint and Excel files always comes from our own reading of the page
+(textlayout), never from another library's: that keeps Arabic and mixed text right.
 
 Every format is made from the current PDF, the same one "Download" gives.
 """
 
 import io
+import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import PurePath
 
 import pymupdf
+
+from . import flow
+from .tables import find_tables
+from .textlayout import page_lines
 
 DPI = 200  # sharp on screen and in print, without huge files
 MAX_PAGE_PIXELS = 25_000_000  # a poster-sized page is drawn at a lower resolution
@@ -137,9 +146,144 @@ def _pptx_pictures(doc: pymupdf.Document, name: str) -> Export:
     return Export(save_deck(deck), f"{name}.pptx", PPTX)
 
 
+# Excel -----------------------------------------------------------------------------------
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_CURRENCY = r"€|\$|£|SAR|USD|EUR|GBP|AED"
+_AMOUNT = re.compile(rf"^(?P<pre>(?:{_CURRENCY})\s?)?(?P<num>-?[0-9][0-9 .,]*)(?P<post>\s?(?:{_CURRENCY}|%))?$")
+
+
+def _number(s: str):
+    """(value, decimals, grouped) for a number written the English or the French way:
+    1,700.00 / 1 700,00 / 1.700,00 / 0.17 / 89,90. Codes with leading zeros aren't."""
+    for pattern, group, point in (
+        (r"-?\d{1,3}(,\d{3})+(\.\d+)?", ",", "."),  # 1,700.00
+        (r"-?\d{1,3}( \d{3})+(,\d+)?", " ", ","),  # 1 700,00 (French)
+        (r"-?\d{1,3}(\.\d{3})+(,\d+)?", ".", ","),  # 1.700,00
+        (r"-?(0|[1-9]\d*)(\.\d+)?", None, "."),  # 1700.00
+        (r"-?(0|[1-9]\d*),\d{1,2}", None, ","),  # 89,90 (a comma before 3 digits groups thousands)
+    ):
+        if re.fullmatch(pattern, s):
+            whole, _, frac = s.replace(group, "").partition(point) if group else s.partition(point)
+            value = float(f"{whole}.{frac}") if frac else int(whole)
+            return value, len(frac), group is not None
+    return None
+
+
+def _value(text: str):
+    """A cell's value: a number when it's written as one (1,700.00, 89,90 €, 15%), so
+    Excel can add it up, with a format that shows it as written; otherwise the text."""
+    t = re.sub(r"[   ]", " ", text.strip())
+    m = _AMOUNT.match(t)
+    parsed = _number(m["num"].strip()) if m else None
+    if parsed is None:
+        return text.strip(), None
+    value, decimals, grouped = parsed
+    fmt = ("#,##0" if grouped else "0") + ("." + "0" * decimals if decimals else "")
+    pre, post = (m["pre"] or "").strip(), (m["post"] or "").strip()
+    if post == "%":
+        return value / 100, fmt.replace("#,##", "") + "%"
+    if pre:
+        fmt = f'"{pre}{" " if len(pre) > 1 else ""}"{fmt}'
+    elif post:
+        fmt = f'{fmt} "{post}"'
+    elif not grouped and not decimals:
+        fmt = None
+    return value, fmt
+
+
+def _sheet_name(base: str, taken: set[str]) -> str:
+    name = re.sub(r"[\[\]:*?/\\]", " ", base)[:31]
+    n, out = 2, name
+    while out.lower() in taken:
+        out = f"{name[:27]} ({n})"
+        n += 1
+    taken.add(out.lower())
+    return out
+
+
+def _main_style(lines):
+    """The style most of the text is in."""
+    weight: dict = {}
+    for line in lines:
+        for text, style in line.spans:
+            weight[style] = weight.get(style, 0) + len(text.strip())
+    return max(weight, key=weight.get) if weight else None
+
+
+def _write_table(ws, table) -> None:
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    nc = len(table.cols) - 1
+    ws.sheet_view.rightToLeft = table.rtl
+    thin = Side(style="thin", color="808080")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin) if table.ruled else None
+    for cell in table.cells:
+        # Right-to-left tables start on the right: so does the sheet.
+        col = nc - cell.col - cell.colspan if table.rtl else cell.col
+        r0, c0 = cell.row + 1, col + 1
+        paras = flow.paragraphs(cell.lines, cell.bbox[0] + 1.5, cell.bbox[2] - 1.5)
+        text = "\n".join(p.text for p in paras)
+        target = ws.cell(r0, c0)
+        value, fmt = _value(text) if text else (None, None)
+        target.value = value
+        if fmt:
+            target.number_format = fmt
+        style = _main_style(cell.lines)
+        if style is not None:
+            target.font = Font(bold=style.bold, italic=style.italic, color=None if style.color == "000000" else "FF" + style.color.upper())
+        target.alignment = Alignment(wrap_text=True, vertical="top", readingOrder=2 if flow.rtl(cell.lines) else 0)
+        if cell.fill:
+            target.fill = PatternFill("solid", fgColor="FF" + cell.fill.upper())
+        if border is not None:
+            for i in range(cell.rowspan):
+                for k in range(cell.colspan):
+                    ws.cell(r0 + i, c0 + k).border = border
+        if cell.rowspan > 1 or cell.colspan > 1:
+            ws.merge_cells(start_row=r0, start_column=c0, end_row=r0 + cell.rowspan - 1, end_column=c0 + cell.colspan - 1)
+    widths = [table.cols[c + 1] - table.cols[c] for c in range(nc)]
+    if table.rtl:
+        widths.reverse()
+    for c, w in enumerate(widths):
+        ws.column_dimensions[get_column_letter(c + 1)].width = max(6.0, round(w / 5.3, 1))  # about 5.3 pt a character
+
+
+def _xlsx(doc: pymupdf.Document, name: str) -> Export:
+    """Every table becomes a sheet. A PDF without tables gets its text, a paragraph a row,
+    a sheet for each page, so there's always something to work with."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    taken: set[str] = set()
+    pages = [(page, page_lines(page)) for page in doc]
+    for n, (page, lines) in enumerate(pages):
+        found = find_tables(page, lines)
+        for k, table in enumerate(found):
+            label = f"Page {n + 1}" if len(found) == 1 else f"Page {n + 1} table {k + 1}"
+            _write_table(wb.create_sheet(_sheet_name(label, taken)), table)
+    if not wb.worksheets:
+        left, right = flow.edges([l for _, lines in pages for l in lines])
+        for n, (page, lines) in enumerate(pages):
+            ws = wb.create_sheet(_sheet_name(f"Page {n + 1}", taken))
+            ws.column_dimensions["A"].width = 100
+            paras = flow.paragraphs(lines, left, right)
+            ws.sheet_view.rightToLeft = flow.rtl(lines)
+            for r, p in enumerate(paras, start=1):
+                c = ws.cell(r, 1, p.text)
+                c.alignment = Alignment(wrap_text=True, vertical="top", readingOrder=2 if p.rtl else 0)
+    if not wb.worksheets:
+        wb.create_sheet("Page 1")
+    out = io.BytesIO()
+    wb.save(out)
+    return Export(out.getvalue(), f"{name}.xlsx", XLSX)
+
+
 # All formats -----------------------------------------------------------------------------
 
-FORMATS = ("jpg", "png", "pptx-pictures")
+FORMATS = ("jpg", "png", "pptx-pictures", "xlsx")
 
 
 def export(src: bytes, name: str, fmt: str) -> Export:
@@ -149,4 +293,6 @@ def export(src: bytes, name: str, fmt: str) -> Export:
     name = stem(name)
     if fmt in ("jpg", "png"):
         return _pictures(doc, name, fmt)
+    if fmt == "xlsx":
+        return _xlsx(doc, name)
     return _pptx_pictures(doc, name)
