@@ -69,6 +69,12 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     };
   }, [doc, page, line.id]);
   const rowCells = table ? table.table.rows[table.row] : [];
+  // A column's name for its box: the text at its top (the table's first row), else its number.
+  function heading(k: number): string {
+    const top = (table?.table.rows[0]?.[k]?.text ?? "").trim();
+    if (!top) return `Column ${k + 1}`;
+    return top.length > 28 ? `${top.slice(0, 28)}…` : top;
+  }
   const merged = rowCells.some((c) => c.merged);
   useEffect(() => {
     onWorking?.(rowBusy);
@@ -171,14 +177,15 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           }}
         >
           <div className="row-cells" dir={table.table.rtl ? "rtl" : "ltr"}>
-            {rowCells.map((c, k) => (
+            {rowCells.map((_, k) => (
               <label key={k} className="row-cell">
-                <span className="row-cell-label">Column {k + 1}</span>
+                <span className="row-cell-label" dir="auto">
+                  {heading(k)}
+                </span>
                 <input
                   className="line-edit"
                   dir="auto"
                   value={cells[k] ?? ""}
-                  placeholder={c.text.length > 24 ? `${c.text.slice(0, 24)}…` : c.text}
                   disabled={rowBusy}
                   autoFocus={k === 0}
                   onChange={(e) => setCells((now) => now.map((v, i) => (i === k ? e.target.value.replace(/[\r\n]+/g, " ") : v)))}

@@ -431,6 +431,7 @@ class Fonts:
         self.lookalikes: dict[tuple[str, str], dict] = {}
         self._notes: dict[tuple[str, str], int] = {}  # which warning tells about each
         self._forms: dict[tuple, dict] = {}  # Arabic letter shapes learned, per font (and how widely)
+        self._labels: dict[str, dict[str, int]] = {}  # per copy of a font: character -> its code
 
     def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
         """Warn when the installed font draws the line's existing glyphs differently
@@ -499,22 +500,13 @@ class Fonts:
         """Latin text drawn with the PDF's embedded copy of its font, if it has every letter."""
         text = word.text
         for resource in candidates:
-            info, emb = self.rp.fonts[resource], self._embedded(resource)
-            # Which code draws a character: the copy's own labels (subsets often have no
-            # character table of their own), else its character table.
-            by_label = {}
-            for code, label in sorted(info.to_unicode.items()):
-                by_label.setdefault(label, code)
+            info = self.rp.fonts[resource]
             shaped, codes = [], []
             for k, ch in enumerate(text):
-                code = by_label.get(ch)
-                if code is None:
-                    gid = emb.gid_for(ch)
-                    code = gid if info.two_byte else _winansi(ch)
-                gid = code if info.two_byte else emb.gid_for(ch)
-                drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid)) or ch.isspace()
-                if code is None or code not in info.widths or not drawn:
+                found = self._copy_code(resource, ch)
+                if found is None:
                     break
+                code, gid = found
                 shaped.append((gid or 0, k, info.width(code), 0.0, 0.0))
                 codes.append(code)
             else:
@@ -522,6 +514,34 @@ class Fonts:
                 word.choice = FontChoice(resource, None, info, codes)
                 return True
         return False
+
+    def _copy_code(self, resource: str, ch: str) -> tuple[int, int | None] | None:
+        """(code, glyph) that draws a character with a copy of a font in the PDF, if the
+        copy has it, drawn, with a width, and it reads back as that character."""
+        info, emb = self.rp.fonts[resource], self._embedded(resource)
+        by_label = self._labels.get(resource)
+        if by_label is None:
+            by_label = self._labels[resource] = {}
+            for code, label in sorted(info.to_unicode.items()):
+                by_label.setdefault(label, code)
+        # Which code draws it: the copy's own labels (subsets often have no character
+        # table of their own), else its character table.
+        code = by_label.get(ch)
+        if code is None:
+            gid = emb.gid_for(ch)
+            code = gid if info.two_byte else _winansi(ch)
+            if code is None:
+                return None
+            # Read back by its label, or a simple font's by its encoding: a code of a
+            # two-byte copy without one reads as nothing (Word labels only what it used).
+            label = info.to_unicode.get(code)
+            if (label is None and info.two_byte) or (label is not None and unicodedata.normalize("NFKC", label) != unicodedata.normalize("NFKC", ch)):
+                return None
+        gid = code if info.two_byte else emb.gid_for(ch)
+        drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid)) or ch.isspace()
+        if not drawn or not _has_width(info, code, ch):
+            return None
+        return code, gid
 
     def _installed_draws(self, text: str, font_name: str) -> bool:
         entry = fontlib.library().find(font_name)
@@ -532,14 +552,7 @@ class Fonts:
         return not any(gid == 0 for gid, *_ in shaped) and fontlib.embeddable(full)
 
     def _in_copy(self, ch: str, resource: str) -> bool:
-        info, emb = self.rp.fonts[resource], self._embedded(resource)
-        code = next((c for c, label in sorted(info.to_unicode.items()) if label == ch), None)
-        if code is None:
-            gid = emb.gid_for(ch)
-            code = gid if info.two_byte else _winansi(ch)
-        gid = code if info.two_byte else emb.gid_for(ch)
-        drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid))
-        return code is not None and code in info.widths and drawn
+        return self._copy_code(resource, ch) is not None
 
     def split_by_copy(self, word: Word, font_name: str, paint_font: str) -> list[Word]:
         """A new Latin word whose font isn't here (or can't draw it), in pieces: runs of
@@ -876,6 +889,13 @@ class Fonts:
                 )
             cache[key] = str(pikepdf.Page(self.pdf.pages[self.page_index]).add_resource(font, pikepdf.Name.Font, prefix="FE"))
         return cache[key]
+
+
+def _has_width(info, code: int | None, ch: str) -> bool:
+    """Whether a copy's code is a real letter of it: it has a width, and (but for spaces)
+    not 0, which is what Word writes for the codes it doesn't use. Such a letter would be
+    drawn taking no room, over the next one."""
+    return code is not None and code in info.widths and (info.width(code) > 0 or ch.isspace())
 
 
 def _winansi(ch: str) -> int | None:

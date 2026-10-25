@@ -63,6 +63,45 @@ def test_a_new_row(name, row, where, texts):
     assert result.marks and result.areas
 
 
+@pytest.mark.parametrize(
+    "row, texts",
+    [
+        # One copy of Calibri lists "€" with width 0 (a code Word didn't use): drawn from
+        # it, the sign took no room and overflowed its cell. The other copy has it.
+        (1, ["Pose et réglage", "2", "150,00 €", "300,00 €"]),
+        # The other copy has a "-" too, but without a label: it read back as "�".
+        (3, ["Main-d’œuvre (forfait)", "", "", ""]),
+    ],
+)
+def test_a_new_row_without_the_font_installed(monkeypatch, row, texts):
+    # As on the server, without Calibri: the letters come from the PDF's own copies of it.
+    from app.fonts import library
+
+    monkeypatch.setattr(library(), "find", lambda name: None)
+    line = line_in_row(FRENCH, row)
+    result = add_row(FRENCH, 0, line.id, line.text, "below", texts)
+    assert grid(result.pdf)[row + 1] == [comparable(t) for t in texts]
+    assert result.lookalikes == []
+    # As wide as the same text on the page: no letter drawn taking no room ("’" and "œ"
+    # have width 0 in that copy too).
+    widths = {}
+    for l in page_lines(pymupdf.open("pdf", result.pdf)[0]):
+        widths.setdefault(comparable(l.text), []).append(l.bbox[2] - l.bbox[0])
+    for t in texts:
+        if t and len(widths[comparable(t)]) == 2:
+            old, new = widths[comparable(t)]
+            assert abs(old - new) < 0.5, t
+
+
+def test_a_new_row_like_the_one_next_to_it():
+    # The same text twice, one row under the other: the new row is the one that wasn't there.
+    src = (FIXTURES / "decorations" / "decorations-chrome.pdf").read_bytes()
+    before = grid(src)
+    line = line_in_row(src, 0)
+    result = add_row(src, 0, line.id, line.text, "below", before[0])
+    assert grid(result.pdf) == [before[0], before[0], *before[1:]]
+
+
 def test_a_row_is_deleted_and_the_rows_below_move_up():
     before = grid(FRENCH)
     for row in (0, 2, 4):  # the shaded header, a middle row, the last row

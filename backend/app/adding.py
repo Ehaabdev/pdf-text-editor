@@ -38,6 +38,7 @@ from .changes import (
     check_other_pages,
     fail,
     ink,
+    ink_box,
     outside,
     render,
     to_display,
@@ -818,8 +819,10 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
         ):
             fail("other text on the page would have changed")
 
-    # Nothing outside the new line changes, in two engines, and the new line shows.
-    area = to_display(page, tuple(box)) + (-3, -3, 3, 3)
+    # Nothing outside the new line changes, in two engines, and the new line shows. The
+    # new letters may reach above the line's usual height: marks stacked on an Arabic
+    # letter (أُ), drawn by a stand-in placed higher than the page's font would.
+    area = (to_display(page, tuple(box)) + (-3, -3, 3, 3)) | to_display(page, ink_box(new_rp, range(len(rp.glyphs), len(new_rp.glyphs))))
     old_mu, old_pf = render(old_bytes, page_no)
     new_mu, new_pf = render(new_bytes, page_no)
     if outside(old_mu, new_mu, [tuple(area)], 2.0, 0) or outside(old_pf, new_pf, [tuple(area)], 2.0, 1):
@@ -831,6 +834,11 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     # It reads back as typed, as a line of its own; the other lines read as before.
     new_lines = page_lines(page)
     mine = [l for l in new_lines if pymupdf.Rect(l.bbox).intersects(area) and comparable(l.text) == comparable(text)]
+    if len(mine) > 1:
+        # The same text on a line next to it (a row typed like the one above): the new
+        # line is the one where none was.
+        same_place = lambda l: any(comparable(o.text) == comparable(l.text) and max(abs(a - b) for a, b in zip(o.bbox, l.bbox)) < 0.5 for o in lines)
+        mine = [l for l in mine if not same_place(l)]
     before = sorted(comparable(l.text) for l in lines)
     joined_to = None
     if len(mine) != 1 and may_join:
