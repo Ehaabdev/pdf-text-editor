@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ApiError,
+  addImage,
+  deleteImage,
   deleteLines,
   downloadUrl,
   goToVersion,
+  moveImage,
+  pictureUrl,
   redoEdit,
   undoEdit,
   type DocInfo,
   type EditOutcome,
+  type PageImage,
   type PickedLine,
   type SpotPlan,
   type TextLine,
@@ -17,7 +22,8 @@ import ChangesPanel from "./ChangesPanel";
 import CheckPanel from "./CheckPanel";
 import CloseDialog from "./CloseDialog";
 import HomePanel from "./HomePanel";
-import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PLUS, REDO, UNDO } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PICTURE, PLUS, REDO, UNDO } from "./Icon";
+import ImagePanel, { PICTURE_TYPES, PlacePicturePanel, pictureProblem } from "./ImagePanel";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
@@ -47,6 +53,9 @@ function useWidth(ref: React.RefObject<HTMLElement | null>) {
 
 type Notice = { text: string; tone: "done" | "warning" | "error"; detail?: string };
 type HistoryEntry = DocInfo["history"][number];
+type Box = [number, number, number, number];
+/** A picture being put on a page (a new one) or moved: dragged in a frame until saved. */
+type Frame = { page: number; box: Box; mode: "add" | "move"; src: string; from?: Box; image?: PageImage; file?: File };
 
 // Every change the server accepts has passed its checks, among them that nothing outside
 // the changed lines differs by a single pixel.
@@ -191,6 +200,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       setChecking(null);
       clearSelection();
       stopPlacing();
+      cancelFrame();
       setNotice({ text: done, tone: "done" });
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : failed, tone: "error" });
@@ -224,6 +234,20 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   // What adding at the spot will do (a new item, a new line, joining a line, or there):
   // the page shows where.
   const [spotPlan, setSpotPlan] = useState<SpotPlan | null>(null);
+  // A picked picture, and a picture being added or moved: dragged in a frame until saved.
+  const [imagePick, setImagePick] = useState<{ page: number; image: PageImage } | null>(null);
+  const [frame, setFrame] = useState<Frame | null>(null);
+  const [frameSaving, setFrameSaving] = useState(false);
+  const [frameError, setFrameError] = useState<string | null>(null);
+  const pictureInput = useRef<HTMLInputElement>(null);
+  // A new picture is shown from the file itself until it's added: let go of it after.
+  const addUrl = frame?.mode === "add" ? frame.src : null;
+  useEffect(
+    () => () => {
+      if (addUrl) URL.revokeObjectURL(addUrl);
+    },
+    [addUrl],
+  );
   // Pages: the list beside the pages (wide screens), or a panel of them (from the page chip).
   const [showPages, setShowPages] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -241,20 +265,153 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function clearSelection() {
     setPicked([]);
     setAdding(false);
+    setImagePick(null);
+  }
+
+  function cancelFrame() {
+    setFrame(null);
+    setFrameError(null);
+  }
+
+  /** The spot in the middle of the view, on a page (points, as displayed). */
+  function viewCenter(page: number): [number, number] {
+    const size = doc.pages[page];
+    const el = scroller.current;
+    const box = document.querySelector(`#page-${page} .page`);
+    if (!el || !box) return [size.width / 2, size.height / 2];
+    const a = el.getBoundingClientRect();
+    const r = box.getBoundingClientRect();
+    const x = (((a.left + a.right) / 2 - r.left) / r.width) * size.width;
+    const y = (((a.top + a.bottom) / 2 - r.top) / r.height) * size.height;
+    return [Math.min(Math.max(x, 0), size.width), Math.min(Math.max(y, 0), size.height)];
+  }
+
+  /** A w x h box centered on a spot, kept on the page (made smaller if it can't fit). */
+  function around(page: number, cx: number, cy: number, w: number, h: number): Box {
+    const size = doc.pages[page];
+    const s = Math.min(1, size.width / w, size.height / h);
+    w *= s;
+    h *= s;
+    const x0 = Math.min(Math.max(cx - w / 2, 0), size.width - w);
+    const y0 = Math.min(Math.max(cy - h / 2, 0), size.height - h);
+    return [x0, y0, x0 + w, y0 + h];
+  }
+
+  function selectImage(page: number, image: PageImage) {
+    setPicked([]);
+    setAdding(false);
+    setShowPages(false);
+    setImagePick((now) => (now?.page === page && now.image.id === image.id ? null : { page, image }));
+  }
+
+  /** A new picture was chosen: it shows in the middle of the view, to drag into place. */
+  function pictureChosen(file: File | undefined) {
+    if (!file) return;
+    const problem = pictureProblem(file);
+    if (problem) {
+      setNotice({ text: problem, tone: "error" });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      // Choosing another picture keeps the place; otherwise the page in view.
+      const page = frame?.mode === "add" ? frame.page : current;
+      const size = doc.pages[page];
+      // As large as it would print at 96 dots per inch, but at most a third of the page.
+      let w = Math.max(24, Math.min(size.width * 0.3, img.naturalWidth * 0.75));
+      let h = (w * img.naturalHeight) / img.naturalWidth;
+      if (h > size.height * 0.4) {
+        w *= (size.height * 0.4) / h;
+        h = size.height * 0.4;
+      }
+      const [cx, cy] = frame?.mode === "add" ? [(frame.box[0] + frame.box[2]) / 2, (frame.box[1] + frame.box[3]) / 2] : viewCenter(page);
+      clearSelection();
+      stopPlacing();
+      setShowChanges(false);
+      setShowPages(false);
+      setFrameError(null);
+      setFrame({ page, box: around(page, cx, cy, w, h), mode: "add", src: url, file });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setNotice({ text: `“${file.name}” couldn't be opened as a picture. Use a JPEG or PNG.`, tone: "error" });
+    };
+    img.src = url;
+  }
+
+  function startMove() {
+    if (!imagePick) return;
+    const { page, image } = imagePick;
+    setFrameError(null);
+    setFrame({ page, box: [...image.bbox], mode: "move", src: pictureUrl(doc, page, image, 800), from: [...image.bbox], image });
+  }
+
+  /** A tap on a page while a picture is in a frame: the picture goes there. A picture
+   *  being moved stays on its page. */
+  function placeFrame(page: number, x: number, y: number) {
+    if (!frame || (frame.mode === "move" && page !== frame.page)) return;
+    setFrame({ ...frame, page, box: around(page, x, y, frame.box[2] - frame.box[0], frame.box[3] - frame.box[1]) });
+  }
+
+  function pictureChanged(outcome: EditOutcome, what: string) {
+    setImagePick(null);
+    onChange(outcome.document);
+    lightUp(outcome.document, outcome.document.history.at(-1));
+    report(what, outcome);
+  }
+
+  async function saveFrame() {
+    if (!frame || frameSaving) return;
+    const f = frame;
+    const from = f.from;
+    if (from && f.box.every((v, k) => Math.abs(v - from[k]) < 0.25)) {
+      cancelFrame(); // not moved: nothing to save
+      return;
+    }
+    const resized = from && (Math.abs(f.box[2] - f.box[0] - (from[2] - from[0])) > 0.5 || Math.abs(f.box[3] - f.box[1] - (from[3] - from[1])) > 0.5);
+    setFrameSaving(true);
+    setFrameError(null);
+    try {
+      const outcome = f.mode === "add" ? await addImage(doc, f.page, f.file!, f.box) : await moveImage(doc, f.page, f.image!, f.box);
+      setFrame(null);
+      pictureChanged(outcome, f.mode === "add" ? "Picture added." : resized ? "Picture resized." : "Picture moved.");
+    } catch (e) {
+      setFrameError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setFrameSaving(false);
+    }
+  }
+
+  async function removePicture() {
+    if (!imagePick || deleting) return;
+    setDeleting(true);
+    try {
+      pictureChanged(await deleteImage(doc, imagePick.page, imagePick.image), "Picture deleted.");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't delete. Try again.", tone: "error" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // On phones the panel opens under the pages and takes part of the screen. The line being
   // worked on (or the add-text mark) is scrolled back into view above it when it's picked,
   // and whenever the pages' area gets shorter: the panel opens or grows, the keyboard shows.
-  const focus = useRef<PickedLine | null>(null);
-  focus.current = picked.at(-1) ?? null;
+  // The same goes for a picked picture, and a picture being placed.
+  const focus = useRef<string>(".spot");
+  const f = picked.at(-1);
+  focus.current = frame
+    ? `#page-${frame.page} .image-frame`
+    : imagePick
+      ? `#page-${imagePick.page} [data-image="${CSS.escape(imagePick.image.id)}"]`
+      : f
+        ? `#page-${f.page} [data-line="${CSS.escape(f.line.id)}"]`
+        : ".spot";
   const keepInView = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    const f = focus.current;
-    const target = f
-      ? el.querySelector<HTMLElement>(`#page-${f.page} [data-line="${CSS.escape(f.line.id)}"]`)
-      : el.querySelector<HTMLElement>(".spot");
+    const target = el.querySelector<HTMLElement>(focus.current);
     if (!target) return;
     const box = el.getBoundingClientRect();
     const r = target.getBoundingClientRect();
@@ -263,12 +420,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     el.scrollBy({ top: r.top - box.top - el.clientHeight / 3, behavior: still ? "auto" : "smooth" });
   }, []);
 
-  const last = picked.at(-1);
-  const lastKey = last ? `${last.page}:${last.line.id}` : "";
+  const lastKey = f ? `${f.page}:${f.line.id}` : imagePick ? `${imagePick.page}:${imagePick.image.id}` : "";
+  const frameKey = frame ? `${frame.page}:${frame.mode}` : "";
   useEffect(() => {
     const id = requestAnimationFrame(keepInView);
     return () => cancelAnimationFrame(id);
-  }, [lastKey, spot, keepInView]);
+  }, [lastKey, frameKey, spot, keepInView]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -289,6 +446,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   function startComparing(show: "original" | "now" = "original") {
     clearSelection();
     stopPlacing();
+    cancelFrame();
     setCompare(show);
   }
 
@@ -326,6 +484,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }
 
   function select(page: number, line: TextLine | null, more: boolean) {
+    setImagePick(null);
     if (!line) {
       if (!adding) setPicked([]);
       return;
@@ -366,15 +525,16 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   // Once a line is picked, the user has found their way: no more "New here?" bubble.
   useEffect(() => {
-    if (hint && picked.length) {
+    if (hint && (picked.length || imagePick)) {
       setHint(false);
       markHelpSeen();
     }
-  }, [hint, picked.length]);
+  }, [hint, picked.length, imagePick]);
 
   function startTour() {
     clearSelection();
     stopPlacing();
+    cancelFrame();
     setShowChanges(false);
     setShowPages(false);
     setChecking(null);
@@ -416,14 +576,19 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
       const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .dock, dialog");
       if (e.key === "Escape") {
+        // A picture being placed or moved is let go first; a picked one stays picked.
+        if (frame) {
+          if (!frameSaving) cancelFrame();
+          return;
+        }
         clearSelection();
         stopPlacing();
         setCompare(null);
       } else if ((e.code === "KeyM" || e.key.toLowerCase() === "m") && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setMagnifier((v) => !v);
-      } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && picked.length && !compare) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && !typing && !compare && !frame && (picked.length || imagePick)) {
         e.preventDefault();
-        void remove(picked);
+        void (picked.length ? remove(picked) : removePicture());
       }
     };
     window.addEventListener("keydown", onKey);
@@ -480,9 +645,14 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     if (placing) stopPlacing();
     else {
       clearSelection();
+      cancelFrame();
       setShowChanges(false);
       setPlacing(true);
     }
+  }
+
+  function choosePicture() {
+    pictureInput.current?.click();
   }
 
   // What the side panel (wide screens) or the bottom sheet (phones) shows. Nothing: the tools.
@@ -518,7 +688,17 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           if (window.matchMedia?.("(max-width: 1023.98px)").matches) setShowPages(false);
         }}
       />
-    ) : compare ? null : placing ? (
+    ) : compare ? null : frame ? (
+      <PlacePicturePanel
+        mode={frame.mode}
+        box={frame.box}
+        saving={frameSaving}
+        error={frameError}
+        onSave={() => void saveFrame()}
+        onChooseAnother={frame.mode === "add" ? choosePicture : undefined}
+        onCancel={cancelFrame}
+      />
+    ) : placing ? (
       spot ? (
         <AddTextPanel
           doc={doc}
@@ -549,6 +729,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </p>
         </section>
       )
+    ) : imagePick ? (
+      <ImagePanel
+        doc={doc}
+        page={imagePick.page}
+        image={imagePick.image}
+        deleting={deleting}
+        onClose={() => setImagePick(null)}
+        onReplaced={(outcome, pages) => pictureChanged(outcome, pages > 1 ? `Picture replaced on ${pages} pages.` : "Picture replaced.")}
+        onMove={startMove}
+        onDelete={() => void removePicture()}
+        onWorking={setWorking}
+      />
     ) : picked.length === 1 && !adding ? (
       <LinePanel
         doc={doc}
@@ -567,7 +759,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   return (
     <div
-      className={`viewer${working || deleting ? " viewer--working" : ""}${showText ? " viewer--show-text" : ""}${placing ? " viewer--placing" : ""}${compare ? " viewer--comparing" : ""}`}
+      className={`viewer${working || deleting ? " viewer--working" : ""}${showText ? " viewer--show-text" : ""}${placing || frame ? " viewer--placing" : ""}${compare ? " viewer--comparing" : ""}`}
     >
       <header className="bar">
         <button
@@ -685,10 +877,17 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     width={pageWidth(p.width)}
                     selectedIds={new Set(picked.filter((p) => p.page === i).map((p) => p.line.id))}
                     onSelect={(line, more) => select(i, line, more)}
-                    placing={placing}
+                    placing={placing || frame !== null}
                     spot={spot?.page === i ? spot : null}
                     preview={spot?.page === i && spotPlan ? spotPlan : null}
-                    onPlace={(x, y) => setSpot({ page: i, x, y })}
+                    onPlace={(x, y) => (frame ? placeFrame(i, x, y) : setSpot({ page: i, x, y }))}
+                    selectedImageId={imagePick?.page === i ? imagePick.image.id : null}
+                    onSelectImage={(image) => selectImage(i, image)}
+                    frame={
+                      frame?.page === i
+                        ? { box: frame.box, src: frame.src, from: frame.from, onChange: (box) => setFrame((now) => now && { ...now, box }) }
+                        : null
+                    }
                     version={shownVersion}
                     outlines={outlines(i)}
                     magnifier={magnifier}
@@ -738,6 +937,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                 onToggleMagnifier={() => setMagnifier((v) => !v)}
                 comparing={compare !== null}
                 onAddText={togglePlacing}
+                onAddPicture={choosePicture}
                 onToggleText={() => setShowText((v) => !v)}
                 onShowChanges={() => openChanges(true)}
                 onCompare={() => (compare ? setCompare(null) : startComparing())}
@@ -747,6 +947,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                   <button className="toolbar-item" aria-pressed={placing} onClick={togglePlacing}>
                     <Icon d={ADD_TEXT} />
                     <span>Add text</span>
+                  </button>
+                )}
+                {!compare && (
+                  <button className="toolbar-item" onClick={choosePicture}>
+                    <Icon d={PICTURE} />
+                    <span>Add picture</span>
                   </button>
                 )}
                 {!compare && (
@@ -788,6 +994,17 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           onCancel={() => setAskClose(false)}
         />
       )}
+
+      <input
+        ref={pictureInput}
+        type="file"
+        accept={PICTURE_TYPES}
+        hidden
+        onChange={(e) => {
+          pictureChosen(e.target.files?.[0]);
+          e.target.value = ""; // the same file can be chosen again
+        }}
+      />
 
       {tour && <Tour steps={tour} onClose={() => setTour(null)} />}
     </div>

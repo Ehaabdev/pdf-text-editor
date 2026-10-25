@@ -5,7 +5,7 @@ export type Lookalike = { font: string; substitute: string; sameWidths: boolean 
 
 /** One change, as listed: what it was and where (page, x0, y0, x1, y1 in points). */
 export type Change = {
-  kind: "edit" | "delete" | "add";
+  kind: "edit" | "delete" | "add" | "image";
   summary: string;
   pages: number[];
   areas: [number, number, number, number, number][];
@@ -149,6 +149,85 @@ export function getLines(doc: DocInfo, pageNo: number): Promise<PageLines> {
     linesCache.set(key, p);
   }
   return p;
+}
+
+/** A picture on a page. `bbox` in points, as displayed; `pages`: how many pages show the
+ *  same picture (a logo in the header); `background`: it covers most of the page. */
+export type PageImage = {
+  id: string;
+  bbox: [number, number, number, number];
+  kind: "image" | "inline" | "drawing";
+  width: number;
+  height: number;
+  pages: number;
+  background: boolean;
+};
+
+const imagesCache = new Map<string, Promise<PageImage[]>>();
+
+export function getImages(doc: DocInfo, pageNo: number): Promise<PageImage[]> {
+  const key = `${doc.id}:${doc.revision}:${pageNo}`;
+  let p = imagesCache.get(key);
+  if (!p) {
+    p = fetch(`/api/documents/${doc.id}/pages/${pageNo}/images?r=${doc.revision}`).then(async (res) => {
+      if (!res.ok) throw await errorFrom(res);
+      return (await res.json()).images;
+    });
+    p.catch(() => imagesCache.delete(key));
+    imagesCache.set(key, p);
+  }
+  return p;
+}
+
+/** One picture alone, see-through around it (for showing it while it's moved). */
+export function pictureUrl(doc: DocInfo, page: number, image: PageImage, width: number): string {
+  return `/api/documents/${doc.id}/pages/${page}/images/${encodeURIComponent(image.id)}/picture?width=${width}&r=${doc.revision}`;
+}
+
+async function postForm<T>(url: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", body: form });
+  } catch {
+    throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0);
+  }
+  if (!res.ok) throw await errorFrom(res);
+  return res.json();
+}
+
+const imageRef = (doc: DocInfo, page: number, image: PageImage) => ({ revision: doc.revision, page, imageId: image.id, bbox: image.bbox });
+
+export function deleteImage(doc: DocInfo, page: number, image: PageImage): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/images/delete`, imageRef(doc, page, image));
+}
+
+/** Move or resize a picture to `box` (points, as displayed). */
+export function moveImage(doc: DocInfo, page: number, image: PageImage, box: number[]): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/images/move`, { ...imageRef(doc, page, image), box });
+}
+
+/** Show `file` where the picture is: all of it ("fit"), covering the place ("fill"), or
+ *  stretched to it; on every page the picture is on, with `everywhere`. */
+export function replaceImage(doc: DocInfo, page: number, image: PageImage, file: File, mode: "fit" | "fill" | "stretch", everywhere: boolean): Promise<EditOutcome> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("revision", String(doc.revision));
+  form.append("page", String(page));
+  form.append("imageId", image.id);
+  form.append("bbox", image.bbox.join(","));
+  form.append("mode", mode);
+  form.append("everywhere", String(everywhere));
+  return postForm(`/api/documents/${doc.id}/images/replace`, form);
+}
+
+/** Put `file` on the page, on `box` (points, as displayed). */
+export function addImage(doc: DocInfo, page: number, file: File, box: number[]): Promise<EditOutcome> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("revision", String(doc.revision));
+  form.append("page", String(page));
+  form.append("box", box.map((v) => v.toFixed(2)).join(","));
+  return postForm(`/api/documents/${doc.id}/images/add`, form);
 }
 
 /** `moved`: lines that moved down to make room, or up into a deleted line's space. */

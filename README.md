@@ -193,6 +193,25 @@ Before it is accepted:
 - every line on the page reads the same, the moved ones at their new place;
 - no other page changes.
 
+## Pictures
+
+`backend/app/images.py` lists a page's pictures and changes them. Click a picture on the page to:
+- **Replace** it with a JPEG or PNG: **Fit** (all of the new picture, inside the old one's place), **Fill** (covering the place, its edges cut) or **Stretch** (the place's exact shape). A picture used on several pages (a logo in the header) can be replaced on all of them at once.
+- **Move or resize** it: drag it, or drag a corner (its shape is kept). Its old place is marked until the move is saved.
+- **Delete** it (or press Delete).
+
+**Add picture** puts a new one on the page: choose it, then drag it into place; clicking another spot, on any page, puts it there.
+
+A picture is drawn by one instruction: an image, an inline image, or a form of shapes without text (some programs keep a logo that way). Every change touches only that instruction, with a transformation put around it; a new picture is drawn after the page's own drawing. A picture behind most of the page can't be picked, so text over it still can.
+
+New pictures are kept at print quality: at most 300 dots per inch at the size they're shown, so a phone photo used as a small logo doesn't make the file huge. JPEG photos keep their own compression (unless they have to be made smaller or turned upright); other pictures keep their see-through parts. Files over 15 MB or 40 megapixels are refused.
+
+Before a change is accepted:
+- every glyph and shape is where it was, and every other picture too;
+- the changed picture is where it was put (replaced: within its old place);
+- nothing outside the picture's old and new places changes by a single pixel (MuPDF and PDFium);
+- no other page changes, except the pages a picture was replaced on.
+
 ## The website
 
 - A list of small page pictures sits beside the pages; on phones, the page number button opens it.
@@ -261,6 +280,8 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 `backend/tests/fixtures/additions/` has lists (numbered and bulleted, English and Arabic), a centered title, a justified paragraph, a right-aligned line and a table with an empty cell, with free space after each, for adding text. It is saved by Word and printed by Chrome.
 
 `backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
+
+`backend/tests/fixtures/images/` has a report with pictures: a logo (in Word's version, in the header of every page), a photo, an icon inside a line, a see-through signature and stamp in a table, Arabic text, and the same signature on page 2. Chrome's version also has a logo drawn as shapes. `make_images.py` draws the pictures; `images.js` (Word) and `images.html` (Chrome) build the document.
 
 `expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them all (Windows with Microsoft Word and Chrome; close Word first):
 

@@ -1385,6 +1385,165 @@ html.theme-switching::view-transition-new(root) {
   font-weight: 500;
 }
 
+/* Pictures under the text: the layers let clicks through, their boxes take them, so a
+   line over a picture is still picked first. */
+.page-overlay {
+  pointer-events: none;
+}
+
+.page-overlay > button {
+  pointer-events: auto;
+}
+
+.image-box {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+@media (hover: hover) {
+  .image-box:hover {
+    background: rgba(47, 107, 255, 0.05);
+    box-shadow: inset 0 0 0 1.5px rgba(47, 107, 255, 0.55);
+  }
+}
+
+.viewer--show-text .image-box {
+  outline: 1px dashed rgba(47, 107, 255, 0.55);
+  outline-offset: -1px;
+}
+
+.image-box.image-box--selected {
+  animation: lock-on 550ms var(--ease);
+  background: rgba(47, 107, 255, 0.06);
+  box-shadow:
+    inset 0 0 0 2px #2f6bff,
+    0 0 0 4px rgba(47, 107, 255, 0.18),
+    0 0 26px rgba(47, 107, 255, 0.35);
+}
+
+.image-box:focus-visible {
+  outline: 2px solid #2f6bff;
+  outline-offset: 1px;
+}
+
+/* A picture being placed or moved: drag it, or a corner to resize it. */
+.image-frame {
+  position: absolute;
+  z-index: 2;
+  cursor: move;
+  touch-action: none;
+  outline: 1.5px solid #2f6bff;
+  box-shadow:
+    0 0 0 4px rgba(47, 107, 255, 0.16),
+    0 12px 30px -12px rgba(5, 10, 30, 0.5);
+}
+
+.image-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.image-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px;
+  border: 2px solid #2f6bff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(5, 10, 30, 0.35);
+  touch-action: none;
+}
+
+/* Easier to catch with a finger: the handle takes touches around it too. */
+.image-handle::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+}
+
+.image-handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.image-handle--ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.image-handle--sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.image-handle--se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+/* Where a picture being moved was: faded behind a dashed line, so it isn't seen twice. */
+.image-old {
+  position: absolute;
+  border: 1.5px dashed rgba(47, 107, 255, 0.8);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.72);
+  pointer-events: none;
+}
+
+/* The picked picture in its panel, on a checkerboard where it's see-through. */
+.picture-place {
+  display: grid;
+  place-items: center;
+  margin: 0 0 12px;
+  padding: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: repeating-conic-gradient(#e8ecf2 0 25%, #ffffff 0 50%) 0 0 / 16px 16px;
+}
+
+.picture-place img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+}
+
+/* A new picture shown in the old one's place: the place's own shape. */
+.picture-place--slot {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fit-note {
+  white-space: normal;
+}
+
+.picture-place--slot img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+
 /* The magnifier: a round glass lens showing the page larger, just above the pointer. */
 .lens {
   position: absolute;
@@ -2708,5 +2867,12 @@ html.theme-switching::view-transition-new(root) {
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation: none !important;
+  }
+}
+
+/* On phones the panel shares the screen with the page: a smaller look at the picture. */
+@media (max-width: 1023.98px) {
+  .picture-place img {
+    max-height: 110px;
   }
 }

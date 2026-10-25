@@ -1,5 +1,5 @@
 import type { DocInfo } from "../api";
-import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon, MAGNIFIER } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, COMPARE, Icon, MAGNIFIER, PICTURE } from "./Icon";
 
 type Props = {
   doc: DocInfo;
@@ -9,13 +9,14 @@ type Props = {
   onToggleMagnifier: () => void;
   comparing: boolean;
   onAddText: () => void;
+  onAddPicture: () => void;
   onToggleText: () => void;
   onShowChanges: () => void;
   onCompare: () => void;
 };
 
 /** The side panel when nothing is selected (wide screens): how to start, the tools, the changes. */
-export default function HomePanel({ doc, placing, showText, magnifier, comparing, onAddText, onToggleText, onToggleMagnifier, onShowChanges, onCompare }: Props) {
+export default function HomePanel({ doc, placing, showText, magnifier, comparing, onAddText, onAddPicture, onToggleText, onToggleMagnifier, onShowChanges, onCompare }: Props) {
   const applied = doc.history.filter((c) => c.applied).length;
   const undone = doc.history.length - applied;
 
@@ -39,7 +40,7 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
           <h2 className="panel-title">Edit this PDF</h2>
           <p className="panel-lede">
             Click a line on the page to change it, add a line below or above it, or delete it. Shift-click to pick several
-            lines.
+            lines. Click a picture to replace, move or delete it.
           </p>
 
           <div className="tools">
@@ -48,6 +49,13 @@ export default function HomePanel({ doc, placing, showText, magnifier, comparing
               <span className="tool-text">
                 <span className="tool-name">Add text</span>
                 <span className="tool-note">Click where you want it on the page.</span>
+              </span>
+            </button>
+            <button className="tool" onClick={onAddPicture}>
+              <Icon d={PICTURE} />
+              <span className="tool-text">
+                <span className="tool-name">Add picture</span>
+                <span className="tool-note">Choose a picture, then drag it into place.</span>
               </span>
             </button>
             <button className="tool" aria-pressed={showText} onClick={onToggleText}>
