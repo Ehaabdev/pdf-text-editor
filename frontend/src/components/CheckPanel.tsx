@@ -80,11 +80,17 @@ export default function CheckPanel({ doc, index, busy, onClose, onUndo }: Props)
             <>
               These new letters aren’t in this PDF’s {l.font}:{" "}
               <bdi className="check-letters">{[...l.letters].join(" ")}</bdi>. They’re drawn in {l.substitute}
+              {l.sameWidths ? ", which looks almost the same. " : ", a similar font. "}
             </>
-          ) : (
-            <>Some new letters are drawn in {l.substitute} instead of {l.font}</>
-          )}
-          {l.sameWidths ? ", which looks almost the same." : ", a similar font."} Do they look right?
+          ) : null}
+          {l.words?.length ? (
+            <>
+              The new words <bdi className="check-letters">{l.words.join("، ")}</bdi> are drawn in {l.substitute}, a similar
+              font: this PDF doesn’t show every letter shape they need in {l.font}.{" "}
+            </>
+          ) : null}
+          {!l.letters && !l.words?.length ? <>Some new letters are drawn in {l.substitute} instead of {l.font}. </> : null}
+          Do they look right?
         </p>
       ))}
 

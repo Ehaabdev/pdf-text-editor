@@ -273,7 +273,7 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
         strokes = pa.Tr in (1, 2, 5, 6) and pa.stroke != pb.stroke
         # A letter an earlier edit drew in a stand-in font belongs to the font it stood in
         # for (and may have been drawn a little bigger or smaller to match it).
-        either = stand_in(a) or stand_in(b)
+        either = (stand_in(a) or stand_in(b)) and (sa and sa.font) != (sb and sb.font)
         return (
             (either or (sa and sa.font) == (sb and sb.font))
             and (sa and sa.color) == (sb and sb.color)
@@ -582,17 +582,21 @@ class Fonts:
             return self._forms[key]
         table: dict[str, dict[tuple[str, str], set[int]]] = {}
         spoiled: set[str] = set()
-        here = {self.rp.fonts[r].obj.objgen: r for r in self.rp.fonts if self.rp.fonts[r] is not None}
+        # Fonts kept as objects of their own (shared by pages), by object number; fonts
+        # written into a page (0, 0) belong to that page alone.
+        here = {self.rp.fonts[r].obj.objgen: r for r in self.rp.fonts if self.rp.fonts[r] is not None and self.rp.fonts[r].obj.objgen != (0, 0)}
         self._learn(self.lines, self.rp, font_name, table, spoiled, lambda r: r)
-        if wide and self.doc is not None:
+        if wide and self.doc is not None and here:
             near = sorted((k for k in range(self.doc.page_count) if k != self.page_index), key=lambda k: abs(k - self.page_index))
             for k in near[:20]:
+                if not self._shares_fonts(k, here):
+                    continue  # read only pages that use one of these very fonts
                 try:
                     rp = replay(self.pdf, k)
                 except Unsupported:
                     continue
                 # Their fonts by object: the same font object as one used here draws the same.
-                mine = {r: here.get(rp.fonts[r].obj.objgen) for r in rp.fonts if rp.fonts[r] is not None}
+                mine = {r: here.get(rp.fonts[r].obj.objgen) for r in rp.fonts if rp.fonts[r] is not None and rp.fonts[r].obj.objgen != (0, 0)}
                 self._learn(page_lines(self.doc[k]), rp, font_name, table, spoiled, lambda r: mine.get(r))
         learned = {}
         for resource, forms in table.items():
@@ -601,6 +605,13 @@ class Fonts:
             learned[resource] = {key: next(iter(codes)) for key, codes in forms.items()}
         self._forms[key] = learned
         return learned
+
+    def _shares_fonts(self, page_index: int, objgens: dict) -> bool:
+        try:
+            fonts = self.pdf.pages[page_index].obj.Resources.get("/Font") or {}
+            return any(f.objgen in objgens for f in fonts.values() if f.objgen != (0, 0))
+        except (AttributeError, KeyError, TypeError):
+            return False
 
     def _learn(self, lines: list[Line], rp: Replay, font_name: str, table: dict, spoiled: set, resource_here) -> None:
         for line in lines:
@@ -723,12 +734,19 @@ class Fonts:
         self._note_stand_in(font_name, sub, word.text)
 
     def _note_stand_in(self, font_name: str, sub: "fontlib.Lookalike", drawn: str) -> None:
-        """Tell the user which letters a stand-in drew, to check them: one note per font.
-        Letters the line already shows in that stand-in were checked before: not again."""
+        """Tell the user what a stand-in drew, to check it: one note per font. Latin text
+        names the letters the PDF's copy lacks; an Arabic word is drawn whole by the
+        stand-in (its letters join), named as a word. What the line already shows in that
+        stand-in was checked before: not again."""
         before = {g.text for g in self.line.glyphs if fontlib.is_stand_in(g.style.font) and family_matches(g.style.font, sub.entry.ps_name)}
-        drawn = "".join(ch for ch in drawn if ch not in before)
-        if not drawn.strip():
-            return
+        arabic = _script(drawn) == "R"
+        if arabic:
+            if all(ch in before or ch.isspace() for ch in drawn):
+                return
+        else:
+            drawn = "".join(ch for ch in drawn if ch not in before)
+            if not drawn.strip():
+                return
         shown = _base_name_from(font_name)
         key = (shown, sub.name)
         entry = self.lookalikes.get(key)
@@ -736,16 +754,23 @@ class Fonts:
             entry = self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths, "letters": ""}
             self.warnings.append("")
             self._notes[key] = len(self.warnings) - 1
-        for ch in drawn:
-            if not ch.isspace() and ch not in entry["letters"]:
-                entry["letters"] += ch
-        letters = entry["letters"]
-        listed = "، ".join(letters) if any(_script(c) == "R" for c in letters) else ", ".join(letters)
+        if arabic:
+            entry.setdefault("words", [])
+            if drawn not in entry["words"]:
+                entry["words"].append(drawn)
+        else:
+            for ch in drawn:
+                if not ch.isspace() and ch not in entry["letters"]:
+                    entry["letters"] += ch
         how = "which looks almost the same" if sub.same_widths else "a similar font"
-        self.warnings[self._notes[key]] = (
-            f"Some new letters ({listed}) aren't in this PDF's {shown}, so they're drawn in {sub.name}, {how}. "
-            "Check that they look right."
-        )
+        parts = []
+        if entry["letters"]:
+            parts.append(f"Some new letters ({', '.join(entry['letters'])}) aren't in this PDF's {shown}, so they're drawn in {sub.name}, {how}.")
+        if entry.get("words"):
+            parts.append(
+                f"The new words {'، '.join(entry['words'])} are drawn in {sub.name}, {how}: this PDF doesn't show every letter shape they need in {shown}."
+            )
+        self.warnings[self._notes[key]] = " ".join(parts) + " Check that they look right."
 
     def _size_match(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float:
         """How big the look-alike must be drawn to match the original's letters. Best:

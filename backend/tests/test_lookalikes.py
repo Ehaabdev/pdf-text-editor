@@ -362,4 +362,26 @@ def test_an_arabic_shape_the_page_never_shows_comes_from_a_look_alike(hide):
     hide("arial*")
     result = replace_line(src, page_no, line.id, line.text, line.text.replace("شركة", "ظفر", 1))
     (used,) = result.lookalikes
-    assert used["substitute"] == "Markazi Text" and "ظ" in used["letters"]
+    assert used["substitute"] == "Markazi Text" and used["words"] == ["ظفر"]
+    # Arabic words go whole to the stand-in: the note says the shapes are missing, not letters.
+    assert any("doesn't show every letter shape" in w and "ظفر" in w for w in result.warnings)
+
+
+def test_a_pdf_in_a_free_font_keeps_its_looks():
+    """A PDF that really uses a bundled font (LibreOffice puts Carlito for Calibri): a
+    bigger first letter is still a look of its own, not merged as a stand-in letter."""
+    from app.editing import _looks, _old_words
+    from app.pdfcontent import replay
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    carlito = str(LOOKALIKES / "Carlito-Regular.ttf")
+    page.insert_font(fontname="carl", fontfile=carlito)
+    page.insert_text((72, 100), "B", fontname="carl", fontsize=20)
+    after = 72 + pymupdf.Font(fontfile=carlito).text_length("B", fontsize=20)
+    page.insert_text((after, 100), "ig news", fontname="carl", fontsize=12)
+    src = doc.tobytes()
+    pdf = pikepdf.open(io.BytesIO(src))
+    line = page_lines(pymupdf.open("pdf", src)[0])[0]
+    word = next(w for w in _old_words(line, replay(pdf, 0)) if w.text == "Big")
+    assert len(_looks(word, line, replay(pdf, 0))[1]) == 2
