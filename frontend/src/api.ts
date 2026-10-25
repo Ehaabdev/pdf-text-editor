@@ -1,7 +1,7 @@
 export type PageSize = { width: number; height: number };
 
 /** A font that wasn't available, and the look-alike that drew the new letters instead. */
-export type Lookalike = { font: string; substitute: string; sameWidths: boolean };
+export type Lookalike = { font: string; substitute: string; sameWidths: boolean; letters?: string; words?: string[] };
 
 /** One change, as listed: what it was and where (page, x0, y0, x1, y1 in points). */
 export type Change = {

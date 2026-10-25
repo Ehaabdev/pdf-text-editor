@@ -443,18 +443,22 @@ def _font_bytes(full: FullFont) -> bytes:
 # Look-alike fonts --------------------------------------------------------------------------
 #
 # When a PDF's font isn't installed and its embedded copy can't draw the new letters, a
-# free font that looks like it can stand in, and the user is asked to check the result.
-# The files ship with the code (lookalikes/, with their licences and MANIFEST.json), so a
-# server has them whatever is installed. Latin look-alikes have nearly the same letter widths as
-# the fonts they replace; Arabic ones were chosen by eye and don't. Arabic look-alikes must
-# draw each letter as one glyph: fonts that split letters into a base and separate dots
-# (Noto Naskh Arabic, for one) give glyphs whose labels can't be right.
+# free font that looks like it stands in, and the user is asked to check the letters it
+# drew. The files ship with the code (lookalikes/, with their licences and
+# MANIFEST.json), so a server has them whatever is installed. Most Latin look-alikes have
+# the same letter widths as the fonts they replace (Carlito for Calibri, Selawik for Segoe
+# UI, Wine Tahoma for Tahoma); Arabic ones were chosen by eye and don't. Arabic look-alikes
+# must draw each letter as one glyph: fonts that split letters into a base and separate
+# dots (Noto Naskh Arabic, for one) give glyphs whose labels can't be right.
+#
+# Every other font gets a stand-in of its kind (stand_in): a serif, sans-serif or
+# fixed-width font for Latin letters, a Naskh or a plainer one for Arabic, sized to match.
 
 LOOKALIKE_DIR = Path(__file__).resolve().parent.parent / "lookalikes"
 
-# Font family (as _split_style names it) -> (Latin look-alike, Arabic look-alike).
+# Font family (as _family_style names it) -> (Latin look-alike, Arabic look-alike).
 _LOOKALIKES: dict[str, tuple[str | None, str | None]] = {
-    "calibri": ("Carlito", None),
+    "calibri": ("Carlito", "IBMPlexSansArabic"),
     "cambria": ("Caladea", None),
     "arial": ("LiberationSans", "MarkaziText"),  # Arial's Arabic letters are Simplified Arabic's
     "helvetica": ("LiberationSans", None),
@@ -462,18 +466,25 @@ _LOOKALIKES: dict[str, tuple[str | None, str | None]] = {
     "times": ("LiberationSerif", None),
     "couriernew": ("LiberationMono", None),
     "courier": ("LiberationMono", None),
+    "segoeui": ("Selawik", "IBMPlexSansArabic"),  # Microsoft's free font with Segoe UI's widths
+    "tahoma": ("WineTahoma", "IBMPlexSansArabic"),  # Wine's Tahoma: the same Latin widths
+    "garamond": ("EBGaramond", None),
     "traditionalarabic": (None, "Amiri"),  # classical Naskh with stacked letter pairs
     "sakkalmajalla": (None, "Amiri"),
     "arabictypesetting": (None, "Amiri"),
     "simplifiedarabic": (None, "MarkaziText"),  # simplified Naskh, no stacked pairs
-    "tahoma": (None, "IBMPlexSansArabic"),  # modern, little contrast
-    "segoeui": (None, "IBMPlexSansArabic"),
 }
+# Look-alikes whose letters are as wide as the original's.
+_SAME_WIDTHS = {"Carlito", "Caladea", "LiberationSans", "LiberationSerif", "LiberationMono", "Selawik", "WineTahoma"}
 _NAMES = {
     "Carlito": "Carlito", "Caladea": "Caladea", "LiberationSans": "Liberation Sans",
     "LiberationSerif": "Liberation Serif", "LiberationMono": "Liberation Mono", "Amiri": "Amiri",
-    "MarkaziText": "Markazi Text", "IBMPlexSansArabic": "IBM Plex Sans Arabic",
+    "MarkaziText": "Markazi Text", "IBMPlexSansArabic": "IBM Plex Sans Arabic", "Selawik": "Selawik",
+    "WineTahoma": "Wine Tahoma", "EBGaramond": "EB Garamond",
 }
+_SEMIBOLD = {"semibold", "demibold", "demi", "sb"}
+_BOLD = {"bold", "black", "heavy", "extrabold", "ultrabold"} | _SEMIBOLD
+_LIGHT = {"light", "thin", "extralight", "ultralight", "semilight"}
 
 
 @dataclass(frozen=True)
@@ -481,23 +492,121 @@ class Lookalike:
     entry: FontEntry
     name: str  # as people know it: "Carlito"
     same_widths: bool  # every letter as wide as in the font it stands in for
+    close: bool = True  # made to look like this very font, not just one of its kind
+
+
+def _family_style(pdf_font_name: str) -> tuple[str, set[str]]:
+    """("segoeui", {"semibold"}) from "SegoeUI-Semibold": the family and its style words,
+    whatever they are."""
+    import re
+
+    name = pdf_font_name.split("+")[-1]
+    family, style = name, ""
+    for sep in (",", "-"):
+        if sep in family:
+            family, _, style = family.partition(sep)
+            break
+    words = family.split(" ")
+    while len(words) > 1 and words[-1].lower() in _STYLE_WORDS | _BOLD | _LIGHT:
+        style = words.pop() + " " + style
+    family = "".join(words)
+    for suffix in ("PSMT", "MT", "PS"):
+        if family.endswith(suffix) and len(family) > len(suffix) + 2:
+            family = family[: -len(suffix)]
+        if style.endswith(suffix):
+            style = style[: -len(suffix)]
+    tokens = {t.lower() for t in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", style)}
+    return family.lower(), tokens
+
+
+def _file_for(base: str, tokens: set[str]) -> Path | None:
+    """The bundled file of a family in the weight and style the words ask for: the
+    nearest weight there is; None for a slant there's no file of."""
+    italic = bool(tokens & {"italic", "oblique"})
+    if tokens & _SEMIBOLD and (LOOKALIKE_DIR / f"{base}-Semibold.ttf").exists() and not italic:
+        name = "Semibold"
+    elif tokens & _BOLD:
+        name = "BoldItalic" if italic else "Bold"
+    elif tokens & _LIGHT and (LOOKALIKE_DIR / f"{base}-Light.ttf").exists() and not italic:
+        name = "Light"
+    else:
+        name = "Italic" if italic else "Regular"
+    path = LOOKALIKE_DIR / f"{base}-{name}.ttf"
+    return path if path.exists() else None
 
 
 def lookalike(pdf_font_name: str, arabic: bool) -> Lookalike | None:
-    """The bundled look-alike for a PDF font, in the same weight and style, for Latin or
-    Arabic letters; None if there is none."""
-    family, style = _split_style(pdf_font_name.split("+")[-1])
-    if family is None or family not in _LOOKALIKES:
+    """The bundled look-alike made for a PDF font, in the same weight and style, for
+    Latin or Arabic letters; None if there is none."""
+    family, tokens = _family_style(pdf_font_name)
+    if family not in _LOOKALIKES:
         return None
     base = _LOOKALIKES[family][1 if arabic else 0]
     if base is None:
         return None
-    bold, italic = "bold" in style, "italic" in style or "oblique" in style
-    suffix = "BoldItalic" if bold and italic else "Bold" if bold else "Italic" if italic else "Regular"
-    path = LOOKALIKE_DIR / f"{base}-{suffix}.ttf"
-    if not path.exists():
+    path = _file_for(base, tokens)
+    if path is None:
         return None  # no italic Arabic look-alike, for one
-    return Lookalike(_bundled_entry(str(path)), _NAMES[base], not arabic)
+    # The same widths only in the very weight asked for (a light font drawn by a regular
+    # file isn't as wide).
+    weight = path.stem.split("-")[-1].replace("Italic", "") or "Regular"
+    asked = "Semibold" if tokens & _SEMIBOLD else "Bold" if tokens & _BOLD else "Light" if tokens & _LIGHT else "Regular"
+    same = base in _SAME_WIDTHS and not arabic and weight == asked
+    return Lookalike(_bundled_entry(str(path)), _NAMES[base], same)
+
+
+_SERIF_NAMES = ("times", "roman", "serif", "garamond", "georgia", "cambria", "book", "palatino", "baskerville",
+                "bodoni", "caslon", "minion", "didot", "century", "constantia", "bookman", "goudy", "perpetua",
+                "rockwell", "charter", "lora", "merriweather", "playfair", "spectral")
+_MONO_NAMES = ("courier", "mono", "consolas", "code", "typewriter", "menlo", "inconsolata")
+_NASKH_NAMES = ("naskh", "traditional", "majalla", "amiri", "scheherazade", "lotus", "badr", "mitra", "nazanin",
+                "zar", "typesetting", "uthman", "quran")
+_PLAIN_ARABIC_NAMES = ("kufi", "sans", "tahoma", "segoe", "dubai", "cairo", "tajawal", "almarai", "calibri",
+                       "noto", "plex", "helvetica", "frutiger", "din", "droid", "vazir", "yekan", "gess")
+
+
+def stand_in(pdf_font_name: str, arabic: bool, serif: bool | None = None, fixed: bool | None = None, generic: bool = False) -> Lookalike:
+    """A free font to draw letters the PDF's own font can't: its look-alike when there
+    is one, else one of its kind. For Latin letters a serif, sans-serif or fixed-width
+    font, as the PDF says the font is (serif, fixed) or its name suggests; for Arabic a
+    Naskh or a plainer one. In the same weight and slant as far as there's a file.
+    `generic`: one of its kind even when it has a look-alike (that lacks a letter)."""
+    found = None if generic else lookalike(pdf_font_name, arabic)
+    if found is not None:
+        return found
+    family, tokens = _family_style(pdf_font_name)
+    if arabic:
+        if any(k in family for k in _NASKH_NAMES):
+            base = "Amiri"
+        elif any(k in family for k in _PLAIN_ARABIC_NAMES):
+            base = "IBMPlexSansArabic"
+        else:
+            base = "MarkaziText"
+        tokens = tokens - {"italic", "oblique"}  # no slanted Arabic stand-ins
+    else:
+        if fixed is None:
+            fixed = any(k in family for k in _MONO_NAMES)
+        if serif is None:
+            serif = any(k in family for k in _SERIF_NAMES)
+        base = "LiberationMono" if fixed else "LiberationSerif" if serif else "LiberationSans"
+    path = _file_for(base, tokens) or _file_for(base, tokens - {"italic", "oblique"}) or LOOKALIKE_DIR / f"{base}-Regular.ttf"
+    return Lookalike(_bundled_entry(str(path)), _NAMES[base], False, close=False)
+
+
+@lru_cache(maxsize=1)
+def _stand_in_names() -> frozenset[str]:
+    return frozenset(_bundled_entry(str(f)).ps_name.lower() for f in LOOKALIKE_DIR.glob("*.ttf"))
+
+
+def is_stand_in(pdf_font_name: str) -> bool:
+    """Is this a bundled stand-in font (put in the PDF by an earlier edit)?"""
+    return pdf_font_name.split("+")[-1].lower() in _stand_in_names()
+
+
+def embeddable(full: "FullFont") -> bool:
+    """May the font be put in a PDF? (Its licence, in OS/2 fsType.)"""
+    fs_type = getattr(full.tt["OS/2"], "fsType", 0) if "OS/2" in full.tt else 0
+    return fs_type & 0x000F != 0x0002
 
 
 @lru_cache(maxsize=64)

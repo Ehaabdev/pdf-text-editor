@@ -113,9 +113,54 @@ def test_the_look_alike_has_the_same_weight_and_style(font, arabic, expected):
     assert fontlib.lookalike(font, arabic).entry.ps_name == expected
 
 
-@pytest.mark.parametrize("font, arabic", [("Tahoma", False), ("Verdana", False), ("Aptos", False), ("TraditionalArabic,Italic", True), ("Calibri-Light", False)])
+@pytest.mark.parametrize("font, arabic", [("Verdana", False), ("Aptos", False), ("TraditionalArabic,Italic", True)])
 def test_no_look_alike_where_none_is_close(font, arabic):
     assert fontlib.lookalike(font, arabic) is None
+
+
+@pytest.mark.parametrize(
+    "font, arabic, expected, same_widths",
+    [
+        ("SegoeUI", False, "Selawik-Regular", True),  # Microsoft's free font with Segoe UI's widths
+        ("SegoeUI-Semibold", False, "Selawik-Semibold", True),
+        ("Tahoma", False, "WineTahoma-Regular", True),
+        ("Tahoma-Bold", False, "WineTahoma-Bold", True),
+        ("Garamond-Bold", False, "EBGaramond-Bold", False),
+        ("Calibri-Light", False, "Carlito-Regular", False),  # no light file: not as wide
+        ("Calibri", True, "IBMPlexSansArabic-Regular", False),
+    ],
+)
+def test_more_look_alikes(font, arabic, expected, same_widths):
+    found = fontlib.lookalike(font, arabic)
+    assert (found.entry.ps_name, found.same_widths) == (expected, same_widths)
+
+
+def test_wine_tahoma_is_never_taken_for_tahoma():
+    """Wine's Tahoma calls itself Tahoma; the bundled copy is renamed, so a PDF's Tahoma
+    is never "found installed" when it's only the look-alike."""
+    for entry in fontlib.library().entries:
+        if "WineTahoma" in entry.path:
+            assert entry.family == "Wine Tahoma" and entry.ps_name.startswith("WineTahoma")
+
+
+@pytest.mark.parametrize(
+    "font, arabic, flags, expected",
+    [
+        ("Verdana", False, (None, None), "LiberationSans"),
+        ("Georgia-Italic", False, (None, None), "LiberationSerif-Italic"),
+        ("Consolas-Bold", False, (None, None), "LiberationMono-Bold"),
+        ("Aptos-Bold", False, (None, None), "LiberationSans-Bold"),
+        ("SomeBrandFont", False, (True, False), "LiberationSerif"),  # the PDF says it's a serif
+        ("SomeBrandFont", False, (False, True), "LiberationMono"),  # ... fixed width
+        ("DubaiW23-Regular", True, (None, None), "IBMPlexSansArabic-Regular"),
+        ("BadrBold", True, (None, None), "Amiri-Regular"),
+        ("TraditionalArabic,Italic", True, (None, None), "Amiri-Regular"),
+        ("AnyArabicFont", True, (None, None), "MarkaziText-Regular"),
+    ],
+)
+def test_every_font_has_a_stand_in(font, arabic, flags, expected):
+    found = fontlib.stand_in(font, arabic, *flags)
+    assert found.entry.ps_name == expected and not found.close
 
 
 # Editing with a look-alike --------------------------------------------------------------------
@@ -137,8 +182,9 @@ def test_a_missing_latin_font_is_replaced_by_its_look_alike_with_the_same_widths
     real = replace_line(src, page_no, line.id, line.text, new)  # the real Calibri Italic
     hide("Calibri*")
     result = replace_line(src, page_no, line.id, line.text, new)
-    assert result.lookalikes == [{"font": "Calibri Italic", "substitute": "Carlito", "sameWidths": True}]
-    assert any("Carlito" in w for w in result.warnings)
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Calibri Italic", "Carlito", True)]
+    assert "j" in result.lookalikes[0]["letters"]
+    assert any("Carlito" in w and "j" in w for w in result.warnings)
     assert "Carlito-Italic" in _fonts_on(result.pdf, page_no)
     _, with_real = find(real.pdf, "jazzy quick waves")
     _, with_lookalike = find(result.pdf, "jazzy quick waves")
@@ -152,7 +198,7 @@ def test_a_missing_bold_font_gets_the_bold_look_alike(hide):
     page_no, line = find(src, "Overall delivery rates improved")
     hide("calibri-bold")  # regular Calibri is there; it mustn't stand in for the bold
     result = replace_line(src, page_no, line.id, line.text, line.text.replace("improved", "jazzed"))
-    assert result.lookalikes == [{"font": "Calibri Bold", "substitute": "Carlito", "sameWidths": True}]
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Calibri Bold", "Carlito", True)]
     assert "Carlito-Bold" in _fonts_on(result.pdf, page_no)
 
 
@@ -162,7 +208,7 @@ def test_a_missing_arabic_font_is_replaced_by_a_similar_one(hide):
     page_no, line = find(src, "الطلبات في أسرع وقت ممكن")  # Traditional Arabic
     hide("traditionalarabic*")
     result = replace_line(src, page_no, line.id, line.text, line.text.replace("أسرع", "أقرب"))
-    assert result.lookalikes == [{"font": "Traditional Arabic", "substitute": "Amiri", "sameWidths": False}]
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Traditional Arabic", "Amiri", False)]
     _, new = find(result.pdf, "الطلبات في أقرب وقت ممكن")
     assert comparable(new.text) == comparable(line.text.replace("أسرع", "أقرب"))
 
@@ -192,15 +238,16 @@ def test_arabic_look_alikes_draw_each_letter_as_one_glyph(font):
 @pytest.mark.parametrize(
     "path, needle, first, second, hidden",
     [
-        # Calibri Italic hidden: "jazzy" needs letters its copy lacks, so Carlito draws them.
-        ("word/english-styles-word.pdf", "Figures are rounded", ("one decimal place", "jazzy quick waves"), ("jazzy", "fuzzy"), "Calibri*"),
+        # Calibri Italic hidden: "jazzy" needs letters its copy lacks, so Carlito draws them;
+        # editing the word again with letters already checked asks nothing more.
+        ("word/english-styles-word.pdf", "Figures are rounded", ("one decimal place", "jazzy quick waves"), ("jazzy", "jazz"), "Calibri*"),
         # Traditional Arabic hidden: Amiri, drawn at the matching size.
         ("word/arabic-quotation-word.pdf", "الطلبات في أسرع وقت ممكن", ("أسرع", "أقرب"), ("أقرب", "أفضل"), "traditionalarabic*"),
     ],
 )
 def test_a_word_in_a_look_alike_can_be_edited_again(hide, path, needle, first, second, hidden):
-    """The look-alike is now that word's font: a second edit draws with it exactly, at
-    the size the first edit gave it, and needs no look-alike."""
+    """A second edit of a word partly or wholly drawn by a look-alike draws at the same
+    size, and doesn't ask again about letters already checked."""
     src = (FIXTURES / path).read_bytes()
     hide(hidden)
     page_no, line = find(src, needle)
@@ -211,3 +258,130 @@ def test_a_word_in_a_look_alike_can_be_edited_again(hide, path, needle, first, s
     assert twice.lookalikes == []
     _, new = find(twice.pdf, line.text.replace(*second))
     assert abs((new.bbox[3] - new.bbox[1]) - (line.bbox[3] - line.bbox[1])) < 0.5  # same size: not scaled twice
+
+
+@needs_fonts
+@pytest.mark.parametrize(
+    "path, needle, old, new, hidden, substitute",
+    [
+        # Refused before: neither the font nor all the typed letters were there.
+        ("chrome/english-styles-chrome.pdf", "Prepared for Northwind Logistics", "Northwind", "Jazzwind", "segoeui*", "Selawik"),
+        ("chrome/arabic-quotation-chrome.pdf", "10,000", "10,000", "10,000 Jazz", "tahoma*", "Wine Tahoma"),
+        ("chrome/french-quote-chrome.pdf", "Les fleurs de l", "fleurs", "jazz", "garamond*", "EB Garamond"),
+    ],
+)
+def test_no_font_is_refused(hide, path, needle, old, new, hidden, substitute):
+    src = (FIXTURES / path).read_bytes()
+    hide(hidden)
+    page_no, line = find(src, needle)
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace(old, new, 1))
+    (used,) = result.lookalikes
+    assert used["substitute"] == substitute and "z" in used["letters"]
+    _, changed = find(result.pdf, line.text.replace(old, new, 1))
+    assert comparable(changed.text) == comparable(line.text.replace(old, new, 1))
+
+
+# The PDF's own letters first ------------------------------------------------------------------
+
+
+@needs_fonts
+def test_letters_the_pdf_has_come_from_its_own_copy(hide):
+    """With Calibri missing, a new word takes every letter the PDF's copy of Calibri has
+    from it, exactly as on the page; only the others come from Carlito, and only they
+    are named for checking."""
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")  # Calibri Italic
+    hide("Calibri*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("one decimal place", "jazzy quick waves"))
+    (used,) = result.lookalikes
+    assert used["substitute"] == "Carlito" and set(used["letters"]) == set("jzyqkwv")
+    _, new = find(result.pdf, "jazzy quick waves")
+    own = "".join(t for t, s in new.spans if s.font.endswith("Calibri-Italic"))
+    assert {"a", "u", "i", "c", "e", "s"} <= set(own)
+
+
+@needs_fonts
+def test_a_word_of_letters_the_pdf_has_needs_no_check(hide):
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")
+    hide("Calibri*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("one decimal place", "one decimal case"))
+    assert result.lookalikes == [] and result.warnings == []
+
+
+@needs_fonts
+def test_added_text_takes_the_pdfs_own_letters_too(hide):
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")
+    hide("Calibri*")
+    result = add_line(src, page_no, "Figures are rounded to one decimal unit.", line.id, line.text)
+    assert result.lookalikes == []
+    find(result.pdf, "Figures are rounded to one decimal unit.")
+
+
+# Arabic from the letter shapes the page shows ---------------------------------------------------
+
+from app.arabic_joining import forms as arabic_forms  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "word, shapes",
+    [
+        ("مرحبا", ["init", "fina", "init", "medi", "fina"]),
+        ("الطلبات", ["isol", "init", "medi", "medi", "medi", "fina", "isol"]),
+        ("شَرِكة", ["init", "", "fina", "", "init", "fina"]),  # marks are transparent
+        ("ء", ["isol"]),
+    ],
+)
+def test_arabic_letter_shapes(word, shapes):
+    assert arabic_forms(word) == shapes
+
+
+@needs_fonts
+def test_arabic_words_from_the_shapes_on_the_page(hide):
+    """With Arial missing, a new Arabic word whose letter shapes the page already shows
+    is drawn with the PDF's own Arial glyphs: the same as with Arial installed."""
+    src = (FIXTURES / "word" / "arabic-quotation-word.pdf").read_bytes()
+    page_no, line = find(src, "يسعدنا في شركة")
+    new = line.text.replace("شركة", "الشركة", 1)
+    real = replace_line(src, page_no, line.id, line.text, new)
+    hide("arial*")
+    result = replace_line(src, page_no, line.id, line.text, new)
+    assert result.lookalikes == []
+    assert _fonts_on(result.pdf, page_no) == _fonts_on(src, page_no)  # no other font put in
+    _, a = find(real.pdf, "الشركة")
+    _, b = find(result.pdf, "الشركة")
+    assert comparable(b.text) == comparable(a.text)
+    assert abs(b.bbox[0] - a.bbox[0]) < 1 and abs(b.bbox[2] - a.bbox[2]) < 1
+
+
+@needs_fonts
+def test_an_arabic_shape_the_page_never_shows_comes_from_a_look_alike(hide):
+    src = (FIXTURES / "word" / "arabic-quotation-word.pdf").read_bytes()
+    page_no, line = find(src, "يسعدنا في شركة")
+    hide("arial*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("شركة", "ظفر", 1))
+    (used,) = result.lookalikes
+    assert used["substitute"] == "Markazi Text" and used["words"] == ["ظفر"]
+    # Arabic words go whole to the stand-in: the note says the shapes are missing, not letters.
+    assert any("doesn't show every letter shape" in w and "ظفر" in w for w in result.warnings)
+
+
+def test_a_pdf_in_a_free_font_keeps_its_looks():
+    """A PDF that really uses a bundled font (LibreOffice puts Carlito for Calibri): a
+    bigger first letter is still a look of its own, not merged as a stand-in letter."""
+    from app.editing import _looks, _old_words
+    from app.pdfcontent import replay
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    carlito = str(LOOKALIKES / "Carlito-Regular.ttf")
+    page.insert_font(fontname="carl", fontfile=carlito)
+    page.insert_text((72, 100), "B", fontname="carl", fontsize=20)
+    after = 72 + pymupdf.Font(fontfile=carlito).text_length("B", fontsize=20)
+    page.insert_text((after, 100), "ig news", fontname="carl", fontsize=12)
+    src = doc.tobytes()
+    pdf = pikepdf.open(io.BytesIO(src))
+    line = page_lines(pymupdf.open("pdf", src)[0])[0]
+    word = next(w for w in _old_words(line, replay(pdf, 0)) if w.text == "Big")
+    assert len(_looks(word, line, replay(pdf, 0))[1]) == 2

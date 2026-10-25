@@ -31,6 +31,7 @@ import pypdfium2 as pdfium
 from . import bidi
 from . import decorations
 from . import fonts as fontlib
+from .arabic_joining import forms as arabic_forms
 from .changes import (
     EditRejected,
     LinkChange,
@@ -149,6 +150,7 @@ class Word:
 
 
 _BRACKET = set("()[]{}<>«»‹›")
+_ALEFS = set("اأإآ")  # lam before these makes one glyph, lam-alef
 
 
 def _edge(ch: str) -> bool:
@@ -258,6 +260,10 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
     inside a word make more than one."""
     style_of = {g.traces[0]: g.style for g in line.glyphs if g.traces}
 
+    def stand_in(t) -> bool:
+        st = style_of.get(t)
+        return st is not None and fontlib.is_stand_in(st.font)
+
     def same(a, b):
         da, db = rp.glyphs[a], rp.glyphs[b]
         pa, pb = da.paint, db.paint
@@ -265,9 +271,13 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
         size = pa.size * pa.trm2[3]
         # Colors as the reader resolved them: one color can be written several ways.
         strokes = pa.Tr in (1, 2, 5, 6) and pa.stroke != pb.stroke
+        # A letter an earlier edit drew in a stand-in font belongs to the font it stood in
+        # for (and may have been drawn a little bigger or smaller to match it).
+        either = (stand_in(a) or stand_in(b)) and (sa and sa.font) != (sb and sb.font)
         return (
-            (sa and sa.font, sa and sa.color) == (sb and sb.font, sb and sb.color)
-            and abs(size - pb.size * pb.trm2[3]) < 0.05
+            (either or (sa and sa.font) == (sb and sb.font))
+            and (sa and sa.color) == (sb and sb.color)
+            and (either or abs(size - pb.size * pb.trm2[3]) < 0.05)
             and abs(pa.Tz - pb.Tz) < 1e-3
             and pa.Tr == pb.Tr
             and not strokes
@@ -280,8 +290,40 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
         if k is None:
             kinds.append(t)
             k = len(kinds) - 1
+        elif stand_in(kinds[k]) and not stand_in(t):
+            kinds[k] = t  # the look shown by a letter in the font itself
         looks.append(k)
     return looks, kinds
+
+
+def _label_text(label: str) -> str:
+    """A glyph's label as the page's text reads it: presentation forms as plain letters,
+    the Rial sign as the letters it's made of (its standard form spells it in Persian)."""
+    if len(label) == 1 and ord(label) == 0xFDFC:
+        return "ريال"
+    return unicodedata.normalize("NFKC", label)
+
+
+def _shape_of(first: str, last: str) -> str:
+    """The shape of letters drawn as one glyph, from its first and last letter's shapes."""
+    before = first in ("medi", "fina")
+    after = last in ("init", "medi")
+    return "medi" if before and after else "fina" if before else "init" if after else "isol"
+
+
+def family_matches(pdf_font_name: str, ps_name: str) -> bool:
+    """Is this PDF font (maybe a subset: "ABCDEF+Carlito-Italic") that font file?"""
+    return pdf_font_name.split("+")[-1].lower() == ps_name.lower()
+
+
+def _original_first(word: "Word", line: Line, rp: Replay) -> "Word":
+    """The word with a glyph of its own font first: the one new words take their font
+    from, rather than a letter an earlier edit drew in a stand-in."""
+    style_of = {g.traces[0]: g.style for g in line.glyphs if g.traces}
+    own = [t for t in word.traces if t in style_of and not fontlib.is_stand_in(style_of[t].font)]
+    if not own or own[0] == word.traces[0]:
+        return word
+    return replace(word, traces=[own[0]] + [t for t in word.traces if t != own[0]])
 
 
 def _pieces(word: Word, line: Line, rp: Replay) -> list[Word]:
@@ -378,14 +420,17 @@ def _base_name_from(font_name: str) -> str:
 
 
 class Fonts:
-    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line, lines: list[Line] | None = None):
+    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line, lines: list[Line] | None = None, doc: pymupdf.Document | None = None):
         self.pdf, self.page_index, self.rp, self.word_made, self.line = pdf, page_index, rp, word_made, line
+        self.doc = doc  # the whole file, to learn Arabic letter shapes from its other pages
         self.lines = lines or [line]  # the page's lines, to measure a font's size on
         self.embedded: dict[str, fontlib.EmbeddedFont] = {}
         self.warnings: list[str] = []
         self.checked: set[str] = set()
         # Fonts that weren't available and what stood in for them, for the user to check.
         self.lookalikes: dict[tuple[str, str], dict] = {}
+        self._notes: dict[tuple[str, str], int] = {}  # which warning tells about each
+        self._forms: dict[tuple, dict] = {}  # Arabic letter shapes learned, per font (and how widely)
 
     def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
         """Warn when the installed font draws the line's existing glyphs differently
@@ -418,7 +463,9 @@ class Fonts:
     def shape(self, word: Word, paint: Paint, font_name: str) -> None:
         """Shape a new word and choose the font that will draw it, in this order: the
         installed font itself; for Latin, the PDF's embedded copy when it has every
-        letter; a look-alike (the user is asked to check it); else refuse."""
+        letter; else a stand-in (the font's look-alike, or one of its kind), whose
+        letters the user is asked to check. Nothing is refused for want of a font, only
+        a character no font here has."""
         text = word.text
         entry = fontlib.library().find(font_name)
         full = fontlib.load_full_font(entry) if entry else None
@@ -426,23 +473,32 @@ class Fonts:
         needs_shaping = word.script == "R" or any(unicodedata.combining(c) for c in text)
 
         if full is not None:
-            self._check_same_font(font_name, full)
             shaped = full.shape(text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
-            missing = [text[c] for gid, c, *_ in shaped if gid == 0]
-            if missing:
-                raise EditRejected(f"The font {font_name} has no character for “{missing[0]}”.")
-            word.shaped = shaped
-            gids = [g[0] for g in shaped]
-            for resource in candidates:
-                codes = self._codes_in_copy(resource, gids, shaped, text, full)
-                if codes is not None:
-                    word.choice = FontChoice(resource, full, self.rp.fonts[resource], codes)
+            if not any(gid == 0 for gid, *_ in shaped):
+                self._check_same_font(font_name, full)
+                word.shaped = shaped
+                gids = [g[0] for g in shaped]
+                for resource in candidates:
+                    codes = self._codes_in_copy(resource, gids, shaped, text, full)
+                    if codes is not None:
+                        word.choice = FontChoice(resource, full, self.rp.fonts[resource], codes)
+                        return
+                if fontlib.embeddable(full):
+                    word.choice = FontChoice(None, full, None, gids)
                     return
-            word.choice = FontChoice(None, full, None, gids)
-            return
+            # The installed font lacks some of these letters, or its licence keeps it out
+            # of PDFs: as if it weren't installed.
 
-        # No installed font: Latin text can still use the embedded copy if it has every letter.
-        for resource in candidates if not needs_shaping else []:
+        if not needs_shaping and self._from_copy(word, candidates):
+            return
+        if word.script == "R" and self._from_forms(word, font_name):
+            return
+        self._shape_stand_in(word, font_name)
+
+    def _from_copy(self, word: Word, candidates: list[str]) -> bool:
+        """Latin text drawn with the PDF's embedded copy of its font, if it has every letter."""
+        text = word.text
+        for resource in candidates:
             info, emb = self.rp.fonts[resource], self._embedded(resource)
             # Which code draws a character: the copy's own labels (subsets often have no
             # character table of their own), else its character table.
@@ -464,56 +520,270 @@ class Fonts:
             else:
                 word.shaped = shaped
                 word.choice = FontChoice(resource, None, info, codes)
-                return
-        if self._shape_lookalike(word, font_name):
-            return
-        if needs_shaping:
-            raise EditRejected(
-                f"The font {font_name} isn't installed on the server, so new Arabic text can't be shaped with it."
-            )
-        raise EditRejected(f"The font {font_name} isn't installed on the server and the PDF doesn't contain all the letters typed.")
+                return True
+        return False
 
-    def _shape_lookalike(self, word: Word, font_name: str) -> bool:
-        """Shape the word with the bundled look-alike of the font, if there is one."""
-        arabic = word.script == "R"
-        sub = fontlib.lookalike(font_name, arabic)
-        if sub is None:
+    def _installed_draws(self, text: str, font_name: str) -> bool:
+        entry = fontlib.library().find(font_name)
+        if entry is None:
             return False
-        full = fontlib.load_full_font(sub.entry)
-        shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
-        missing = [word.text[c] for gid, c, *_ in shaped if gid == 0]
-        if missing:
-            raise EditRejected(f"The font {font_name} isn't installed on the server, and its look-alike {sub.name} has no character for “{missing[0]}”.")
+        full = fontlib.load_full_font(entry)
+        shaped = full.shape(text, False, latin_ligatures=not self.word_made, kerning=not self.word_made)
+        return not any(gid == 0 for gid, *_ in shaped) and fontlib.embeddable(full)
+
+    def _in_copy(self, ch: str, resource: str) -> bool:
+        info, emb = self.rp.fonts[resource], self._embedded(resource)
+        code = next((c for c, label in sorted(info.to_unicode.items()) if label == ch), None)
+        if code is None:
+            gid = emb.gid_for(ch)
+            code = gid if info.two_byte else _winansi(ch)
+        gid = code if info.two_byte else emb.gid_for(ch)
+        drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid))
+        return code is not None and code in info.widths and drawn
+
+    def split_by_copy(self, word: Word, font_name: str, paint_font: str) -> list[Word]:
+        """A new Latin word whose font isn't here (or can't draw it), in pieces: runs of
+        letters the PDF's own copy of the font has, drawn with them, exactly as on the
+        page, and runs it hasn't, drawn by a stand-in. The word itself when either draws
+        all of it."""
+        text = word.text
+        if word.script == "R" or len(text) < 2 or any(unicodedata.combining(c) for c in text):
+            return [word]
+        if self._installed_draws(text, font_name):
+            return [word]
+        best, have = None, []
+        for resource in self._resources_named(font_name, paint_font):
+            found = [self._in_copy(ch, resource) for ch in text]
+            if best is None or sum(found) > sum(have):
+                best, have = resource, found
+        if best is None or all(have) or not any(have):
+            return [word]
+        pieces, start = [], 0
+        for i in range(1, len(text) + 1):
+            if i == len(text) or have[i] != have[start]:
+                part = text[start:i]
+                piece = Word(part, _script(part), source=word.source, sep=word.sep if i == len(text) else "")
+                piece.inserted, piece.after, piece.group = word.inserted, word.after, word.group
+                pieces.append(piece)
+                start = i
+        return pieces
+
+    def _learned_forms(self, font_name: str, wide: bool = False) -> dict[str, dict[tuple[str, str], int]]:
+        """The Arabic letter shapes this page's own text shows for a font (with `wide`,
+        the document's other pages too: the nearest twenty that use the same font): for
+        each of its font resources here, (letters, shape) -> the code that draws it. A
+        letter's shape (alone, start, middle, end) follows from its neighbours in the
+        text. Only letters drawn visibly, whose label in the PDF is right, are learned;
+        a font that draws one letter in one shape with more than one glyph, or a pair of
+        letters as one glyph with a wrong label (stacked variants), is left out: its new
+        words can't be drawn from what the pages show."""
+        key = (font_name, wide)
+        if key in self._forms:
+            return self._forms[key]
+        table: dict[str, dict[tuple[str, str], set[int]]] = {}
+        spoiled: set[str] = set()
+        # Fonts kept as objects of their own (shared by pages), by object number; fonts
+        # written into a page (0, 0) belong to that page alone.
+        here = {self.rp.fonts[r].obj.objgen: r for r in self.rp.fonts if self.rp.fonts[r] is not None and self.rp.fonts[r].obj.objgen != (0, 0)}
+        self._learn(self.lines, self.rp, font_name, table, spoiled, lambda r: r)
+        if wide and self.doc is not None and here:
+            near = sorted((k for k in range(self.doc.page_count) if k != self.page_index), key=lambda k: abs(k - self.page_index))
+            for k in near[:20]:
+                if not self._shares_fonts(k, here):
+                    continue  # read only pages that use one of these very fonts
+                try:
+                    rp = replay(self.pdf, k)
+                except Unsupported:
+                    continue
+                # Their fonts by object: the same font object as one used here draws the same.
+                mine = {r: here.get(rp.fonts[r].obj.objgen) for r in rp.fonts if rp.fonts[r] is not None and rp.fonts[r].obj.objgen != (0, 0)}
+                self._learn(page_lines(self.doc[k]), rp, font_name, table, spoiled, lambda r: mine.get(r))
+        learned = {}
+        for resource, forms in table.items():
+            if resource in spoiled or any(len(codes) > 1 for codes in forms.values()):
+                continue
+            learned[resource] = {key: next(iter(codes)) for key, codes in forms.items()}
+        self._forms[key] = learned
+        return learned
+
+    def _shares_fonts(self, page_index: int, objgens: dict) -> bool:
+        try:
+            fonts = self.pdf.pages[page_index].obj.Resources.get("/Font") or {}
+            return any(f.objgen in objgens for f in fonts.values() if f.objgen != (0, 0))
+        except (AttributeError, KeyError, TypeError):
+            return False
+
+    def _learn(self, lines: list[Line], rp: Replay, font_name: str, table: dict, spoiled: set, resource_here) -> None:
+        for line in lines:
+            order = list(line.order)
+            text = "".join(line.glyph_text(i) for i in order)
+            shapes = arabic_forms(text)
+            pos = 0
+            for i in order:
+                piece = line.glyph_text(i)
+                start, pos = pos, pos + len(piece)
+                g = line.glyphs[i]
+                if g.style.font != font_name or not g.traces or g.synthetic or g.suspect:
+                    continue
+                letters = "".join(c for c in piece if not unicodedata.combining(c))
+                if not letters or _script(letters) != "R":
+                    continue
+                drawn = rp.glyphs[g.traces[0]]
+                if drawn.paint.Tr in (3, 7):
+                    continue
+                info = rp.fonts.get(drawn.paint.font)
+                resource = resource_here(drawn.paint.font)
+                if info is None or resource is None:
+                    continue
+                label = _label_text(info.to_unicode.get(drawn.code, ""))
+                if label != unicodedata.normalize("NFKC", letters):
+                    if len(letters) > 1:
+                        spoiled.add(resource)  # pairs of letters with wrong labels: stacked variants
+                    continue
+                first = start + piece.index(letters[0])
+                last = start + piece.rindex(letters[-1])
+                if len(letters) == 1:
+                    shape = shapes[first]
+                else:
+                    # Letters drawn as one glyph (lam-alef, "ريال"): its shape from how its
+                    # first letter joins the one before and its last the one after.
+                    shape = _shape_of(shapes[first], shapes[last])
+                table.setdefault(resource, {}).setdefault((letters, shape), set()).add(drawn.code)
+
+    def _from_forms(self, word: Word, font_name: str) -> bool:
+        """An Arabic word drawn with the letter shapes the page already shows in its
+        font: exactly as the font itself would draw it, with no font file. Words with
+        vowel marks aren't: where a mark sits needs the font's positioning rules."""
+        text = word.text
+        if any(unicodedata.combining(c) for c in text) or "ـ" in text:
+            return False
+        shapes = arabic_forms(text)
+        if self._draw_from_forms(word, text, shapes, self._learned_forms(font_name)):
+            return True
+        # Shapes this page doesn't show may be on the document's other pages.
+        return self.doc is not None and self.doc.page_count > 1 and self._draw_from_forms(word, text, shapes, self._learned_forms(font_name, wide=True))
+
+    def _draw_from_forms(self, word: Word, text: str, shapes: list[str], learned: dict) -> bool:
+        for resource, forms in learned.items():
+            # Letters the font draws as one glyph wherever they come: lam-alef always,
+            # others ("ريال") when the page shows them so. Longest first.
+            joined = sorted({k[0] for k in forms if len(k[0]) > 1}, key=len, reverse=True)
+            keys, clusters = [], []
+            i = 0
+            while i < len(text):
+                seq = next((j for j in joined if text.startswith(j, i)), None)
+                if seq is None and text[i] == "ل" and i + 1 < len(text) and text[i + 1] in _ALEFS:
+                    seq = text[i : i + 2]  # lam-alef must be one glyph, learned or not
+                if seq is not None:
+                    keys.append((seq, _shape_of(shapes[i], shapes[i + len(seq) - 1])))
+                    clusters.append(i)
+                    i += len(seq)
+                    continue
+                keys.append((text[i], shapes[i]))
+                clusters.append(i)
+                i += 1
+            codes = [forms.get(k) for k in keys]
+            if any(c is None for c in codes):
+                continue
+            info = self.rp.fonts[resource]
+            if any(c not in info.widths for c in codes):
+                continue
+            # Right to left: the last letter is drawn first, on the left.
+            order = list(range(len(codes)))[::-1]
+            word.shaped = [(codes[k], clusters[k], info.width(codes[k]), 0.0, 0.0) for k in order]
+            word.choice = FontChoice(resource, None, info, [codes[k] for k in order])
+            return True
+        return False
+
+    def _kind(self, font_name: str) -> tuple[bool | None, bool | None]:
+        """(serif, fixed width) as the PDF describes its font; None where it doesn't."""
+        for resource in self._resources_named(font_name, ""):
+            obj = self.rp.fonts[resource].obj
+            try:
+                descriptor = obj.get("/FontDescriptor")
+                if descriptor is None and "/DescendantFonts" in obj:
+                    descriptor = obj.DescendantFonts[0].get("/FontDescriptor")
+                if descriptor is not None and "/Flags" in descriptor:
+                    flags = int(descriptor.Flags)
+                    return bool(flags & 2), bool(flags & 1)
+            except (AttributeError, IndexError, TypeError, ValueError):
+                continue
+        return None, None
+
+    def _shape_stand_in(self, word: Word, font_name: str) -> None:
+        """Shape the word with a free font that stands in: the font's look-alike, else
+        one of its kind; the other if the first lacks a letter."""
+        arabic = word.script == "R"
+        serif, fixed = self._kind(font_name)
+        first = fontlib.stand_in(font_name, arabic, serif, fixed)
+        tries = [first]
+        if first.close:
+            tries.append(fontlib.stand_in(font_name, arabic, serif, fixed, generic=True))
+        for sub in tries:
+            full = fontlib.load_full_font(sub.entry)
+            shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
+            missing = [word.text[c] for gid, c, *_ in shaped if gid == 0]
+            if not missing:
+                break
+        else:
+            raise EditRejected(f"“{missing[0]}” can't be drawn: the PDF's font doesn't have it, and no other font here does either.")
         word.shaped = shaped
         word.choice = FontChoice(None, full, None, [g[0] for g in shaped])  # always embedded anew
         word.other_widths = not sub.same_widths
-        word.scale = 1.0 if sub.same_widths else self._size_match(font_name, full)
+        word.scale = 1.0 if sub.same_widths else self._size_match(font_name, full, word.script)
+        self._note_stand_in(font_name, sub, word.text)
+
+    def _note_stand_in(self, font_name: str, sub: "fontlib.Lookalike", drawn: str) -> None:
+        """Tell the user what a stand-in drew, to check it: one note per font. Latin text
+        names the letters the PDF's copy lacks; an Arabic word is drawn whole by the
+        stand-in (its letters join), named as a word. What the line already shows in that
+        stand-in was checked before: not again."""
+        before = {g.text for g in self.line.glyphs if fontlib.is_stand_in(g.style.font) and family_matches(g.style.font, sub.entry.ps_name)}
+        arabic = _script(drawn) == "R"
+        if arabic:
+            if all(ch in before or ch.isspace() for ch in drawn):
+                return
+        else:
+            drawn = "".join(ch for ch in drawn if ch not in before)
+            if not drawn.strip():
+                return
         shown = _base_name_from(font_name)
         key = (shown, sub.name)
-        if key not in self.lookalikes:
-            self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths}
-            if sub.same_widths:
-                self.warnings.append(
-                    f"{shown} isn't available here, so the changed words use {sub.name}, a look-alike with nearly the same letter widths. Check that it looks right."
-                )
-            else:
-                self.warnings.append(
-                    f"{shown} isn't available here, so the changed words use {sub.name}, a similar font. Its letters are a little different. Check that it looks right."
-                )
-        return True
+        entry = self.lookalikes.get(key)
+        if entry is None:
+            entry = self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths, "letters": ""}
+            self.warnings.append("")
+            self._notes[key] = len(self.warnings) - 1
+        if arabic:
+            entry.setdefault("words", [])
+            if drawn not in entry["words"]:
+                entry["words"].append(drawn)
+        else:
+            for ch in drawn:
+                if not ch.isspace() and ch not in entry["letters"]:
+                    entry["letters"] += ch
+        how = "which looks almost the same" if sub.same_widths else "a similar font"
+        parts = []
+        if entry["letters"]:
+            parts.append(f"Some new letters ({', '.join(entry['letters'])}) aren't in this PDF's {shown}, so they're drawn in {sub.name}, {how}.")
+        if entry.get("words"):
+            parts.append(
+                f"The new words {'، '.join(entry['words'])} are drawn in {sub.name}, {how}: this PDF doesn't show every letter shape they need in {shown}."
+            )
+        self.warnings[self._notes[key]] = " ".join(parts) + " Check that they look right."
 
-    def _size_match(self, font_name: str, full: "fontlib.FullFont") -> float:
+    def _size_match(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float:
         """How big the look-alike must be drawn to match the original's letters. Best:
         the line's own Arabic words in that font, as wide as the look-alike sets them
         (how people judge size along a line). Else (a stretched kashida line, too few
         letters): the height of the tall letters (alef, lam, kaf, ta) in the PDF's own
         copy of the font against the look-alike's, the middle of the ratios."""
-        by_width = self._width_ratio(font_name, full)
+        by_width = self._width_ratio(font_name, full, script)
         if by_width is not None:
             return min(1.4, max(0.6, by_width))
-        return self._height_ratio(font_name, full)
+        return self._height_ratio(font_name, full, script)
 
-    def _width_ratio(self, font_name: str, full: "fontlib.FullFont") -> float | None:
+    def _width_ratio(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float | None:
         """Measured on the line itself, else on the page's other lines in that font too
         (a heading of one word); never on lines stretched with kashida."""
         actual = shaped = 0.0
@@ -524,22 +794,22 @@ class Fonts:
                 break
             if line.kashida:
                 continue
-            a, s, c = self._widths_on(line, font_name, full)
+            a, s, c = self._widths_on(line, font_name, full, script)
             actual, shaped, chars = actual + a, shaped + s, chars + c
         if chars < 6 or shaped <= 0:
             return None
         return actual / shaped
 
-    def _widths_on(self, line: Line, font_name: str, full: "fontlib.FullFont") -> tuple[float, float, int]:
-        """The line's Arabic words in this font: their width on the page, and set in `full`."""
+    def _widths_on(self, line: Line, font_name: str, full: "fontlib.FullFont", script: str = "R") -> tuple[float, float, int]:
+        """The line's words in this font and script: their width on the page, and set in `full`."""
         actual = shaped = 0.0
         chars = 0
         for w in _old_words(line, self.rp):
-            if w.script != "R" or _style_of(line, w) != font_name or len(_looks(w, line, self.rp)[1]) > 1:
+            if (w.script == "R") != (script == "R") or w.script not in ("R", "L") or _style_of(line, w) != font_name or len(_looks(w, line, self.rp)[1]) > 1:
                 continue
             p = self.rp.glyphs[w.traces[0]].paint
             em = p.size * p.Tz * p.trm2[0] / 1000
-            glyphs = full.shape(w.text, True, latin_ligatures=not self.word_made, kerning=not self.word_made)
+            glyphs = full.shape(w.text, w.script == "R", latin_ligatures=not self.word_made, kerning=not self.word_made)
             if any(g[0] == 0 for g in glyphs):
                 continue
             actual += w.u1 - w.u0
@@ -547,17 +817,18 @@ class Fonts:
             chars += len(w.text)
         return actual, shaped, chars
 
-    def _height_ratio(self, font_name: str, full: "fontlib.FullFont") -> float:
-        tall = "الكطظ"
+    def _height_ratio(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float:
+        tall = "الكطظ" if script == "R" else "HIdhklbf"
         ratios = []
         cmap = full.tt.getBestCmap() or {}
         for resource in self._resources_named(font_name, ""):
             info, emb = self.rp.fonts[resource], self._embedded(resource)
-            if not info.two_byte or emb.tt is None or "glyf" not in emb.tt:
+            if emb.tt is None or "glyf" not in emb.tt:
                 continue
             for code, label in info.to_unicode.items():
                 if label in tall and ord(label) in cmap:
-                    ours = _glyph_top(emb.tt, code)
+                    gid = code if info.two_byte else emb.gid_for(label)
+                    ours = _glyph_top(emb.tt, gid) if gid is not None else None
                     theirs = _glyph_top(full.tt, full.tt.getGlyphID(cmap[ord(label)]))
                     if ours and theirs:
                         ratios.append(ours / theirs)
@@ -909,6 +1180,8 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     main = rp.glyphs[old_visual[0].traces[0]]
     space = _space_width(rp, line)
 
+    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines, mu)
+
     # Words: unchanged ones are reused, the rest are new.
     new_pairs = _split_words(new_text)
     old_texts = [w.text for w in old]
@@ -930,12 +1203,14 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             continue
         for j in range(j1, j2):
             source = old[min(i1 + (j - j1), i2 - 1)] if i2 > i1 else (old[i1 - 1] if i1 > 0 else old[0])
+            source = _original_first(source, line, rp)
             word = Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1])
             if i2 == i1:
                 word.inserted, word.after = True, (old[i1] if i1 < len(old) else None)
             # A word that replaces exactly one old word keeps its letters' looks; others
             # (two words for one, an added word) take their source's main look.
-            words += _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]
+            for piece in _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]:
+                words += fonts.split_by_copy(piece, _style_of(line, piece.source), rp.glyphs[piece.source.traces[0]].paint.font)
     for k, w in enumerate(words):
         w.logical = k
 
@@ -943,7 +1218,6 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         visual = _visual_order(words, line.rtl)
     else:
         words, visual = _visual_order_standard(words, line.rtl)
-    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines)
     tracking: dict[str, float] = {}
     for w in visual:
         if w.is_new:
