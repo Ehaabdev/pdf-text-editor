@@ -5,14 +5,15 @@ import sys
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path, PurePath
+from urllib.parse import quote
 
-from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, limits
+from . import config, exporting, images, limits
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -366,6 +367,149 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
     return _outcome(meta, result)
 
 
+# Pictures ---------------------------------------------------------------------------------
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/images")
+def page_pictures(doc_id: str, page_no: int):
+    """The pictures on a page: where, how big, and on how many pages each one is."""
+    meta = _get_meta(doc_id)
+    path = store.current_path(meta)
+    try:
+        found = _pictures(str(path), path.stat().st_mtime_ns, page_no)
+    except IndexError:
+        raise HTTPException(404, "That page doesn't exist.")
+    return JSONResponse({"images": found}, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@lru_cache(maxsize=64)
+def _pictures(path: str, mtime_ns: int, page_no: int) -> list[dict]:
+    return [i.json() for i in images.page_images(Path(path).read_bytes(), page_no)]
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/images/{image_id}/picture")
+def page_picture(doc_id: str, page_no: int, image_id: str, width: int = Query(600)):
+    """One picture alone, see-through around it: shown while it's being moved."""
+    meta = _get_meta(doc_id)
+    path = store.current_path(meta)
+    try:
+        png = images.picture_png(path.read_bytes(), page_no, image_id, width)
+    except EditRejected as e:
+        raise HTTPException(404, str(e))
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
+class PictureRef(BaseModel):
+    revision: int
+    page: int
+    imageId: str = Field(max_length=32)
+    bbox: tuple[float, float, float, float]  # where it was, as the person saw it
+
+
+class PictureMove(PictureRef):
+    box: tuple[float, float, float, float]  # where it goes, as displayed
+
+
+def _box(text: str) -> tuple[float, float, float, float]:
+    try:
+        values = tuple(float(v) for v in text.split(","))
+    except ValueError:
+        values = ()
+    if len(values) != 4:
+        raise HTTPException(400, "A box is four numbers: x0,y0,x1,y1.")
+    return values  # type: ignore[return-value]
+
+
+async def _read_picture(file: UploadFile) -> bytes:
+    data = await file.read(images.MAX_UPLOAD_BYTES + 1)
+    if not data:
+        raise HTTPException(400, "The picture is empty.")
+    return data
+
+
+async def _save_change(doc_id: str, meta, revision: int, result, summary: str) -> dict:
+    if meta.revision != revision:
+        raise HTTPException(409, _STALE)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, revision, result.pdf, _entry("image", summary, result))
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/images/delete")
+async def delete_picture(doc_id: str, body: PictureRef):
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(images.delete_image, src, body.page, body.imageId, body.bbox)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    return await _save_change(doc_id, meta, body.revision, result, "Deleted a picture")
+
+
+@app.post("/api/documents/{doc_id}/images/replace")
+async def replace_picture(
+    doc_id: str,
+    file: UploadFile = File(...),
+    revision: int = Form(...),
+    page: int = Form(...),
+    imageId: str = Form(..., max_length=32),
+    bbox: str = Form(...),
+    mode: str = Form("fit"),
+    everywhere: bool = Form(False),
+):
+    meta = _get_meta(doc_id)
+    if meta.revision != revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    data = await _read_picture(file)
+    try:
+        result = await run_in_threadpool(images.replace_image, src, page, imageId, _box(bbox), data, mode, everywhere)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    pages = len({a[0] for a in result.areas})
+    summary = "Replaced a picture" + (f" on {pages} pages" if pages > 1 else "")
+    return await _save_change(doc_id, meta, revision, result, summary)
+
+
+@app.post("/api/documents/{doc_id}/images/add")
+async def add_picture(
+    doc_id: str,
+    file: UploadFile = File(...),
+    revision: int = Form(...),
+    page: int = Form(...),
+    box: str = Form(...),
+):
+    meta = _get_meta(doc_id)
+    if meta.revision != revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    data = await _read_picture(file)
+    try:
+        result = await run_in_threadpool(images.add_image, src, page, data, _box(box))
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    return await _save_change(doc_id, meta, revision, result, "Added a picture")
+
+
+@app.post("/api/documents/{doc_id}/images/move")
+async def move_picture(doc_id: str, body: PictureMove):
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(images.move_image, src, body.page, body.imageId, body.bbox, body.box)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    old, new = body.bbox, body.box
+    resized = abs((old[2] - old[0]) - (new[2] - new[0])) > 0.5 or abs((old[3] - old[1]) - (new[3] - new[1])) > 0.5
+    return await _save_change(doc_id, meta, body.revision, result, "Resized a picture" if resized else "Moved a picture")
+
+
 @app.post("/api/documents/{doc_id}/undo")
 def undo_edit(doc_id: str, body: RevisionRequest):
     _get_meta(doc_id)
@@ -411,6 +555,23 @@ def download_document(doc_id: str):
     if meta.version > 0:
         name = name[:-4] + "-edited.pdf"
     return FileResponse(store.current_path(meta), media_type="application/pdf", filename=name)
+
+
+@app.get("/api/documents/{doc_id}/export")
+def export_document(doc_id: str, format: str = Query(..., max_length=20)):
+    """Download as…: the current PDF as pictures, PowerPoint, Word or Excel (exporting.py)."""
+    meta = _get_meta(doc_id)
+    name = meta.name[:-4] + "-edited.pdf" if meta.version > 0 else meta.name  # as Download names it
+    try:
+        out = exporting.export(store.current_path(meta).read_bytes(), name, format)
+    except exporting.UnknownFormat as e:
+        raise HTTPException(400, str(e))
+    quoted = quote(out.filename)
+    disposition = f"attachment; filename*=utf-8''{quoted}" if quoted != out.filename else f'attachment; filename="{out.filename}"'
+    headers = {"Content-Disposition": disposition, "Cache-Control": "no-store"}
+    if out.note:
+        headers["X-Export-Note"] = quote(out.note)
+    return Response(out.data, media_type=out.media_type, headers=headers)
 
 
 @app.delete("/api/documents/{doc_id}", status_code=204)

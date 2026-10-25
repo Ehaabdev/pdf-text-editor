@@ -10,7 +10,7 @@
 # in a job it doesn't, and a stuck job can be timed out and cleaned up.
 
 $fixtures = Join-Path $PSScriptRoot "..\..\backend\tests\fixtures"
-$dirs = @("word", "decorations", "additions") | ForEach-Object { (Resolve-Path (Join-Path $fixtures $_)).Path }
+$dirs = @("word", "decorations", "additions", "images") | ForEach-Object { (Resolve-Path (Join-Path $fixtures $_)).Path }
 $only = $args
 $timeoutSeconds = 60
 

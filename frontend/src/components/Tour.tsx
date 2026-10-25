@@ -30,14 +30,19 @@ export function editorSteps(narrow: boolean): Step[] {
       targets: () => [tool(0)],
     },
     {
+      title: "Pictures",
+      text: `${narrow ? "Tap" : "Click"} a picture on the page to replace it, move or resize it, or delete it. Add picture puts a new one on the page: choose it, then drag it into place.`,
+      targets: () => [tool(1)],
+    },
+    {
       title: "Show editable text",
       text: "Outlines every line on the pages that you can change.",
-      targets: () => [tool(1)],
+      targets: () => [tool(2)],
     },
     {
       title: "Magnifier",
       text: "A glass lens follows your mouse and shows the print up close. Press M to turn it on or off.",
-      targets: () => (narrow ? [] : [tool(2)]),
+      targets: () => (narrow ? [] : [tool(3)]),
     },
     {
       title: "Pages",
@@ -56,8 +61,8 @@ export function editorSteps(narrow: boolean): Step[] {
     },
     {
       title: "Download",
-      text: "When you're done, download your edited PDF. The file is deleted from the server an hour after you last use it. Open this guide again any time with the ? button.",
-      targets: () => [q(".bar a.btn-primary")],
+      text: "When you're done, download your edited PDF, or the same pages as another kind of file: Word, PowerPoint, Excel or pictures. The file is deleted from the server an hour after you last use it. Open this guide again any time with the ? button.",
+      targets: () => [q(".download-wrap > .btn-primary")],
     },
   ];
 }

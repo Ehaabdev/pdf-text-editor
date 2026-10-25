@@ -193,6 +193,48 @@ Before it is accepted:
 - every line on the page reads the same, the moved ones at their new place;
 - no other page changes.
 
+## Pictures
+
+`backend/app/images.py` lists a page's pictures and changes them. Click a picture on the page to:
+- **Replace** it with a JPEG or PNG: **Fit** (all of the new picture, inside the old one's place), **Fill** (covering the place, its edges cut) or **Stretch** (the place's exact shape). A picture used on several pages (a logo in the header) can be replaced on all of them at once.
+- **Move or resize** it: drag it, or drag a corner (its shape is kept). Its old place is marked until the move is saved.
+- **Delete** it (or press Delete).
+
+**Add picture** puts a new one on the page: choose it, then drag it into place; clicking another spot, on any page, puts it there.
+
+A picture is drawn by one instruction: an image, an inline image, or a form of shapes without text (some programs keep a logo that way). Every change touches only that instruction, with a transformation put around it; a new picture is drawn after the page's own drawing. A picture behind most of the page can't be picked, so text over it still can.
+
+New pictures are kept at print quality: at most 300 dots per inch at the size they're shown, so a phone photo used as a small logo doesn't make the file huge. JPEG photos keep their own compression (unless they have to be made smaller or turned upright); other pictures keep their see-through parts. Files over 15 MB or 40 megapixels are refused.
+
+Before a change is accepted:
+- every glyph and shape is where it was, and every other picture too;
+- the changed picture is where it was put (replaced: within its old place);
+- nothing outside the picture's old and new places changes by a single pixel (MuPDF and PDFium);
+- no other page changes, except the pages a picture was replaced on.
+
+## Download as…
+
+The Download button gives the edited PDF, or the same pages as another kind of file (`backend/app/exporting.py`, `GET /api/documents/{id}/export?format=…`):
+
+| Choice | What you get |
+|---|---|
+| **Word** | The pages as a document that flows: paragraphs (wrapped lines joined), tables, pictures, header and footer. Text you can edit; lines may wrap a little differently. |
+| **PowerPoint** | Every page a slide: a picture of the page without its text, and every line on top in its own text box, editable. |
+| **PowerPoint, as pictures** | Every page a slide showing a picture of it: looks exactly the same, text can't be edited. |
+| **Excel** | Every table a sheet; amounts become numbers. A PDF without tables gives its text, a paragraph a row. |
+| **JPG / PNG pictures** | A picture of every page, 200 dpi (one file, or a zip). |
+
+The text in Word, PowerPoint and Excel always comes from the editor's own reading of the page, never from another library's: that keeps Arabic and mixed Arabic and English right. (pdf2docx, tried first, got 114 of the 326 paragraphs of the test documents exactly right, and garbled Arabic: "ريال" became "لاير". The Word export gets 317; the rest are mostly letters the PDF itself stores wrongly.)
+
+- **Paragraphs** (`flow.py`): pieces of one row are read in their direction; rows join when the first was wrapped (the next row's first word wouldn't have fitted at its end); a bigger gap, a new size or a list marker starts a new paragraph. Text in a box or a column wraps at that box's or column's edge, found from a drawn box, text beside it, or several lines ending at the same place.
+- **Tables** (`tables.py`): columns and rows from the drawn borders (Word draws each cell's border as its own piece; pieces at nearly the same place are one), merged cells where there's no border between two cells, shading; or, without borders, text in columns over three rows or more. Arabic tables start on the right.
+- **Word**: alignment (start, end, centered, justified, Arabic kashida), indents, the space before each paragraph and the line spacing as on the page; each piece in its font, size, color, bold, italic, raised or lowered, underlined, struck through, highlighted or linked. Arabic paragraphs and pieces are right-to-left, and Arabic letters get their font as Word's "complex script" font, as Word itself saves them. Pictures go where they were: on a line of their own, inside a table cell, or within a line (an icon). Text and pictures repeated at the top or bottom of the pages go into the header and footer, with live page numbers. Each page starts a new page; a page of another size starts a new section.
+- **PowerPoint**: the page's text is taken out of the picture underneath with the same removal deleting a line uses. Lines the PDF stores with wrong letters, turned text and invisible text stay in the picture. PowerPoint decides a piece's direction by its language, so Arabic pieces are marked Arabic (otherwise a colon between Arabic and English jumps to the end).
+- **Excel**: amounts written the English or French way (1,700.00 / 1 700,00 € / 15 %) become numbers with a format that shows them as written; codes with leading zeros, dates and phone numbers stay text.
+- Lines whose letters the PDF stores wrongly are highlighted in yellow in Word, and the website says how many.
+
+Known limits: shapes drawn with lines (a logo made of shapes, a chart) don't come into Word; a page in two columns becomes one column, wrapped at the column's width; text boxes become indented paragraphs.
+
 ## The website
 
 - A list of small page pictures sits beside the pages; on phones, the page number button opens it.
@@ -262,6 +304,8 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 
 `backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
 
+`backend/tests/fixtures/images/` has a report with pictures: a logo (in Word's version, in the header of every page), a photo, an icon inside a line, a see-through signature and stamp in a table, Arabic text, and the same signature on page 2. Chrome's version also has a logo drawn as shapes. `make_images.py` draws the pictures; `images.js` (Word) and `images.html` (Chrome) build the document.
+
 `expected.json` lists every paragraph's true text, font, size and color. `edits.json` lists realistic edits to try. `backend/tests/fixtures/chrome/` has the same paragraphs printed to PDF by Chrome, plus fully vowelled Arabic. To rebuild them all (Windows with Microsoft Word and Chrome; close Word first):
 
 ```powershell
@@ -294,6 +338,7 @@ The app runs as a service (`deploy/pdf-editor.service`) that may write only `/va
 | `PDFEDIT_RATE_UPLOADS_PER_HOUR` | `30` | Files one visitor may open per hour |
 | `PDFEDIT_RATE_CHANGES_PER_HOUR` | `300` | Changes (and undo, redo) one visitor may make per hour |
 | `PDFEDIT_RATE_READS_PER_MINUTE` | `900` | Page images and the like one visitor may load per minute |
+| `PDFEDIT_RATE_EXPORTS_PER_HOUR` | `60` | Downloads as Word, PowerPoint, Excel or pictures one visitor may make per hour |
 | `PDFEDIT_HEAVY_JOBS` | `2` | Changes and uploads worked on at once; more wait their turn |
 | `PDFEDIT_MAX_VERSIONS` | `60` | Changes kept per file (each keeps a full copy); then: download, and open the download |
 | `PDFEDIT_MAX_DOC_MB` | `300` | Space all of a file's versions may take |

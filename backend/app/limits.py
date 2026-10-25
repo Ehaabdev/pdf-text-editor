@@ -18,10 +18,11 @@ _DOC = r"/api/documents/[^/]+"
 # (kind, method, path pattern): which requests count against which limit.
 _KINDS = [
     ("upload", "POST", re.compile(r"^/api/documents/?$")),
-    ("change", "POST", re.compile(rf"^{_DOC}/(edits|additions|deletions|undo|redo|versions/\d+)$")),
+    ("change", "POST", re.compile(rf"^{_DOC}/(edits|additions|deletions|undo|redo|versions/\d+|images/(delete|replace|add|move))$")),
+    ("export", "GET", re.compile(rf"^{_DOC}/export$")),
     ("read", "GET", re.compile(rf"^{_DOC}(/.*)?$")),
 ]
-HEAVY = {"upload", "change"}
+HEAVY = {"upload", "change", "export"}
 
 
 def kind_of(method: str, path: str) -> str | None:
@@ -43,6 +44,7 @@ class RateLimiter:
         return {
             "upload": (config.RATE_UPLOADS_PER_HOUR, 3600.0),
             "change": (config.RATE_CHANGES_PER_HOUR, 3600.0),
+            "export": (config.RATE_EXPORTS_PER_HOUR, 3600.0),
             "read": (config.RATE_READS_PER_MINUTE, 60.0),
         }[kind]
 
@@ -65,6 +67,7 @@ class RateLimiter:
 MESSAGES = {
     "upload": "Too many files opened in a short time. Wait a while and try again.",
     "change": "Too many changes in a short time. Wait a few minutes and try again.",
+    "export": "Too many downloads in a short time. Wait a few minutes and try again.",
     "read": "Too many requests in a short time. Wait a minute and try again.",
 }
 

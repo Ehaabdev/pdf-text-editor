@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { getLines, pageImageUrl, type DocInfo, type PageLines, type SpotPlan, type TextLine } from "../api";
+import { getImages, getLines, pageImageUrl, type DocInfo, type PageImage, type PageLines, type SpotPlan, type TextLine } from "../api";
+import ImageFrame from "./ImageFrame";
 
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
 const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
@@ -23,6 +24,11 @@ type Props = {
   spot: { x: number; y: number } | null;
   /** What adding at the spot will do: a new line's band is outlined where it will go. */
   preview?: SpotPlan | null;
+  /** Pictures: the one picked, and what picking one does. */
+  selectedImageId?: string | null;
+  onSelectImage?: (image: PageImage) => void;
+  /** A picture being placed or moved on this page: dragged and resized in a frame. */
+  frame?: { box: [number, number, number, number]; src: string; from?: number[] | null; onChange: (box: [number, number, number, number]) => void } | null;
   onPlace: (x: number, y: number) => void;
   /** Comparing: which stored version to show (0 is the original), with editing off. */
   version?: number;
@@ -36,7 +42,10 @@ type Props = {
 /** One image of the page: which revision and version it shows, and its URLs. */
 type Layer = { key: string; revision: number; src: string; srcSet: string };
 
-export default function PageView({ doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier }: Props) {
+export default function PageView({
+  doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier,
+  selectedImageId, onSelectImage, frame,
+}: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
   const [attempt, setAttempt] = useState(0);
@@ -71,6 +80,22 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
   }, [loaded, text, doc, index]);
 
   const lines = text?.revision === doc.revision ? text.lines : null;
+
+  // The pictures, the same way: once the page shows, and after every change.
+  const [pics, setPics] = useState<{ revision: number; images: PageImage[] } | null>(null);
+  useEffect(() => {
+    if (!loaded || pics?.revision === doc.revision) return;
+    let alive = true;
+    getImages(doc, index)
+      .then((images) => alive && setPics({ revision: doc.revision, images }))
+      .catch(() => {
+        // Without picture boxes the page still shows.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loaded, pics, doc, index]);
+  const images = pics?.revision === doc.revision ? pics.images : [];
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   // While a new image loads underneath, the previous one stays on top of it.
   const swapping = shown !== null && shown.key !== wanted.key;
@@ -114,7 +139,8 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
             onPlace(((e.clientX - r.left) / r.width) * size.width, ((e.clientY - r.top) / r.height) * size.height);
             return;
           }
-          if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("page-overlay")) onSelect(null, false);
+          // Anywhere but a line or a picture (the page's image, the layers over it): nothing picked.
+          if (!(e.target as HTMLElement).closest("button")) onSelect(null, false);
         }}
       >
         {layers.map((layer) => (
@@ -155,7 +181,42 @@ export default function PageView({ doc, index, width, selectedIds, onSelect, pla
               aria-hidden="true"
             />
           ))}
-        {lines && editable && (
+        {/* Pictures can be picked (not one behind the whole page); text stays on top of them. */}
+        {editable && !placing && !frame && images.length > 0 && (
+          <div className="page-overlay page-overlay--images">
+            {images
+              .filter((im) => !im.background)
+              .map((im) => {
+                const [x0, y0, x1, y1] = im.bbox;
+                const selected = selectedImageId === im.id;
+                return (
+                  <button
+                    key={im.id}
+                    type="button"
+                    className={`image-box${selected ? " image-box--selected" : ""}`}
+                    style={{ left: pct(x0, size.width), top: pct(y0, size.height), width: pct(x1 - x0, size.width), height: pct(y1 - y0, size.height) }}
+                    aria-label={im.kind === "drawing" ? "A drawing" : "A picture"}
+                    aria-pressed={selected}
+                    data-image={im.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectImage?.(im);
+                    }}
+                  />
+                );
+              })}
+          </div>
+        )}
+        {/* Moving a picture: its old place is marked until the move is saved. */}
+        {frame?.from && (
+          <span
+            className="image-old"
+            style={{ left: pct(frame.from[0], size.width), top: pct(frame.from[1], size.height), width: pct(frame.from[2] - frame.from[0], size.width), height: pct(frame.from[3] - frame.from[1], size.height) }}
+            aria-hidden="true"
+          />
+        )}
+        {frame && <ImageFrame box={frame.box} page={size} src={frame.src} onChange={frame.onChange} />}
+        {lines && editable && !frame && (
           <div className="page-overlay">
             {lines.lines.map((line) => {
               const [x0, y0, x1, y1] = line.bbox;

@@ -1385,6 +1385,165 @@ html.theme-switching::view-transition-new(root) {
   font-weight: 500;
 }
 
+/* Pictures under the text: the layers let clicks through, their boxes take them, so a
+   line over a picture is still picked first. */
+.page-overlay {
+  pointer-events: none;
+}
+
+.page-overlay > button {
+  pointer-events: auto;
+}
+
+.image-box {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+@media (hover: hover) {
+  .image-box:hover {
+    background: rgba(47, 107, 255, 0.05);
+    box-shadow: inset 0 0 0 1.5px rgba(47, 107, 255, 0.55);
+  }
+}
+
+.viewer--show-text .image-box {
+  outline: 1px dashed rgba(47, 107, 255, 0.55);
+  outline-offset: -1px;
+}
+
+.image-box.image-box--selected {
+  animation: lock-on 550ms var(--ease);
+  background: rgba(47, 107, 255, 0.06);
+  box-shadow:
+    inset 0 0 0 2px #2f6bff,
+    0 0 0 4px rgba(47, 107, 255, 0.18),
+    0 0 26px rgba(47, 107, 255, 0.35);
+}
+
+.image-box:focus-visible {
+  outline: 2px solid #2f6bff;
+  outline-offset: 1px;
+}
+
+/* A picture being placed or moved: drag it, or a corner to resize it. */
+.image-frame {
+  position: absolute;
+  z-index: 2;
+  cursor: move;
+  touch-action: none;
+  outline: 1.5px solid #2f6bff;
+  box-shadow:
+    0 0 0 4px rgba(47, 107, 255, 0.16),
+    0 12px 30px -12px rgba(5, 10, 30, 0.5);
+}
+
+.image-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.image-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px;
+  border: 2px solid #2f6bff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(5, 10, 30, 0.35);
+  touch-action: none;
+}
+
+/* Easier to catch with a finger: the handle takes touches around it too. */
+.image-handle::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+}
+
+.image-handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.image-handle--ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.image-handle--sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.image-handle--se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+/* Where a picture being moved was: faded behind a dashed line, so it isn't seen twice. */
+.image-old {
+  position: absolute;
+  border: 1.5px dashed rgba(47, 107, 255, 0.8);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.72);
+  pointer-events: none;
+}
+
+/* The picked picture in its panel, on a checkerboard where it's see-through. */
+.picture-place {
+  display: grid;
+  place-items: center;
+  margin: 0 0 12px;
+  padding: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: repeating-conic-gradient(#e8ecf2 0 25%, #ffffff 0 50%) 0 0 / 16px 16px;
+}
+
+.picture-place img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+}
+
+/* A new picture shown in the old one's place: the place's own shape. */
+.picture-place--slot {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fit-note {
+  white-space: normal;
+}
+
+.picture-place--slot img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+}
+
 /* The magnifier: a round glass lens showing the page larger, just above the pointer. */
 .lens {
   position: absolute;
@@ -2709,4 +2868,176 @@ html.theme-switching::view-transition-new(root) {
   ::view-transition-new(*) {
     animation: none !important;
   }
+}
+
+/* On phones the panel shares the screen with the page: a smaller look at the picture. */
+@media (max-width: 1023.98px) {
+  .picture-place img {
+    max-height: 110px;
+  }
+}
+
+/* Download as…: a glass menu under the Download button, each kind of file with its own
+   colored tile, like a file's icon. */
+.download-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-inline-start: 4px;
+}
+
+.bar-actions .download-wrap .btn-primary {
+  margin-inline-start: 0;
+}
+
+.download-chevron {
+  display: inline-flex;
+  margin-inline-start: -2px;
+  opacity: 0.85;
+}
+
+.download-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  inset-inline-end: 0;
+  z-index: 40;
+  width: min(340px, calc(100vw - 24px));
+  /* On a short screen (a phone on its side) the choices scroll. */
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  /* Inside the bar, whose own blur stops a second one: the glass color laid three times
+     over, nearly solid, so what's behind doesn't show through the words. */
+  background:
+    linear-gradient(var(--glass-strong), var(--glass-strong)),
+    linear-gradient(var(--glass-strong), var(--glass-strong)),
+    linear-gradient(var(--glass-strong), var(--glass-strong));
+  box-shadow: var(--glass-shadow);
+  transform-origin: top right;
+  animation: menu-in 240ms var(--spring);
+}
+
+[dir="rtl"] .download-menu {
+  transform-origin: top left;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-menu {
+    animation: none;
+  }
+}
+
+.download-title {
+  margin: 4px 10px 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.download-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.download-item:hover:not(:disabled),
+.download-item:focus-visible {
+  outline: none;
+  background: var(--accent-wash);
+}
+
+.download-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.download-item .spinner {
+  margin-inline-start: auto;
+  color: var(--accent);
+}
+
+/* A little page with a folded corner, in the color people know the program by. */
+.download-badge {
+  --tone: #6b5cf0;
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: end center;
+  width: 36px;
+  height: 44px;
+  padding-bottom: 7px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 72%, #ffffff), var(--tone));
+  color: #ffffff;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  clip-path: polygon(0 0, 66% 0, 100% 27%, 100% 100%, 0 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.download-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34%;
+  height: 27%;
+  border-bottom-left-radius: 4px;
+  background: color-mix(in srgb, var(--tone) 40%, #ffffff);
+}
+
+.download-badge--pdf {
+  --tone: #d6402f;
+}
+
+.download-badge--docx {
+  --tone: #2b62d6;
+}
+
+.download-badge--pptx {
+  --tone: #d5582c;
+}
+
+.download-badge--xlsx {
+  --tone: #1d8a4e;
+}
+
+.download-badge--img {
+  --tone: #7a56e8;
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.download-name {
+  font-weight: 600;
+}
+
+.download-note {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--muted);
 }
