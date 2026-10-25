@@ -593,6 +593,16 @@ def stand_in(pdf_font_name: str, arabic: bool, serif: bool | None = None, fixed:
     return Lookalike(_bundled_entry(str(path)), _NAMES[base], False, close=False)
 
 
+@lru_cache(maxsize=1)
+def _stand_in_names() -> frozenset[str]:
+    return frozenset(_bundled_entry(str(f)).ps_name.lower() for f in LOOKALIKE_DIR.glob("*.ttf"))
+
+
+def is_stand_in(pdf_font_name: str) -> bool:
+    """Is this a bundled stand-in font (put in the PDF by an earlier edit)?"""
+    return pdf_font_name.split("+")[-1].lower() in _stand_in_names()
+
+
 def embeddable(full: "FullFont") -> bool:
     """May the font be put in a PDF? (Its licence, in OS/2 fsType.)"""
     fs_type = getattr(full.tt["OS/2"], "fsType", 0) if "OS/2" in full.tt else 0

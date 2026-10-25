@@ -46,6 +46,7 @@ from .editing import (
     EditResult,
     Fonts,
     Word,
+    _original_first,
     _alignment,
     _bracket_insides,
     _glyph_texts,
@@ -263,12 +264,24 @@ def add_line(
                 w.logical = k
             new_marker = [clone]
             expected = item.marker_text + text[len(typed):]
+    # Letters the PDF's own copy of the font has are drawn with it; others by a stand-in.
+    fonts = Fonts(pdf, page_no, rp, word_made, ref, all_lines)
+    cut = []
+    for w in words:
+        if getattr(w, "clone", None):
+            cut.append(w)
+            continue
+        line_of = ref if w.source in old else item_line
+        cut += fonts.split_by_copy(w, _style_of(line_of, w.source), rp.glyphs[w.source.traces[0]].paint.font)
+    words = cut
+    for k, w in enumerate(words):
+        w.logical = k
+
     if word_made:
         visual = _visual_order(words, rtl)
     else:
         words, visual = _visual_order_standard(words, rtl)
 
-    fonts = Fonts(pdf, page_no, rp, word_made, ref, all_lines)
     ratios: dict[str, float] = {}
     for w in visual:
         if getattr(w, "clone", None):
@@ -584,8 +597,8 @@ def _source_word(ref: Line, old: list[Word], rp: Replay) -> Word:
         candidates = [w for w in candidates if w not in item.marker] or candidates
     for w in candidates:
         if _style_of(ref, w) == ref.style.font and len(_looks(w, ref, rp)[1]) == 1:
-            return w
-    return candidates[0]
+            return _original_first(w, ref, rp)
+    return _original_first(candidates[0], ref, rp)
 
 
 def _column(ref: Line, old: list[Word], page: pymupdf.Page) -> tuple[float, float]:

@@ -238,15 +238,16 @@ def test_arabic_look_alikes_draw_each_letter_as_one_glyph(font):
 @pytest.mark.parametrize(
     "path, needle, first, second, hidden",
     [
-        # Calibri Italic hidden: "jazzy" needs letters its copy lacks, so Carlito draws them.
-        ("word/english-styles-word.pdf", "Figures are rounded", ("one decimal place", "jazzy quick waves"), ("jazzy", "fuzzy"), "Calibri*"),
+        # Calibri Italic hidden: "jazzy" needs letters its copy lacks, so Carlito draws them;
+        # editing the word again with letters already checked asks nothing more.
+        ("word/english-styles-word.pdf", "Figures are rounded", ("one decimal place", "jazzy quick waves"), ("jazzy", "jazz"), "Calibri*"),
         # Traditional Arabic hidden: Amiri, drawn at the matching size.
         ("word/arabic-quotation-word.pdf", "الطلبات في أسرع وقت ممكن", ("أسرع", "أقرب"), ("أقرب", "أفضل"), "traditionalarabic*"),
     ],
 )
 def test_a_word_in_a_look_alike_can_be_edited_again(hide, path, needle, first, second, hidden):
-    """The look-alike is now that word's font: a second edit draws with it exactly, at
-    the size the first edit gave it, and needs no look-alike."""
+    """A second edit of a word partly or wholly drawn by a look-alike draws at the same
+    size, and doesn't ask again about letters already checked."""
     src = (FIXTURES / path).read_bytes()
     hide(hidden)
     page_no, line = find(src, needle)
@@ -278,3 +279,41 @@ def test_no_font_is_refused(hide, path, needle, old, new, hidden, substitute):
     assert used["substitute"] == substitute and "z" in used["letters"]
     _, changed = find(result.pdf, line.text.replace(old, new, 1))
     assert comparable(changed.text) == comparable(line.text.replace(old, new, 1))
+
+
+# The PDF's own letters first ------------------------------------------------------------------
+
+
+@needs_fonts
+def test_letters_the_pdf_has_come_from_its_own_copy(hide):
+    """With Calibri missing, a new word takes every letter the PDF's copy of Calibri has
+    from it, exactly as on the page; only the others come from Carlito, and only they
+    are named for checking."""
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")  # Calibri Italic
+    hide("Calibri*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("one decimal place", "jazzy quick waves"))
+    (used,) = result.lookalikes
+    assert used["substitute"] == "Carlito" and set(used["letters"]) == set("jzyqkwv")
+    _, new = find(result.pdf, "jazzy quick waves")
+    own = "".join(t for t, s in new.spans if s.font.endswith("Calibri-Italic"))
+    assert {"a", "u", "i", "c", "e", "s"} <= set(own)
+
+
+@needs_fonts
+def test_a_word_of_letters_the_pdf_has_needs_no_check(hide):
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")
+    hide("Calibri*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("one decimal place", "one decimal case"))
+    assert result.lookalikes == [] and result.warnings == []
+
+
+@needs_fonts
+def test_added_text_takes_the_pdfs_own_letters_too(hide):
+    src = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    page_no, line = find(src, "Figures are rounded")
+    hide("Calibri*")
+    result = add_line(src, page_no, "Figures are rounded to one decimal unit.", line.id, line.text)
+    assert result.lookalikes == []
+    find(result.pdf, "Figures are rounded to one decimal unit.")

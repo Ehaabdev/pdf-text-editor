@@ -258,6 +258,10 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
     inside a word make more than one."""
     style_of = {g.traces[0]: g.style for g in line.glyphs if g.traces}
 
+    def stand_in(t) -> bool:
+        st = style_of.get(t)
+        return st is not None and fontlib.is_stand_in(st.font)
+
     def same(a, b):
         da, db = rp.glyphs[a], rp.glyphs[b]
         pa, pb = da.paint, db.paint
@@ -265,9 +269,13 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
         size = pa.size * pa.trm2[3]
         # Colors as the reader resolved them: one color can be written several ways.
         strokes = pa.Tr in (1, 2, 5, 6) and pa.stroke != pb.stroke
+        # A letter an earlier edit drew in a stand-in font belongs to the font it stood in
+        # for (and may have been drawn a little bigger or smaller to match it).
+        either = stand_in(a) or stand_in(b)
         return (
-            (sa and sa.font, sa and sa.color) == (sb and sb.font, sb and sb.color)
-            and abs(size - pb.size * pb.trm2[3]) < 0.05
+            (either or (sa and sa.font) == (sb and sb.font))
+            and (sa and sa.color) == (sb and sb.color)
+            and (either or abs(size - pb.size * pb.trm2[3]) < 0.05)
             and abs(pa.Tz - pb.Tz) < 1e-3
             and pa.Tr == pb.Tr
             and not strokes
@@ -280,8 +288,25 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
         if k is None:
             kinds.append(t)
             k = len(kinds) - 1
+        elif stand_in(kinds[k]) and not stand_in(t):
+            kinds[k] = t  # the look shown by a letter in the font itself
         looks.append(k)
     return looks, kinds
+
+
+def family_matches(pdf_font_name: str, ps_name: str) -> bool:
+    """Is this PDF font (maybe a subset: "ABCDEF+Carlito-Italic") that font file?"""
+    return pdf_font_name.split("+")[-1].lower() == ps_name.lower()
+
+
+def _original_first(word: "Word", line: Line, rp: Replay) -> "Word":
+    """The word with a glyph of its own font first: the one new words take their font
+    from, rather than a letter an earlier edit drew in a stand-in."""
+    style_of = {g.traces[0]: g.style for g in line.glyphs if g.traces}
+    own = [t for t in word.traces if t in style_of and not fontlib.is_stand_in(style_of[t].font)]
+    if not own or own[0] == word.traces[0]:
+        return word
+    return replace(word, traces=[own[0]] + [t for t in word.traces if t != own[0]])
 
 
 def _pieces(word: Word, line: Line, rp: Replay) -> list[Word]:
@@ -477,6 +502,51 @@ class Fonts:
                 return True
         return False
 
+    def _installed_draws(self, text: str, font_name: str) -> bool:
+        entry = fontlib.library().find(font_name)
+        if entry is None:
+            return False
+        full = fontlib.load_full_font(entry)
+        shaped = full.shape(text, False, latin_ligatures=not self.word_made, kerning=not self.word_made)
+        return not any(gid == 0 for gid, *_ in shaped) and fontlib.embeddable(full)
+
+    def _in_copy(self, ch: str, resource: str) -> bool:
+        info, emb = self.rp.fonts[resource], self._embedded(resource)
+        code = next((c for c, label in sorted(info.to_unicode.items()) if label == ch), None)
+        if code is None:
+            gid = emb.gid_for(ch)
+            code = gid if info.two_byte else _winansi(ch)
+        gid = code if info.two_byte else emb.gid_for(ch)
+        drawn = emb.tt is None or (gid is not None and emb.has_drawn_glyph(gid))
+        return code is not None and code in info.widths and drawn
+
+    def split_by_copy(self, word: Word, font_name: str, paint_font: str) -> list[Word]:
+        """A new Latin word whose font isn't here (or can't draw it), in pieces: runs of
+        letters the PDF's own copy of the font has, drawn with them, exactly as on the
+        page, and runs it hasn't, drawn by a stand-in. The word itself when either draws
+        all of it."""
+        text = word.text
+        if word.script == "R" or len(text) < 2 or any(unicodedata.combining(c) for c in text):
+            return [word]
+        if self._installed_draws(text, font_name):
+            return [word]
+        best, have = None, []
+        for resource in self._resources_named(font_name, paint_font):
+            found = [self._in_copy(ch, resource) for ch in text]
+            if best is None or sum(found) > sum(have):
+                best, have = resource, found
+        if best is None or all(have) or not any(have):
+            return [word]
+        pieces, start = [], 0
+        for i in range(1, len(text) + 1):
+            if i == len(text) or have[i] != have[start]:
+                part = text[start:i]
+                piece = Word(part, _script(part), source=word.source, sep=word.sep if i == len(text) else "")
+                piece.inserted, piece.after, piece.group = word.inserted, word.after, word.group
+                pieces.append(piece)
+                start = i
+        return pieces
+
     def _kind(self, font_name: str) -> tuple[bool | None, bool | None]:
         """(serif, fixed width) as the PDF describes its font; None where it doesn't."""
         for resource in self._resources_named(font_name, ""):
@@ -516,7 +586,12 @@ class Fonts:
         self._note_stand_in(font_name, sub, word.text)
 
     def _note_stand_in(self, font_name: str, sub: "fontlib.Lookalike", drawn: str) -> None:
-        """Tell the user which letters a stand-in drew, to check them: one note per font."""
+        """Tell the user which letters a stand-in drew, to check them: one note per font.
+        Letters the line already shows in that stand-in were checked before: not again."""
+        before = {g.text for g in self.line.glyphs if fontlib.is_stand_in(g.style.font) and family_matches(g.style.font, sub.entry.ps_name)}
+        drawn = "".join(ch for ch in drawn if ch not in before)
+        if not drawn.strip():
+            return
         shown = _base_name_from(font_name)
         key = (shown, sub.name)
         entry = self.lookalikes.get(key)
@@ -943,6 +1018,8 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     main = rp.glyphs[old_visual[0].traces[0]]
     space = _space_width(rp, line)
 
+    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines)
+
     # Words: unchanged ones are reused, the rest are new.
     new_pairs = _split_words(new_text)
     old_texts = [w.text for w in old]
@@ -964,12 +1041,14 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
             continue
         for j in range(j1, j2):
             source = old[min(i1 + (j - j1), i2 - 1)] if i2 > i1 else (old[i1 - 1] if i1 > 0 else old[0])
+            source = _original_first(source, line, rp)
             word = Word(new_texts[j], _script(new_texts[j]), source=source, sep=new_pairs[j][1])
             if i2 == i1:
                 word.inserted, word.after = True, (old[i1] if i1 < len(old) else None)
             # A word that replaces exactly one old word keeps its letters' looks; others
             # (two words for one, an added word) take their source's main look.
-            words += _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]
+            for piece in _pieces(word, line, rp) if i2 - i1 == j2 - j1 else [word]:
+                words += fonts.split_by_copy(piece, _style_of(line, piece.source), rp.glyphs[piece.source.traces[0]].paint.font)
     for k, w in enumerate(words):
         w.logical = k
 
@@ -977,7 +1056,6 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
         visual = _visual_order(words, line.rtl)
     else:
         words, visual = _visual_order_standard(words, line.rtl)
-    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines)
     tracking: dict[str, float] = {}
     for w in visual:
         if w.is_new:
