@@ -556,29 +556,35 @@ class Fonts:
 
     def split_by_copy(self, word: Word, font_name: str, paint_font: str) -> list[Word]:
         """A new Latin word whose font isn't here (or can't draw it), in pieces: runs of
-        letters the PDF's own copy of the font has, drawn with them, exactly as on the
-        page, and runs it hasn't, drawn by a stand-in. The word itself when either draws
-        all of it."""
+        letters the PDF's own copies of the font have, each drawn with one copy, exactly
+        as on the page, and runs none has, drawn by a stand-in. A PDF often has two
+        copies of a font: Word puts the letters of its old Western code page (é, ç, ö)
+        in one and the others (ş, ğ, ı, İ, ₺) in another. The word itself when one copy
+        draws all of it, or none any of it."""
         text = word.text
         if word.script == "R" or len(text) < 2 or any(unicodedata.combining(c) for c in text):
             return [word]
         if self._installed_draws(text, font_name):
             return [word]
-        best, have = None, []
-        for resource in self._resources_named(font_name, paint_font):
-            found = [self._in_copy(ch, resource) for ch in text]
-            if best is None or sum(found) > sum(have):
-                best, have = resource, found
-        if best is None or all(have) or not any(have):
+        resources = self._resources_named(font_name, paint_font)
+        has = [{r for r in resources if self._in_copy(ch, r)} for ch in text]
+        if not any(has) or any(all(r in h for h in has) for r in resources):
             return [word]
         pieces, start = [], 0
-        for i in range(1, len(text) + 1):
-            if i == len(text) or have[i] != have[start]:
-                part = text[start:i]
-                piece = Word(part, _script(part), source=word.source, sep=word.sep if i == len(text) else "")
-                piece.inserted, piece.after, piece.group = word.inserted, word.after, word.group
-                pieces.append(piece)
-                start = i
+        while start < len(text):
+            end, common = start + 1, set(has[start])
+            if common:  # as many letters as one copy has, all together
+                while end < len(text) and common & has[end]:
+                    common &= has[end]
+                    end += 1
+            else:  # letters no copy has: the stand-in's
+                while end < len(text) and not has[end]:
+                    end += 1
+            part = text[start:end]
+            piece = Word(part, _script(part), source=word.source, sep=word.sep if end == len(text) else "")
+            piece.inserted, piece.after, piece.group = word.inserted, word.after, word.group
+            pieces.append(piece)
+            start = end
         return pieces
 
     def _learned_forms(self, font_name: str, wide: bool = False) -> dict[str, dict[tuple[str, str], int]]:
@@ -732,6 +738,8 @@ class Fonts:
         tries = [first]
         if first.close:
             tries.append(fontlib.stand_in(font_name, arabic, serif, fixed, generic=True))
+        if not arabic:
+            tries.append(fontlib.last_resort(font_name, serif, fixed))
         for sub in tries:
             full = fontlib.load_full_font(sub.entry)
             shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
@@ -894,8 +902,9 @@ class Fonts:
 def _has_width(info, code: int | None, ch: str) -> bool:
     """Whether a copy's code is a real letter of it: it has a width, and (but for spaces)
     not 0, which is what Word writes for the codes it doesn't use. Such a letter would be
-    drawn taking no room, over the next one."""
-    return code is not None and code in info.widths and (info.width(code) > 0 or ch.isspace())
+    drawn taking no room, over the next one. A two-byte font lists only the widths that
+    differ from its default (Chrome leaves out "a" of Times Italic, as wide as that)."""
+    return code is not None and (code in info.widths or info.two_byte) and (info.width(code) > 0 or ch.isspace())
 
 
 def _winansi(ch: str) -> int | None:
@@ -1112,6 +1121,8 @@ def _paragraph_edges(line: Line, lines: list[Line], page: pymupdf.Page) -> list[
     for other in lines:
         if other is line:
             continue
+        if line.column and other.column and max(abs(a - b) for a, b in zip(line.column, other.column)) > 1.0:
+            continue  # another column, or a table's cell: not its paragraph
         r = edges(other)
         overlap = min(r.x1, me.x1) - max(r.x0, me.x0)
         if overlap > 0.5 * min(r.width, me.width) and abs(r.y0 - me.y0) < 3 * height and abs(r.height - height) < 0.5 * height:
@@ -1130,6 +1141,14 @@ def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: 
         left = min([u0] + [a for a, _ in neighbours])
         right = max([u1] + [b for _, b in neighbours])
         at_left, at_right = u0 - left < 1.5, right - u1 < 1.5
+        # A block against the far side (an address or a signature at the right of an
+        # English letter): its lines end together and start apart.
+        side = _against_one_side(line, column, space, left, right)
+        starts, ends = [u0] + [a for a, _ in neighbours], [u1] + [b for _, b in neighbours]
+        if side == "right" and max(ends) - min(ends) < 1.5 and max(starts) - min(starts) > 1.5:
+            return "right"
+        if side == "left" and max(starts) - min(starts) < 1.5 and max(ends) - min(ends) > 1.5:
+            return "left"
         ragged_side = [b for _, b in neighbours] if not line.rtl else [a for a, _ in neighbours]
         edge = right if not line.rtl else left
         shared = any(abs(x - edge) < 1.5 for x in ragged_side)
@@ -1148,7 +1167,22 @@ def _alignment(line: Line, old: list[Word], column: tuple[float, float], space: 
         return "justify"
     if not touches_left and not touches_right and abs((u0 - left) - (right - u1)) < 3:
         return "center"
-    return "right" if line.rtl else "left"
+    return _against_one_side(line, column, space, u0, u1) or ("right" if line.rtl else "left")
+
+
+def _against_one_side(line: Line, column: tuple[float, float], space: float, x0: float, x1: float) -> str | None:
+    """"right" for a line (or a paragraph, from x0 to x1) set against the right edge of
+    its column though its language starts on the left: a date or a signature at the
+    right of an English letter; "left" for the mirror case in Arabic. It reaches that
+    edge and stays well away from the other, past a quarter of the column: an indented
+    line that happens to reach the far edge doesn't count."""
+    left, right = column
+    far = 0.25 * (right - left)
+    if not line.rtl and right - x1 < 2.5 + space and x0 - left > far:
+        return "right"
+    if line.rtl and x0 - left < 2.5 + space and right - x1 > far:
+        return "left"
+    return None
 
 
 # The edit -----------------------------------------------------------------------------------

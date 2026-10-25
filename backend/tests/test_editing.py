@@ -237,7 +237,7 @@ def _check_all(pdf: bytes, expected: list[str]):
 
 @needs_fonts
 @pytest.mark.parametrize("source", SOURCES)
-@pytest.mark.parametrize("doc", ["arabic-quotation", "french-quote", "english-styles", "bilingual-contract"])
+@pytest.mark.parametrize("doc", ["arabic-quotation", "french-quote", "english-styles", "bilingual-contract", "turkish-quote"])
 def test_many_edits_in_a_row(source, doc):
     """Each edit runs on the previous result: pages already rewritten by the editor."""
     pdf = pdf_path(source, doc).read_bytes()
@@ -251,6 +251,28 @@ def test_many_edits_in_a_row(source, doc):
         pdf = replace_line(pdf, page_no, line.id, line.text, new).pdf
         done.append(e["new"])
         _check_all(pdf, done)
+
+
+@pytest.mark.parametrize(
+    "doc, page_no, find, old, new",
+    [
+        ("word/turkish-quote-word.pdf", 0, "İstanbul, 21", "21 Ekim", "28 Kasım"),  # a date, longer
+        ("word/turkish-quote-word.pdf", 0, "İstanbul, 21", "21 Ekim", "3 Mart"),  # shorter
+        ("word/turkish-quote-word.pdf", 0, "KDV (%20)", "10.220,00 TL", "9.800,00 TL"),  # under a table
+        ("word/turkish-quote-word.pdf", 1, "Mehmet Çelik", "Mehmet Çelik", "Ayşegül Karaağaçlı"),  # a signature: two lines
+        ("word/turkish-quote-word.pdf", 1, "Genel Müdür", "Genel Müdür", "Müdür"),
+        ("word/english-styles-word.pdf", 0, "Report ID", "NW-Q3-2026-118", "NW-Q4-2026-7"),
+        ("chrome/turkish-quote-chrome.pdf", 0, "İstanbul, 21", "21 Ekim", "28 Kasım"),
+    ],
+)
+def test_a_line_against_the_right_margin_stays_there(doc, page_no, find, old, new):
+    """A date or a signature at the right of a letter grows and shrinks to the left."""
+    src = (FIXTURES / doc).read_bytes()
+    line = next(l for l in page_lines(pymupdf.open("pdf", src)[page_no]) if find in l.text)
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace(old, new))
+    after = next(l for l in page_lines(pymupdf.open("pdf", result.pdf)[page_no]) if comparable(new) in comparable(l.text))
+    assert abs(after.bbox[2] - line.bbox[2]) < 0.5
+    assert (after.bbox[0] < line.bbox[0]) == (len(new) > len(old))
 
 
 @needs_fonts

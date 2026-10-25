@@ -4,7 +4,8 @@ Chrome (Skia) writes PDFs very differently from Word: its own font subsets, shap
 and glyph numbering. The paragraphs come from the Word answer key
 (backend/tests/fixtures/word/expected.json), so the same checks apply.
 
-    python print_chrome.py      (needs Chrome or Edge installed)
+    python print_chrome.py                  (needs Chrome or Edge installed)
+    python print_chrome.py turkish-quote    just that one; the others stay as they are
 
 Output: backend/tests/fixtures/chrome/<doc>-chrome.pdf and expected.json.
 """
@@ -45,6 +46,11 @@ EXTRA = {
     ]
 }
 
+# The page's language, as a web page in it would say: Chrome then draws its letters the
+# language's way (Turkish: no "fi" joined into one letter, since i keeps its dot).
+LANG = {"turkish-quote": "tr"}
+DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles", "turkish-quote"]
+
 ALIGN = {"start": "start", "left": "left", "right": "right", "center": "center", "both": "justify", "mediumKashida": "justify"}
 
 
@@ -59,7 +65,7 @@ def run_html(run: dict) -> str:
     return f'<span style="{style}">{text}</span>'
 
 
-def page_html(paragraphs: list[dict]) -> str:
+def page_html(paragraphs: list[dict], lang: str | None = None) -> str:
     body = "\n".join(
         f'<p dir="{"rtl" if p["rtl"] else "ltr"}" style="text-align:{ALIGN.get(p["align"], "start")}">'
         + "".join(run_html(r) for r in p["runs"])
@@ -67,7 +73,7 @@ def page_html(paragraphs: list[dict]) -> str:
         for p in paragraphs
     )
     return (
-        "<!doctype html><html><head><meta charset='utf-8'><style>"
+        f"<!doctype html><html{f' lang={lang!r}' if lang else ''}><head><meta charset='utf-8'><style>"
         "@page{size:A4;margin:2.5cm} p{margin:0 0 8pt;line-height:1.35}"
         f"</style></head><body>{body}</body></html>"
     )
@@ -80,13 +86,14 @@ def browser() -> str:
     sys.exit("Chrome or Edge not found")
 
 
-def main():
+def main(only: list[str]):
     OUT.mkdir(parents=True, exist_ok=True)
     word = json.loads((WORD / "expected.json").read_text(encoding="utf-8"))
-    expected = []
+    answers = OUT / "expected.json"
+    expected = [p for p in json.loads(answers.read_text(encoding="utf-8")) if p["doc"] not in only] if only else []
     exe = browser()
     with tempfile.TemporaryDirectory() as tmp:
-        for name in ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles"]:
+        for name in only or DOCS:
             paras = [p for p in word if p["doc"] == name and p["text"].strip()]
             for extra in EXTRA.get(name, []):
                 paras.append({
@@ -96,7 +103,7 @@ def main():
                 })
             expected.extend(paras)
             page = Path(tmp) / f"{name}.html"
-            page.write_text(page_html(paras), encoding="utf-8")
+            page.write_text(page_html(paras, LANG.get(name)), encoding="utf-8")
             pdf = OUT / f"{name}-chrome.pdf"
             subprocess.run(
                 [exe, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", f"--user-data-dir={tmp}\\profile",
@@ -104,7 +111,7 @@ def main():
                 check=True, capture_output=True, timeout=120,
             )
             print(f"saved {pdf.name}")
-    (OUT / "expected.json").write_text(json.dumps(expected, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    answers.write_text(json.dumps(expected, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
 def print_page(name: str):
@@ -130,7 +137,9 @@ if __name__ == "__main__":
     if sys.argv[1:] and all(a in HAND_WRITTEN for a in sys.argv[1:]):
         for name in sys.argv[1:]:
             print_page(name)
+    elif sys.argv[1:] and all(a in DOCS for a in sys.argv[1:]):
+        main(sys.argv[1:])
     else:
-        main()
+        main([])
         for name in HAND_WRITTEN:
             print_page(name)

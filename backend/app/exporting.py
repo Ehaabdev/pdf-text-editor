@@ -45,6 +45,27 @@ ZIP = "application/zip"
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 
+# Letters only Turkish uses, and letters French uses that English and Turkish don't.
+_TURKISH = set("ğĞıİşŞ")
+_FRENCH = set("éèêëàïùœæÿÉÈÊËÀÏÙŒÆ")
+
+
+def latin_language(texts) -> str:
+    """The language of a document's Latin text, to mark it with in Word and PowerPoint
+    (their spelling checks and capitals follow it): Turkish or French when enough of its
+    words show it, else English. A few French names in an English text don't count."""
+    words = [w for t in texts for w in t.split() if any(c.isalpha() and c.isascii() or c in _TURKISH or c in _FRENCH for c in w)]
+    if not words:
+        return "en-US"
+    turkish = sum(1 for w in words if _TURKISH & set(w)) / len(words)
+    french = sum(1 for w in words if _FRENCH & set(w)) / len(words)
+    if turkish >= 0.1 and turkish >= french:
+        return "tr-TR"
+    if french >= 0.1:
+        return "fr-FR"
+    return "en-US"
+
+
 def stem(name: str) -> str:
     """The file's name without .pdf (the name the person's file had)."""
     s = PurePath(name).name
@@ -152,8 +173,9 @@ def _pptx_pictures(doc: pymupdf.Document, name: str) -> Export:
 # Excel -----------------------------------------------------------------------------------
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_CURRENCY = r"€|\$|£|SAR|USD|EUR|GBP|AED"
-_AMOUNT = re.compile(rf"^(?P<pre>(?:{_CURRENCY})\s?)?(?P<num>-?[0-9][0-9 .,]*)(?P<post>\s?(?:{_CURRENCY}|%))?$")
+_CURRENCY = r"€|\$|£|₺|SAR|USD|EUR|GBP|AED|TRY|TL"
+# A percent sign before the number is the Turkish way (%20).
+_AMOUNT = re.compile(rf"^(?P<pre>(?:{_CURRENCY}|%)\s?)?(?P<num>-?[0-9][0-9 .,]*)(?P<post>\s?(?:{_CURRENCY}|%))?$")
 
 
 def _number(s: str):
@@ -184,7 +206,9 @@ def _value(text: str):
     value, decimals, grouped = parsed
     fmt = ("#,##0" if grouped else "0") + ("." + "0" * decimals if decimals else "")
     pre, post = (m["pre"] or "").strip(), (m["post"] or "").strip()
-    if post == "%":
+    if "%" in (pre, post):
+        if pre and post:
+            return text.strip(), None
         return value / 100, fmt.replace("#,##", "") + "%"
     if pre:
         fmt = f'"{pre}{" " if len(pre) > 1 else ""}"{fmt}'

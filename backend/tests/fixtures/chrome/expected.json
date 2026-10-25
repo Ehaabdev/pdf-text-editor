@@ -3020,5 +3020,782 @@
     "changesLetters": false
    }
   ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Yıldız Işık Mühendislik Ltd. Şti. - Atatürk Cad. No: 45, Şişli / İstanbul",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Yıldız Işık Mühendislik Ltd. Şti. - Atatürk Cad. No: 45, Şişli / İstanbul",
+    "font": "Calibri",
+    "size": 9,
+    "color": "595959",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "İstanbul, 21 Ekim 2026",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "İstanbul, 21 Ekim 2026",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "FİYAT TEKLİFİ No: 2026-118",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "FİYAT TEKLİFİ No: 2026-118",
+    "font": "Cambria",
+    "size": 20,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Sayın Şükrü Öztürk",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Sayın Şükrü Öztürk",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Çağdaş Gıda Sanayi ve Ticaret A.Ş.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Çağdaş Gıda Sanayi ve Ticaret A.Ş.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Bağdat Caddesi No: 212, Kadıköy / İstanbul",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Bağdat Caddesi No: 212, Kadıköy / İstanbul",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Konu: ofis aydınlatma sisteminin yenilenmesi",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Konu:",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": " ofis aydınlatma sisteminin yenilenmesi",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Sayın Öztürk, 14 Ekim tarihli görüşmemize istinaden, ofisinizin aydınlatma sisteminin yenilenmesi için hazırladığımız teklifimizi bilginize sunarız. Ekibimiz, işin tamamını belirlenen takvime uygun olarak, yüksek kalite ve düşük enerji tüketimi ilkeleriyle gerçekleştirmeyi taahhüt eder.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Sayın Öztürk, 14 Ekim tarihli görüşmemize istinaden, ofisinizin aydınlatma sisteminin yenilenmesi için hazırladığımız teklifimizi bilginize sunarız. Ekibimiz, işin tamamını belirlenen takvime uygun olarak, yüksek kalite ve düşük enerji tüketimi ilkeleriyle gerçekleştirmeyi taahhüt eder.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "“Doğru ışık, bir mekânın havasını değiştirir” diyor kurucumuz. Bu yüzden her projeye ihtiyaçlarınızın ayrıntılı bir incelemesiyle başlıyoruz!",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "“Doğru ışık, bir mekânın havasını değiştirir” diyor kurucumuz. Bu yüzden her projeye ihtiyaçlarınızın ayrıntılı bir incelemesiyle başlıyoruz!",
+    "font": "Times New Roman",
+    "size": 12,
+    "color": "000000",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Müşteri memnuniyeti, iş güvenliği ve çevreye saygı çalışmalarımızın temelidir. Görüşme sırasında belirttiğiniz ölçüler ışığında toplantı salonu, açık ofis ve yönetim katı için ayrı çözümler öneriyoruz.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Müşteri memnuniyeti, iş güvenliği ve çevreye saygı çalışmalarımızın temelidir. Görüşme sırasında belirttiğiniz ölçüler ışığında toplantı salonu, açık ofis ve yönetim katı için ayrı çözümler öneriyoruz.",
+    "font": "Arial",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "IŞIKLANDIRMA VE GÜVENLİK ÇALIŞMALARI",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "IŞIKLANDIRMA VE GÜVENLİK ÇALIŞMALARI",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Dış cephe, düşük tüketimli projektörlerle aydınlatılacaktır; bakım maliyeti oldukça düşüktür. ÇOK ÖNEMLİ: zemin kat ve 1. kattaki çıkışlar, toplam 450 m² alanda çalışmalar boyunca açık kalacaktır.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Dış cephe, düşük tüketimli projektörlerle aydınlatılacaktır; bakım maliyeti oldukça düşüktür. ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "ÇOK ÖNEMLİ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": ": zemin kat ve 1. kattaki çıkışlar, toplam 450 m² alanda çalışmalar boyunca açık kalacaktır.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Hizmet Ayrıntıları",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Hizmet Ayrıntıları",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Ürün / Hizmet",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Ürün / Hizmet",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Miktar",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Miktar",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Birim Fiyat",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Birim Fiyat",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Tutar",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "Tutar",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "LED panel armatür (60×60)",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "LED panel armatür (60×60)",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "24",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "24",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "1.250,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1.250,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "30.000,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "30.000,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Kablolama ve bağlantı işleri",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Kablolama ve bağlantı işleri",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "1",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "1",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "8.500,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "8.500,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "8.500,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "8.500,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "İşçilik (götürü)",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "İşçilik (götürü)",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "3 gün",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "3 gün",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "4.200,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "4.200,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "12.600,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "12.600,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Toplam",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Toplam",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "51.100,00 ₺",
+  "rtl": false,
+  "align": "center",
+  "runs": [
+   {
+    "text": "51.100,00 ₺",
+    "font": "Calibri",
+    "size": 10.5,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "KDV (%20): 10.220,00 TL",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "KDV (%20): 10.220,00 TL",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Genel Toplam: 61.320,00 TL",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Genel Toplam: 61.320,00 TL",
+    "font": "Calibri",
+    "size": 11,
+    "color": "C00000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Koşullar",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Koşullar",
+    "font": "Cambria",
+    "size": 14,
+    "color": "1F4E79",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Teklif geçerlilik süresi: 30 gün",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Teklif geçerlilik süresi: 30 gün",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Ödeme: %50 peşin, %50 iş bitiminde",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Ödeme: %50 peşin, %50 iş bitiminde",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Armatürlerde 2 yıl garanti",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Armatürlerde 2 yıl garanti",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "İş süresi: 3 hafta (resmî tatiller hariç)",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "İş süresi: 3 hafta (resmî tatiller hariç)",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Not: fiyatlara KDV dahil değildir. Sorularınız için bize 0212 555 01 23 numaralı telefondan veya bilgi@example.com adresinden ulaşabilirsiniz.",
+  "rtl": false,
+  "align": "both",
+  "runs": [
+   {
+    "text": "Not: fiyatlara KDV dahil değildir. Sorularınız için bize 0212 555 01 23 numaralı telefondan veya ",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   },
+   {
+    "text": "bilgi@example.com",
+    "font": "Calibri",
+    "size": 11,
+    "color": "0563C1",
+    "bold": false,
+    "italic": false,
+    "link": "mailto:bilgi@example.com",
+    "changesLetters": false
+   },
+   {
+    "text": " adresinden ulaşabilirsiniz.",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Şirketimiz 2009 yılından beri kamu ve özel sektör projelerinde çalışmaktadır.",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Şirketimiz 2009 yılından beri kamu ve özel sektör projelerinde çalışmaktadır.",
+    "font": "Segoe UI",
+    "size": 10,
+    "color": "404040",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Saygılarımızla,",
+  "rtl": false,
+  "align": "start",
+  "runs": [
+   {
+    "text": "Saygılarımızla,",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Mehmet Çelik",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Mehmet Çelik",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": true,
+    "italic": false,
+    "changesLetters": false
+   }
+  ]
+ },
+ {
+  "doc": "turkish-quote",
+  "text": "Genel Müdür",
+  "rtl": false,
+  "align": "right",
+  "runs": [
+   {
+    "text": "Genel Müdür",
+    "font": "Calibri",
+    "size": 11,
+    "color": "000000",
+    "bold": false,
+    "italic": true,
+    "changesLetters": false
+   }
+  ]
  }
 ]

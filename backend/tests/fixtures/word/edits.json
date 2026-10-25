@@ -18,5 +18,15 @@
   {"doc": "english-styles", "find": "Overall delivery rates improved", "old": "improved", "new": "rose", "kind": "bold word mid-sentence"},
   {"doc": "english-styles", "find": "Full statistics are available at", "old": "reports@example.com", "new": "stats@example.com", "kind": "link text"},
   {"doc": "english-styles", "find": "140,250", "old": "140,250", "new": "141,000", "kind": "number in table"},
-  {"doc": "english-styles", "find": "without adding staff", "old": "without adding staff", "new": "without hiring any additional staff", "kind": "longer text in justified paragraph"}
+  {"doc": "english-styles", "find": "without adding staff", "old": "without adding staff", "new": "without hiring any additional staff", "kind": "longer text in justified paragraph"},
+  {"doc": "turkish-quote", "find": "FİYAT TEKLİFİ No: 2026-118", "old": "118", "new": "124", "kind": "code"},
+  {"doc": "turkish-quote", "find": "İstanbul, 21 Ekim 2026", "old": "21 Ekim", "new": "28 Kasım", "kind": "date"},
+  {"doc": "turkish-quote", "find": "Sayın Şükrü Öztürk", "old": "Şükrü Öztürk", "new": "Gülşen Ağaoğlu", "kind": "name with Turkish letters"},
+  {"doc": "turkish-quote", "find": "IŞIKLANDIRMA VE GÜVENLİK", "old": "GÜVENLİK", "new": "BAKIM İŞLERİ", "kind": "capitals with dotted and dotless I"},
+  {"doc": "turkish-quote", "find": "Müşteri memnuniyeti", "old": "Müşteri memnuniyeti", "new": "Çalışan güvenliği", "kind": "words in justified paragraph"},
+  {"doc": "turkish-quote", "find": "Doğru ışık", "old": "Doğru ışık", "new": "İyi aydınlatma", "kind": "italic words"},
+  {"doc": "turkish-quote", "find": "1.250,00 ₺", "old": "1.250,00", "new": "1.375,00", "kind": "number in table"},
+  {"doc": "turkish-quote", "find": "KDV (%20)", "old": "10.220,00 TL", "new": "10.220,00 ₺", "kind": "lira sign"},
+  {"doc": "turkish-quote", "find": "Genel Toplam", "old": "61.320,00", "new": "64.080,00", "kind": "bold total"},
+  {"doc": "turkish-quote", "find": "Şirketimiz 2009", "old": "2009", "new": "2011", "kind": "year in Segoe UI"}
 ]

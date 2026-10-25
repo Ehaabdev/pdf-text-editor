@@ -481,6 +481,7 @@ _NAMES = {
     "LiberationSerif": "Liberation Serif", "LiberationMono": "Liberation Mono", "Amiri": "Amiri",
     "MarkaziText": "Markazi Text", "IBMPlexSansArabic": "IBM Plex Sans Arabic", "Selawik": "Selawik",
     "WineTahoma": "Wine Tahoma", "EBGaramond": "EB Garamond",
+    "DejaVuSans": "DejaVu Sans", "DejaVuSerif": "DejaVu Serif", "DejaVuSansMono": "DejaVu Sans Mono",
 }
 _SEMIBOLD = {"semibold", "demibold", "demi", "sb"}
 _BOLD = {"bold", "black", "heavy", "extrabold", "ultrabold"} | _SEMIBOLD
@@ -590,6 +591,20 @@ def stand_in(pdf_font_name: str, arabic: bool, serif: bool | None = None, fixed:
             serif = any(k in family for k in _SERIF_NAMES)
         base = "LiberationMono" if fixed else "LiberationSerif" if serif else "LiberationSans"
     path = _file_for(base, tokens) or _file_for(base, tokens - {"italic", "oblique"}) or LOOKALIKE_DIR / f"{base}-Regular.ttf"
+    return Lookalike(_bundled_entry(str(path)), _NAMES[base], False, close=False)
+
+
+def last_resort(pdf_font_name: str, serif: bool | None = None, fixed: bool | None = None) -> Lookalike:
+    """For a character no other stand-in has (the Turkish lira sign ₺, ₽, ₹, arrows,
+    Greek, Cyrillic): DejaVu, which has far more, of the font's kind (serif, sans-serif
+    or fixed-width) and weight, upright."""
+    family, tokens = _family_style(pdf_font_name)
+    if fixed is None:
+        fixed = any(k in family for k in _MONO_NAMES)
+    if serif is None:
+        serif = any(k in family for k in _SERIF_NAMES)
+    base = "DejaVuSansMono" if fixed else "DejaVuSerif" if serif else "DejaVuSans"
+    path = _file_for(base, tokens - {"italic", "oblique"}) or LOOKALIKE_DIR / f"{base}-Regular.ttf"
     return Lookalike(_bundled_entry(str(path)), _NAMES[base], False, close=False)
 
 

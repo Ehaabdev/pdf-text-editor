@@ -25,7 +25,7 @@ from app.textlayout import LRI, PDI, RLI, page_lines, page_order as plain_page_o
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SOURCES = {"word": "word", "chrome": "chrome"}  # folder, and the file suffix
-DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles"]
+DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles", "turkish-quote"]
 CASES = [(source, name) for source in SOURCES for name in DOCS]
 EXPECTED = {source: json.loads((FIXTURES / source / "expected.json").read_text(encoding="utf-8")) for source in SOURCES}
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
@@ -41,7 +41,7 @@ UNREADABLE = {
 }
 
 _INVISIBLE = dict.fromkeys(map(ord, "‎‏⁦⁧⁨⁩‪‫‬‭‮ـ"))
-_FOOTER = re.compile(r"^(Page|صفحة)\s*[\d٠-٩]+\s*(of|sur|من|/)\s*[\d٠-٩]+$")
+_FOOTER = re.compile(r"^(Page|Sayfa|صفحة)\s*[\d٠-٩]+\s*(of|sur|من|/)\s*[\d٠-٩]+$")
 _MARKER = re.compile(r"^([•\-–]|[\d٠-٩]+[.)])$")
 _LIST_NUMBER = re.compile(r"^(?:[\d٠-٩]{1,3}[.)]|•)\s+")
 

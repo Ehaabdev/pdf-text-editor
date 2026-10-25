@@ -286,5 +286,53 @@
   "sha256": "b85a20db2b25987c34ea8ef516fd98eb0cf6144b4b61c002277c3340b5f06c7a",
   "licence": "LGPL-winetahoma.txt",
   "source": "https://deb.debian.org/debian/pool/main/w/wine/fonts-wine_10.0~repack-6_all.deb (Wine's tahoma.ttf, renamed Wine Tahoma)"
+ },
+ {
+  "file": "DejaVuSans-Regular.ttf",
+  "postscriptName": "DejaVuSans",
+  "version": "Version 2.37",
+  "sha256": "7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSans.ttf"
+ },
+ {
+  "file": "DejaVuSans-Bold.ttf",
+  "postscriptName": "DejaVuSans-Bold",
+  "version": "Version 2.37",
+  "sha256": "e6476c1b80502924294eed40894c5b18e06c181444ca953e5334262df9c27724",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSans-Bold.ttf"
+ },
+ {
+  "file": "DejaVuSerif-Regular.ttf",
+  "postscriptName": "DejaVuSerif",
+  "version": "Version 2.37",
+  "sha256": "42d1edeb7952f31b1f96d767ed7030b08a39e0c372b0071641518864e2bffb51",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSerif.ttf"
+ },
+ {
+  "file": "DejaVuSerif-Bold.ttf",
+  "postscriptName": "DejaVuSerif-Bold",
+  "version": "Version 2.37",
+  "sha256": "c47b5527bcdc8dcf9ea8c77054454c5a884beaca2f44851a2a823ee639cbf07f",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSerif-Bold.ttf"
+ },
+ {
+  "file": "DejaVuSansMono-Regular.ttf",
+  "postscriptName": "DejaVuSansMono",
+  "version": "Version 2.37",
+  "sha256": "b4a6c3e4faab8773f4ff761d56451646409f29abedd68f05d38c2df667d3c582",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSansMono.ttf"
+ },
+ {
+  "file": "DejaVuSansMono-Bold.ttf",
+  "postscriptName": "DejaVuSansMono-Bold",
+  "version": "Version 2.37",
+  "sha256": "bce60f1b4421acd9ea51ba6623d7024ecbe6817a953e3654df62a5e6bdf8f769",
+  "licence": "LICENSE-dejavu.txt",
+  "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip ttf/DejaVuSansMono-Bold.ttf"
  }
 ]
