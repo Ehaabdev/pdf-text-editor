@@ -113,9 +113,54 @@ def test_the_look_alike_has_the_same_weight_and_style(font, arabic, expected):
     assert fontlib.lookalike(font, arabic).entry.ps_name == expected
 
 
-@pytest.mark.parametrize("font, arabic", [("Tahoma", False), ("Verdana", False), ("Aptos", False), ("TraditionalArabic,Italic", True), ("Calibri-Light", False)])
+@pytest.mark.parametrize("font, arabic", [("Verdana", False), ("Aptos", False), ("TraditionalArabic,Italic", True)])
 def test_no_look_alike_where_none_is_close(font, arabic):
     assert fontlib.lookalike(font, arabic) is None
+
+
+@pytest.mark.parametrize(
+    "font, arabic, expected, same_widths",
+    [
+        ("SegoeUI", False, "Selawik-Regular", True),  # Microsoft's free font with Segoe UI's widths
+        ("SegoeUI-Semibold", False, "Selawik-Semibold", True),
+        ("Tahoma", False, "WineTahoma-Regular", True),
+        ("Tahoma-Bold", False, "WineTahoma-Bold", True),
+        ("Garamond-Bold", False, "EBGaramond-Bold", False),
+        ("Calibri-Light", False, "Carlito-Regular", False),  # no light file: not as wide
+        ("Calibri", True, "IBMPlexSansArabic-Regular", False),
+    ],
+)
+def test_more_look_alikes(font, arabic, expected, same_widths):
+    found = fontlib.lookalike(font, arabic)
+    assert (found.entry.ps_name, found.same_widths) == (expected, same_widths)
+
+
+def test_wine_tahoma_is_never_taken_for_tahoma():
+    """Wine's Tahoma calls itself Tahoma; the bundled copy is renamed, so a PDF's Tahoma
+    is never "found installed" when it's only the look-alike."""
+    for entry in fontlib.library().entries:
+        if "WineTahoma" in entry.path:
+            assert entry.family == "Wine Tahoma" and entry.ps_name.startswith("WineTahoma")
+
+
+@pytest.mark.parametrize(
+    "font, arabic, flags, expected",
+    [
+        ("Verdana", False, (None, None), "LiberationSans"),
+        ("Georgia-Italic", False, (None, None), "LiberationSerif-Italic"),
+        ("Consolas-Bold", False, (None, None), "LiberationMono-Bold"),
+        ("Aptos-Bold", False, (None, None), "LiberationSans-Bold"),
+        ("SomeBrandFont", False, (True, False), "LiberationSerif"),  # the PDF says it's a serif
+        ("SomeBrandFont", False, (False, True), "LiberationMono"),  # ... fixed width
+        ("DubaiW23-Regular", True, (None, None), "IBMPlexSansArabic-Regular"),
+        ("BadrBold", True, (None, None), "Amiri-Regular"),
+        ("TraditionalArabic,Italic", True, (None, None), "Amiri-Regular"),
+        ("AnyArabicFont", True, (None, None), "MarkaziText-Regular"),
+    ],
+)
+def test_every_font_has_a_stand_in(font, arabic, flags, expected):
+    found = fontlib.stand_in(font, arabic, *flags)
+    assert found.entry.ps_name == expected and not found.close
 
 
 # Editing with a look-alike --------------------------------------------------------------------
@@ -137,8 +182,9 @@ def test_a_missing_latin_font_is_replaced_by_its_look_alike_with_the_same_widths
     real = replace_line(src, page_no, line.id, line.text, new)  # the real Calibri Italic
     hide("Calibri*")
     result = replace_line(src, page_no, line.id, line.text, new)
-    assert result.lookalikes == [{"font": "Calibri Italic", "substitute": "Carlito", "sameWidths": True}]
-    assert any("Carlito" in w for w in result.warnings)
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Calibri Italic", "Carlito", True)]
+    assert "j" in result.lookalikes[0]["letters"]
+    assert any("Carlito" in w and "j" in w for w in result.warnings)
     assert "Carlito-Italic" in _fonts_on(result.pdf, page_no)
     _, with_real = find(real.pdf, "jazzy quick waves")
     _, with_lookalike = find(result.pdf, "jazzy quick waves")
@@ -152,7 +198,7 @@ def test_a_missing_bold_font_gets_the_bold_look_alike(hide):
     page_no, line = find(src, "Overall delivery rates improved")
     hide("calibri-bold")  # regular Calibri is there; it mustn't stand in for the bold
     result = replace_line(src, page_no, line.id, line.text, line.text.replace("improved", "jazzed"))
-    assert result.lookalikes == [{"font": "Calibri Bold", "substitute": "Carlito", "sameWidths": True}]
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Calibri Bold", "Carlito", True)]
     assert "Carlito-Bold" in _fonts_on(result.pdf, page_no)
 
 
@@ -162,7 +208,7 @@ def test_a_missing_arabic_font_is_replaced_by_a_similar_one(hide):
     page_no, line = find(src, "الطلبات في أسرع وقت ممكن")  # Traditional Arabic
     hide("traditionalarabic*")
     result = replace_line(src, page_no, line.id, line.text, line.text.replace("أسرع", "أقرب"))
-    assert result.lookalikes == [{"font": "Traditional Arabic", "substitute": "Amiri", "sameWidths": False}]
+    assert [(l["font"], l["substitute"], l["sameWidths"]) for l in result.lookalikes] == [("Traditional Arabic", "Amiri", False)]
     _, new = find(result.pdf, "الطلبات في أقرب وقت ممكن")
     assert comparable(new.text) == comparable(line.text.replace("أسرع", "أقرب"))
 
@@ -211,3 +257,24 @@ def test_a_word_in_a_look_alike_can_be_edited_again(hide, path, needle, first, s
     assert twice.lookalikes == []
     _, new = find(twice.pdf, line.text.replace(*second))
     assert abs((new.bbox[3] - new.bbox[1]) - (line.bbox[3] - line.bbox[1])) < 0.5  # same size: not scaled twice
+
+
+@needs_fonts
+@pytest.mark.parametrize(
+    "path, needle, old, new, hidden, substitute",
+    [
+        # Refused before: neither the font nor all the typed letters were there.
+        ("chrome/english-styles-chrome.pdf", "Prepared for Northwind Logistics", "Northwind", "Jazzwind", "segoeui*", "Selawik"),
+        ("chrome/arabic-quotation-chrome.pdf", "10,000", "10,000", "10,000 Jazz", "tahoma*", "Wine Tahoma"),
+        ("chrome/french-quote-chrome.pdf", "Les fleurs de l", "fleurs", "jazz", "garamond*", "EB Garamond"),
+    ],
+)
+def test_no_font_is_refused(hide, path, needle, old, new, hidden, substitute):
+    src = (FIXTURES / path).read_bytes()
+    hide(hidden)
+    page_no, line = find(src, needle)
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace(old, new, 1))
+    (used,) = result.lookalikes
+    assert used["substitute"] == substitute and "z" in used["letters"]
+    _, changed = find(result.pdf, line.text.replace(old, new, 1))
+    assert comparable(changed.text) == comparable(line.text.replace(old, new, 1))

@@ -76,9 +76,15 @@ export default function CheckPanel({ doc, index, busy, onClose, onUndo }: Props)
       <p className="check-summary">{change.summary}</p>
       {lookalikes.map((l, k) => (
         <p key={k} className="line-warning">
-          {l.font} isn’t available here, so the new words use {l.substitute}
-          {l.sameWidths ? ", a look-alike with nearly the same letter widths." : ", a similar font. Its letters are a little different."} Does
-          it look right?
+          {l.letters ? (
+            <>
+              These new letters aren’t in this PDF’s {l.font}:{" "}
+              <bdi className="check-letters">{[...l.letters].join(" ")}</bdi>. They’re drawn in {l.substitute}
+            </>
+          ) : (
+            <>Some new letters are drawn in {l.substitute} instead of {l.font}</>
+          )}
+          {l.sameWidths ? ", which looks almost the same." : ", a similar font."} Do they look right?
         </p>
       ))}
 

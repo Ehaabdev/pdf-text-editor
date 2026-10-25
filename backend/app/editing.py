@@ -386,6 +386,7 @@ class Fonts:
         self.checked: set[str] = set()
         # Fonts that weren't available and what stood in for them, for the user to check.
         self.lookalikes: dict[tuple[str, str], dict] = {}
+        self._notes: dict[tuple[str, str], int] = {}  # which warning tells about each
 
     def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
         """Warn when the installed font draws the line's existing glyphs differently
@@ -418,7 +419,9 @@ class Fonts:
     def shape(self, word: Word, paint: Paint, font_name: str) -> None:
         """Shape a new word and choose the font that will draw it, in this order: the
         installed font itself; for Latin, the PDF's embedded copy when it has every
-        letter; a look-alike (the user is asked to check it); else refuse."""
+        letter; else a stand-in (the font's look-alike, or one of its kind), whose
+        letters the user is asked to check. Nothing is refused for want of a font, only
+        a character no font here has."""
         text = word.text
         entry = fontlib.library().find(font_name)
         full = fontlib.load_full_font(entry) if entry else None
@@ -426,23 +429,30 @@ class Fonts:
         needs_shaping = word.script == "R" or any(unicodedata.combining(c) for c in text)
 
         if full is not None:
-            self._check_same_font(font_name, full)
             shaped = full.shape(text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
-            missing = [text[c] for gid, c, *_ in shaped if gid == 0]
-            if missing:
-                raise EditRejected(f"The font {font_name} has no character for “{missing[0]}”.")
-            word.shaped = shaped
-            gids = [g[0] for g in shaped]
-            for resource in candidates:
-                codes = self._codes_in_copy(resource, gids, shaped, text, full)
-                if codes is not None:
-                    word.choice = FontChoice(resource, full, self.rp.fonts[resource], codes)
+            if not any(gid == 0 for gid, *_ in shaped):
+                self._check_same_font(font_name, full)
+                word.shaped = shaped
+                gids = [g[0] for g in shaped]
+                for resource in candidates:
+                    codes = self._codes_in_copy(resource, gids, shaped, text, full)
+                    if codes is not None:
+                        word.choice = FontChoice(resource, full, self.rp.fonts[resource], codes)
+                        return
+                if fontlib.embeddable(full):
+                    word.choice = FontChoice(None, full, None, gids)
                     return
-            word.choice = FontChoice(None, full, None, gids)
-            return
+            # The installed font lacks some of these letters, or its licence keeps it out
+            # of PDFs: as if it weren't installed.
 
-        # No installed font: Latin text can still use the embedded copy if it has every letter.
-        for resource in candidates if not needs_shaping else []:
+        if not needs_shaping and self._from_copy(word, candidates):
+            return
+        self._shape_stand_in(word, font_name)
+
+    def _from_copy(self, word: Word, candidates: list[str]) -> bool:
+        """Latin text drawn with the PDF's embedded copy of its font, if it has every letter."""
+        text = word.text
+        for resource in candidates:
             info, emb = self.rp.fonts[resource], self._embedded(resource)
             # Which code draws a character: the copy's own labels (subsets often have no
             # character table of their own), else its character table.
@@ -464,56 +474,79 @@ class Fonts:
             else:
                 word.shaped = shaped
                 word.choice = FontChoice(resource, None, info, codes)
-                return
-        if self._shape_lookalike(word, font_name):
-            return
-        if needs_shaping:
-            raise EditRejected(
-                f"The font {font_name} isn't installed on the server, so new Arabic text can't be shaped with it."
-            )
-        raise EditRejected(f"The font {font_name} isn't installed on the server and the PDF doesn't contain all the letters typed.")
+                return True
+        return False
 
-    def _shape_lookalike(self, word: Word, font_name: str) -> bool:
-        """Shape the word with the bundled look-alike of the font, if there is one."""
+    def _kind(self, font_name: str) -> tuple[bool | None, bool | None]:
+        """(serif, fixed width) as the PDF describes its font; None where it doesn't."""
+        for resource in self._resources_named(font_name, ""):
+            obj = self.rp.fonts[resource].obj
+            try:
+                descriptor = obj.get("/FontDescriptor")
+                if descriptor is None and "/DescendantFonts" in obj:
+                    descriptor = obj.DescendantFonts[0].get("/FontDescriptor")
+                if descriptor is not None and "/Flags" in descriptor:
+                    flags = int(descriptor.Flags)
+                    return bool(flags & 2), bool(flags & 1)
+            except (AttributeError, IndexError, TypeError, ValueError):
+                continue
+        return None, None
+
+    def _shape_stand_in(self, word: Word, font_name: str) -> None:
+        """Shape the word with a free font that stands in: the font's look-alike, else
+        one of its kind; the other if the first lacks a letter."""
         arabic = word.script == "R"
-        sub = fontlib.lookalike(font_name, arabic)
-        if sub is None:
-            return False
-        full = fontlib.load_full_font(sub.entry)
-        shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
-        missing = [word.text[c] for gid, c, *_ in shaped if gid == 0]
-        if missing:
-            raise EditRejected(f"The font {font_name} isn't installed on the server, and its look-alike {sub.name} has no character for “{missing[0]}”.")
+        serif, fixed = self._kind(font_name)
+        first = fontlib.stand_in(font_name, arabic, serif, fixed)
+        tries = [first]
+        if first.close:
+            tries.append(fontlib.stand_in(font_name, arabic, serif, fixed, generic=True))
+        for sub in tries:
+            full = fontlib.load_full_font(sub.entry)
+            shaped = full.shape(word.text, word.rtl, latin_ligatures=not self.word_made, kerning=not self.word_made)
+            missing = [word.text[c] for gid, c, *_ in shaped if gid == 0]
+            if not missing:
+                break
+        else:
+            raise EditRejected(f"“{missing[0]}” can't be drawn: the PDF's font doesn't have it, and no other font here does either.")
         word.shaped = shaped
         word.choice = FontChoice(None, full, None, [g[0] for g in shaped])  # always embedded anew
         word.other_widths = not sub.same_widths
-        word.scale = 1.0 if sub.same_widths else self._size_match(font_name, full)
+        word.scale = 1.0 if sub.same_widths else self._size_match(font_name, full, word.script)
+        self._note_stand_in(font_name, sub, word.text)
+
+    def _note_stand_in(self, font_name: str, sub: "fontlib.Lookalike", drawn: str) -> None:
+        """Tell the user which letters a stand-in drew, to check them: one note per font."""
         shown = _base_name_from(font_name)
         key = (shown, sub.name)
-        if key not in self.lookalikes:
-            self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths}
-            if sub.same_widths:
-                self.warnings.append(
-                    f"{shown} isn't available here, so the changed words use {sub.name}, a look-alike with nearly the same letter widths. Check that it looks right."
-                )
-            else:
-                self.warnings.append(
-                    f"{shown} isn't available here, so the changed words use {sub.name}, a similar font. Its letters are a little different. Check that it looks right."
-                )
-        return True
+        entry = self.lookalikes.get(key)
+        if entry is None:
+            entry = self.lookalikes[key] = {"font": shown, "substitute": sub.name, "sameWidths": sub.same_widths, "letters": ""}
+            self.warnings.append("")
+            self._notes[key] = len(self.warnings) - 1
+        for ch in drawn:
+            if not ch.isspace() and ch not in entry["letters"]:
+                entry["letters"] += ch
+        letters = entry["letters"]
+        listed = "، ".join(letters) if any(_script(c) == "R" for c in letters) else ", ".join(letters)
+        how = "which looks almost the same" if sub.same_widths else "a similar font"
+        self.warnings[self._notes[key]] = (
+            f"Some new letters ({listed}) aren't in this PDF's {shown}, so they're drawn in {sub.name}, {how}. "
+            "Check that they look right."
+        )
 
-    def _size_match(self, font_name: str, full: "fontlib.FullFont") -> float:
+    def _size_match(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float:
         """How big the look-alike must be drawn to match the original's letters. Best:
         the line's own Arabic words in that font, as wide as the look-alike sets them
         (how people judge size along a line). Else (a stretched kashida line, too few
         letters): the height of the tall letters (alef, lam, kaf, ta) in the PDF's own
         copy of the font against the look-alike's, the middle of the ratios."""
-        by_width = self._width_ratio(font_name, full)
+        by_width = self._width_ratio(font_name, full, script)
         if by_width is not None:
             return min(1.4, max(0.6, by_width))
-        return self._height_ratio(font_name, full)
+        return self._height_ratio(font_name, full, script)
 
-    def _width_ratio(self, font_name: str, full: "fontlib.FullFont") -> float | None:
+    def _width_ratio(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float | None:
         """Measured on the line itself, else on the page's other lines in that font too
         (a heading of one word); never on lines stretched with kashida."""
         actual = shaped = 0.0
@@ -524,22 +557,22 @@ class Fonts:
                 break
             if line.kashida:
                 continue
-            a, s, c = self._widths_on(line, font_name, full)
+            a, s, c = self._widths_on(line, font_name, full, script)
             actual, shaped, chars = actual + a, shaped + s, chars + c
         if chars < 6 or shaped <= 0:
             return None
         return actual / shaped
 
-    def _widths_on(self, line: Line, font_name: str, full: "fontlib.FullFont") -> tuple[float, float, int]:
-        """The line's Arabic words in this font: their width on the page, and set in `full`."""
+    def _widths_on(self, line: Line, font_name: str, full: "fontlib.FullFont", script: str = "R") -> tuple[float, float, int]:
+        """The line's words in this font and script: their width on the page, and set in `full`."""
         actual = shaped = 0.0
         chars = 0
         for w in _old_words(line, self.rp):
-            if w.script != "R" or _style_of(line, w) != font_name or len(_looks(w, line, self.rp)[1]) > 1:
+            if (w.script == "R") != (script == "R") or w.script not in ("R", "L") or _style_of(line, w) != font_name or len(_looks(w, line, self.rp)[1]) > 1:
                 continue
             p = self.rp.glyphs[w.traces[0]].paint
             em = p.size * p.Tz * p.trm2[0] / 1000
-            glyphs = full.shape(w.text, True, latin_ligatures=not self.word_made, kerning=not self.word_made)
+            glyphs = full.shape(w.text, w.script == "R", latin_ligatures=not self.word_made, kerning=not self.word_made)
             if any(g[0] == 0 for g in glyphs):
                 continue
             actual += w.u1 - w.u0
@@ -547,17 +580,18 @@ class Fonts:
             chars += len(w.text)
         return actual, shaped, chars
 
-    def _height_ratio(self, font_name: str, full: "fontlib.FullFont") -> float:
-        tall = "الكطظ"
+    def _height_ratio(self, font_name: str, full: "fontlib.FullFont", script: str = "R") -> float:
+        tall = "الكطظ" if script == "R" else "HIdhklbf"
         ratios = []
         cmap = full.tt.getBestCmap() or {}
         for resource in self._resources_named(font_name, ""):
             info, emb = self.rp.fonts[resource], self._embedded(resource)
-            if not info.two_byte or emb.tt is None or "glyf" not in emb.tt:
+            if emb.tt is None or "glyf" not in emb.tt:
                 continue
             for code, label in info.to_unicode.items():
                 if label in tall and ord(label) in cmap:
-                    ours = _glyph_top(emb.tt, code)
+                    gid = code if info.two_byte else emb.gid_for(label)
+                    ours = _glyph_top(emb.tt, gid) if gid is not None else None
                     theirs = _glyph_top(full.tt, full.tt.getGlyphID(cmap[ord(label)]))
                     if ours and theirs:
                         ratios.append(ours / theirs)

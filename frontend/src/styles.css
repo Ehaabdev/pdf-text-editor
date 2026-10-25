@@ -3041,3 +3041,9 @@ html.theme-switching::view-transition-new(root) {
   line-height: 1.35;
   color: var(--muted);
 }
+
+/* The letters a stand-in font drew, spaced so each can be looked at. */
+.check-letters {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}

@@ -206,5 +206,85 @@
   "sha256": "691e0c891a38637ae6bbdb69700f8042cb0724a137bee615068ffdb92244f61f",
   "licence": "OFL-ibmplexsansarabic.txt",
   "source": "https://github.com/google/fonts/raw/main/ofl/ibmplexsansarabic/IBMPlexSansArabic-Bold.ttf"
+ },
+ {
+  "file": "EBGaramond-Bold.ttf",
+  "postscriptName": "EBGaramond-Bold",
+  "version": "Version 1.003",
+  "sha256": "a4335ea1bf7d244390d3a04fa9fce37d11d20d9fcaf6f8f3e4f25d437076cf72",
+  "licence": "OFL-ebgaramond.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/ebgaramond (variable font, made into fixed weights with fontTools varLib.instancer)"
+ },
+ {
+  "file": "EBGaramond-BoldItalic.ttf",
+  "postscriptName": "EBGaramond-BoldItalic",
+  "version": "Version 1.003",
+  "sha256": "af13469cce85a9d142362db0a32ac7dcee5b1e5d96b2e4446756e3bdbd9e63d0",
+  "licence": "OFL-ebgaramond.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/ebgaramond (variable font, made into fixed weights with fontTools varLib.instancer)"
+ },
+ {
+  "file": "EBGaramond-Italic.ttf",
+  "postscriptName": "EBGaramond-Italic",
+  "version": "Version 1.003",
+  "sha256": "1f3ddfb2e1a53729f8d28fcbcd503abc618129b4218de111ad9d8d54ecf3a700",
+  "licence": "OFL-ebgaramond.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/ebgaramond (variable font, made into fixed weights with fontTools varLib.instancer)"
+ },
+ {
+  "file": "EBGaramond-Regular.ttf",
+  "postscriptName": "EBGaramond-Regular",
+  "version": "Version 1.003",
+  "sha256": "4483e23b8f8bb15935b84d1fe9127dad872f3bd2d7465d5b523bd4417923a7ba",
+  "licence": "OFL-ebgaramond.txt",
+  "source": "https://github.com/google/fonts/tree/main/ofl/ebgaramond (variable font, made into fixed weights with fontTools varLib.instancer)"
+ },
+ {
+  "file": "Selawik-Bold.ttf",
+  "postscriptName": "Selawik-Bold",
+  "version": "Version 1.01",
+  "sha256": "f0db5e174a90e0956ad7d2844bdca1d5e6da92ec65b2c04e57ba9b180668c904",
+  "licence": "OFL-selawik.txt",
+  "source": "https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip"
+ },
+ {
+  "file": "Selawik-Light.ttf",
+  "postscriptName": "Selawik-Light",
+  "version": "Version 1.01",
+  "sha256": "8e19d073091a1e869b5b0d48b925e605c0a4c6ece7df7b22a364fb065314c4c5",
+  "licence": "OFL-selawik.txt",
+  "source": "https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip"
+ },
+ {
+  "file": "Selawik-Regular.ttf",
+  "postscriptName": "Selawik-Regular",
+  "version": "Version 1.01",
+  "sha256": "e9d98518d8ac2817782a9a382430463a2e0793ea68350b695bb727d9a830ee1c",
+  "licence": "OFL-selawik.txt",
+  "source": "https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip"
+ },
+ {
+  "file": "Selawik-Semibold.ttf",
+  "postscriptName": "Selawik-Semibold",
+  "version": "Version 1.01",
+  "sha256": "0a9e9d0549a10f24bef9b3a29e06fe6e0b5c21e7a784c503b048a307841a7783",
+  "licence": "OFL-selawik.txt",
+  "source": "https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip"
+ },
+ {
+  "file": "WineTahoma-Bold.ttf",
+  "postscriptName": "WineTahoma-Bold",
+  "version": "Version 0.001",
+  "sha256": "9d16801531053804eb011a0611345fc8e985c0775be19265ac00df438aff8a60",
+  "licence": "LGPL-winetahoma.txt",
+  "source": "https://deb.debian.org/debian/pool/main/w/wine/fonts-wine_10.0~repack-6_all.deb (Wine's tahoma.ttf, renamed Wine Tahoma)"
+ },
+ {
+  "file": "WineTahoma-Regular.ttf",
+  "postscriptName": "WineTahoma-Regular",
+  "version": "Version 0.001",
+  "sha256": "b85a20db2b25987c34ea8ef516fd98eb0cf6144b4b61c002277c3340b5f06c7a",
+  "licence": "LGPL-winetahoma.txt",
+  "source": "https://deb.debian.org/debian/pool/main/w/wine/fonts-wine_10.0~repack-6_all.deb (Wine's tahoma.ttf, renamed Wine Tahoma)"
  }
 ]
