@@ -3,6 +3,7 @@
 - "jpg", "png": a picture of every page (one file, or a zip of them).
 - "pptx-pictures": PowerPoint, every page a slide showing a picture of it: it looks the
   same, but its text can't be edited.
+- "pptx": PowerPoint, every page a slide with its text in text boxes you can edit (slides.py).
 - "xlsx": Excel, a sheet for every table (tables.py), numbers as numbers.
 
 Text in Word, PowerPoint and Excel files always comes from our own reading of the page
@@ -283,7 +284,7 @@ def _xlsx(doc: pymupdf.Document, name: str) -> Export:
 
 # All formats -----------------------------------------------------------------------------
 
-FORMATS = ("jpg", "png", "pptx-pictures", "xlsx")
+FORMATS = ("jpg", "png", "pptx-pictures", "pptx", "xlsx")
 
 
 def export(src: bytes, name: str, fmt: str) -> Export:
@@ -295,4 +296,8 @@ def export(src: bytes, name: str, fmt: str) -> Export:
         return _pictures(doc, name, fmt)
     if fmt == "xlsx":
         return _xlsx(doc, name)
+    if fmt == "pptx":
+        from .slides import deck
+
+        return deck(src, name)
     return _pptx_pictures(doc, name)

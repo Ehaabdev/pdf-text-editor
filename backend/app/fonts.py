@@ -193,6 +193,23 @@ def library() -> FontLibrary:
     return _library
 
 
+def family_name(pdf_font_name: str) -> str:
+    """The family name Word and PowerPoint know a PDF font by: "TimesNewRomanPS-BoldMT"
+    -> "Times New Roman". The installed font's own name when it's here; otherwise the
+    PDF's name, its style part dropped and its words spaced, as the website shows it."""
+    import re
+
+    entry = library().find(pdf_font_name)
+    if entry is not None and entry.family:
+        return entry.family
+    name = pdf_font_name.split("+")[-1]
+    name = re.split(r"[-,]", name)[0]
+    name = re.sub(r"(PSMT|PS|MT)$", "", name)
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", name)
+    return name.strip() or pdf_font_name
+
+
 # Full fonts -----------------------------------------------------------------------------
 
 

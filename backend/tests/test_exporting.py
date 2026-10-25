@@ -192,3 +192,70 @@ def test_a_pdf_without_tables_gives_its_text():
 )
 def test_cell_values(text, value, fmt):
     assert exporting._value(text) == (value, fmt)
+
+
+# PowerPoint with text to edit ------------------------------------------------------------
+
+from pptx.oxml.ns import qn  # noqa: E402
+
+from app.slides import pieces  # noqa: E402
+
+
+def _deck(name: str):
+    return Presentation(io.BytesIO(exporting.export((WORD / f"{name}.pdf").read_bytes(), "x.pdf", "pptx").data))
+
+
+def _boxes(slide):
+    return {s.text_frame.text: s for s in slide.shapes if s.has_text_frame}
+
+
+def _background(slide) -> Image.Image:
+    (picture,) = [s for s in slide.shapes if s.shape_type == 13]
+    return Image.open(io.BytesIO(picture.image.blob)).convert("L")
+
+
+def _ink(image: Image.Image, box, page_width: float) -> int:
+    """Dark pixels in a box (page points) of the slide's background picture."""
+    k = image.width / page_width
+    region = image.crop(tuple(round(v * k) for v in box))
+    return sum(1 for v in region.getdata() if v < 128)
+
+
+def test_every_line_is_a_text_box_over_the_page_without_its_text():
+    deck = _deck("english-styles-word")
+    page = pymupdf.open(WORD / "english-styles-word.pdf")[0]
+    lines = page_lines(page)
+    boxes = _boxes(deck.slides[0])
+    title = next(l for l in lines if l.text == "Quarterly Service Report")
+    shape = boxes["Quarterly Service Report"]
+    assert abs(shape.left / 12700 - title.bbox[0]) < 1 and abs(shape.top / 12700 - title.bbox[1]) < 1
+    run = shape.text_frame.paragraphs[0].runs[0]
+    assert run.font.name == "Georgia" and run.font.bold and str(run.font.color.rgb) == title.spans[0][1].color.upper()
+    # The background keeps the table's lines and shading, not its text.
+    image = _background(deck.slides[0])
+    assert _ink(image, title.bbox, page.rect.width) == 0
+
+
+def test_mixed_arabic_and_english_keep_their_order():
+    shape = _boxes(_deck("arabic-quotation-word").slides[0])["رقم العرض: Q-2026-0417"]
+    para = shape.text_frame.paragraphs[0]
+    assert para._p.pPr.get("rtl") == "1"
+    runs = [(r.text, r._r.rPr.get("lang")) for r in para.runs]
+    assert runs == [("رقم العرض: ", "ar-SA"), ("Q-2026-0417", "en-US")]
+    assert para.runs[0]._r.rPr.find(qn("a:cs")).get("typeface") == "Arial"  # Arabic letters' font
+
+
+def test_letters_the_pdf_stores_wrongly_stay_in_the_picture():
+    page = pymupdf.open(WORD / "arabic-quotation-word.pdf")[0]
+    uncertain = [l for l in page_lines(page) if l.uncertain]
+    assert uncertain
+    slide = _deck("arabic-quotation-word").slides[0]
+    assert not any(l.text in _boxes(slide) for l in uncertain)
+    assert all(_ink(_background(slide), l.bbox, page.rect.width) > 50 for l in uncertain)
+
+
+def test_raised_and_lowered_letters():
+    page = pymupdf.open(WORD / "english-styles-word.pdf")[0]
+    line = next(l for l in page_lines(page) if l.text.startswith("Carbon savings"))
+    rises = {text: rise for text, _, _, rise in pieces(line)}
+    assert rises["2"] < 0 < rises["rd"]  # CO2, 3rd

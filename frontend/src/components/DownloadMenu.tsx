@@ -6,6 +6,7 @@ type Item = { key: "pdf" | ExportFormat; name: string; note: string; badge: stri
 
 const ITEMS: Item[] = [
   { key: "pdf", name: "PDF", note: "Your edited file, as it is.", badge: "PDF", tone: "pdf" },
+  { key: "pptx", name: "PowerPoint", note: "Each page a slide, with text you can edit.", badge: "PPT", tone: "pptx" },
   { key: "pptx-pictures", name: "PowerPoint, as pictures", note: "Looks exactly the same. The text can't be edited.", badge: "PPT", tone: "pptx" },
   { key: "xlsx", name: "Excel", note: "The tables, with numbers you can add up.", badge: "XLS", tone: "xlsx" },
   { key: "jpg", name: "JPG pictures", note: "A picture of every page.", badge: "JPG", tone: "img" },
