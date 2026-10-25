@@ -29,10 +29,13 @@ def texts(pdf: bytes, page_no: int = 0):
 @pytest.mark.parametrize("source", SOURCES)
 def test_the_pictures_on_a_page(source):
     found = images.page_images(SOURCES[source], 0)
-    widths = sorted(i.width for i in found)
-    assert {480, 900, 600, 300}.issubset(widths)  # logo, photo, signature, stamp
-    signature = find(SOURCES[source], 0, 600)
+    # Logo, photo, icon, signature, stamp, told apart by their shape: Word saves pictures
+    # with fewer pixels.
+    shapes = [i.width / i.height for i in found]
+    assert len(shapes) == 5 and all(abs(a - b) < 0.1 for a, b in zip(shapes, [3, 1.5, 1, 3.33, 1]))
+    logo, signature = found[0], found[3]
     assert signature.pages == 2  # the same signature is on the second page too
+    assert logo.pages == (2 if source == "word" else 1)  # Word's is in the header
     assert all(not i.background for i in found)
 
 
