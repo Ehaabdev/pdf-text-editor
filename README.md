@@ -71,24 +71,36 @@ Known limits:
 2. a **look-alike font** that ships with the code (see below), and the user is asked to check the result;
 3. otherwise the edit is refused.
 
-### Look-alike fonts
+### When the font isn't on the server
 
-`backend/lookalikes/` holds free fonts (SIL Open Font License) that stand in for common fonts that can't be shipped. `MANIFEST.json` lists each file with its source, version, checksum and licence file.
+No edit is refused for want of a font. New letters are drawn, in this order:
+
+1. **In the installed font itself**, when the server has it.
+2. **With the PDF's own letters.** A PDF carries a copy of every letter it uses, in its own font. New English and French words take each letter the copy has from it, exactly as on the page, letter by letter. New Arabic words are drawn from the letter shapes the document's text already shows in that font: which glyph draws each letter alone, at the start, in the middle and at the end of a word (Unicode's joining rules decide which shape a letter takes; lam-alef and other letters drawn as one glyph, like "ريال", are learned too). On this PC, with the real fonts to compare, every Arabic word drawn this way is drawn with exactly the glyphs the font itself would use (`Fonts._from_forms`). This is skipped for words with vowel marks (where a mark sits needs the font's own rules) and for fonts that draw pairs of letters as one glyph depending on their neighbours (Traditional Arabic's stacked pairs).
+3. **With a stand-in**, for letters the PDF doesn't have: the font's look-alike (below), or else a free font of its kind (serif, sans-serif or fixed width, as the PDF describes the font; a Naskh or a plainer Arabic font), sized to match the line. Only these letters are named in the note, and the website shows a close before/after to check them: keep it, or undo it. Letters already checked on a line aren't asked about again.
+
+Only a character no font here has at all (a Chinese character, say) is refused, by name.
+
+`backend/lookalikes/` holds the stand-ins (free licences that allow shipping them). `MANIFEST.json` lists each file with its source, version, checksum and licence file.
 
 | Font in the PDF | Look-alike | Letter widths |
 |---|---|---|
 | Calibri | Carlito | nearly the same |
 | Cambria | Caladea | nearly the same |
+| Segoe UI | Selawik (Microsoft's own free match) | the same |
+| Tahoma | Wine Tahoma (Wine's, renamed so it's never taken for Tahoma) | the same (Latin) |
+| Garamond | EB Garamond | different |
 | Arial, Helvetica | Liberation Sans | nearly the same |
 | Times New Roman, Times | Liberation Serif | nearly the same |
 | Courier New, Courier | Liberation Mono | nearly the same |
 | Traditional Arabic, Sakkal Majalla, Arabic Typesetting | Amiri | different |
 | Simplified Arabic; the Arabic letters of Arial and Times New Roman | Markazi Text | different |
-| Tahoma, Segoe UI (Arabic letters) | IBM Plex Sans Arabic | different |
+| The Arabic letters of Tahoma, Segoe UI and Calibri | IBM Plex Sans Arabic | different |
+| Any other font | Liberation Serif, Sans or Mono; Amiri, IBM Plex Sans Arabic or Markazi Text | different |
 
-The Arabic look-alikes were chosen by eye, side by side with the real fonts. They must draw each letter as one glyph: fonts that split a letter into a base and separate dots (Noto Naskh Arabic, for one) can't be given correct copy and search labels. Each is drawn at the size that matches the original: the page's own Arabic words in that font, against the same words set in the look-alike (for a line stretched with kashida, the height of the tall letters in the PDF's own copy of the font). Vowelled text drawn in a look-alike can be refused, when a mark would read back on the wrong letter. A bold or italic original gets the look-alike's bold or italic; where the look-alike has none, or for fonts with no free look-alike (Aptos, Georgia, Verdana, the Latin letters of Tahoma), the edit is refused.
+The Arabic look-alikes were chosen by eye, side by side with the real fonts. They must draw each letter as one glyph: fonts that split a letter into a base and separate dots (Noto Naskh Arabic, for one) can't be given correct copy and search labels. A stand-in whose widths differ is drawn at the size that matches: the page's own words in that font, against the same words set in the stand-in (else the height of the tall letters in the PDF's own copy of the font). Vowelled text drawn in a stand-in can be refused, when a mark would read back on the wrong letter.
 
-After a change that used a look-alike, the website shows a close before/after of the spot and asks whether it looks right: keep it, or undo it.
+Fonts like Calibri, Segoe UI or Traditional Arabic can't be copied onto a server: their licences allow them only on the computer they came with.
 
 ### Underlines, strikethroughs and highlights
 

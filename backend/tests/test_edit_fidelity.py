@@ -193,17 +193,24 @@ def test_a_letter_the_subset_lacks_comes_from_the_look_alike(fixture_pdf, monkey
     monkeypatch.setattr(library(), "find", lambda name: None)
     line = next(l for l in page_lines(pymupdf.open("pdf", fixture_pdf)[0]) if "Date:" in l.text)
     result = replace_line(fixture_pdf, 0, line.id, line.text, line.text.replace("09/2/2026", "10/2/2026"))
-    assert result.lookalikes == [{"font": "Arial", "substitute": "Liberation Sans", "sameWidths": True}]
+    assert result.lookalikes == [{"font": "Arial", "substitute": "Liberation Sans", "sameWidths": True, "letters": "1"}]
 
 
-def test_refuses_characters_nothing_can_draw(fixture_pdf, monkeypatch):
-    # Without Arial and without a look-alike for it.
+def test_a_font_without_a_look_alike_gets_one_of_its_kind(fixture_pdf, monkeypatch):
+    # Without Arial and without a look-alike for it: a sans-serif stands in, sized to match.
     from app import fonts as fontlib
 
     monkeypatch.setattr(library(), "find", lambda name: None)
     monkeypatch.setattr(fontlib, "lookalike", lambda name, arabic: None)
-    with pytest.raises(EditRejected, match="doesn't contain all the letters"):
-        real_replace(fixture_pdf, 0, "Date:", "09/2/2026", "10/2/2026")
+    line = next(l for l in page_lines(pymupdf.open("pdf", fixture_pdf)[0]) if "Date:" in l.text)
+    result = replace_line(fixture_pdf, 0, line.id, line.text, line.text.replace("09/2/2026", "10/2/2026"))
+    assert [(l["substitute"], l["sameWidths"], l["letters"]) for l in result.lookalikes] == [("Liberation Sans", False, "1")]
+
+
+def test_refuses_only_characters_no_font_can_draw(fixture_pdf, monkeypatch):
+    monkeypatch.setattr(library(), "find", lambda name: None)
+    with pytest.raises(EditRejected, match="“漢” can't be drawn"):
+        real_replace(fixture_pdf, 0, "Date:", "09/2/2026", "09/2/漢")
 
 
 def test_digits_already_in_the_subset_work_without_the_installed_font(fixture_pdf, monkeypatch):

@@ -265,7 +265,7 @@ def add_line(
             new_marker = [clone]
             expected = item.marker_text + text[len(typed):]
     # Letters the PDF's own copy of the font has are drawn with it; others by a stand-in.
-    fonts = Fonts(pdf, page_no, rp, word_made, ref, all_lines)
+    fonts = Fonts(pdf, page_no, rp, word_made, ref, all_lines, mu)
     cut = []
     for w in words:
         if getattr(w, "clone", None):

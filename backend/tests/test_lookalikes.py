@@ -317,3 +317,49 @@ def test_added_text_takes_the_pdfs_own_letters_too(hide):
     result = add_line(src, page_no, "Figures are rounded to one decimal unit.", line.id, line.text)
     assert result.lookalikes == []
     find(result.pdf, "Figures are rounded to one decimal unit.")
+
+
+# Arabic from the letter shapes the page shows ---------------------------------------------------
+
+from app.arabic_joining import forms as arabic_forms  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "word, shapes",
+    [
+        ("مرحبا", ["init", "fina", "init", "medi", "fina"]),
+        ("الطلبات", ["isol", "init", "medi", "medi", "medi", "fina", "isol"]),
+        ("شَرِكة", ["init", "", "fina", "", "init", "fina"]),  # marks are transparent
+        ("ء", ["isol"]),
+    ],
+)
+def test_arabic_letter_shapes(word, shapes):
+    assert arabic_forms(word) == shapes
+
+
+@needs_fonts
+def test_arabic_words_from_the_shapes_on_the_page(hide):
+    """With Arial missing, a new Arabic word whose letter shapes the page already shows
+    is drawn with the PDF's own Arial glyphs: the same as with Arial installed."""
+    src = (FIXTURES / "word" / "arabic-quotation-word.pdf").read_bytes()
+    page_no, line = find(src, "يسعدنا في شركة")
+    new = line.text.replace("شركة", "الشركة", 1)
+    real = replace_line(src, page_no, line.id, line.text, new)
+    hide("arial*")
+    result = replace_line(src, page_no, line.id, line.text, new)
+    assert result.lookalikes == []
+    assert _fonts_on(result.pdf, page_no) == _fonts_on(src, page_no)  # no other font put in
+    _, a = find(real.pdf, "الشركة")
+    _, b = find(result.pdf, "الشركة")
+    assert comparable(b.text) == comparable(a.text)
+    assert abs(b.bbox[0] - a.bbox[0]) < 1 and abs(b.bbox[2] - a.bbox[2]) < 1
+
+
+@needs_fonts
+def test_an_arabic_shape_the_page_never_shows_comes_from_a_look_alike(hide):
+    src = (FIXTURES / "word" / "arabic-quotation-word.pdf").read_bytes()
+    page_no, line = find(src, "يسعدنا في شركة")
+    hide("arial*")
+    result = replace_line(src, page_no, line.id, line.text, line.text.replace("شركة", "ظفر", 1))
+    (used,) = result.lookalikes
+    assert used["substitute"] == "Markazi Text" and "ظ" in used["letters"]

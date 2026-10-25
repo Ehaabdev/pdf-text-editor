@@ -31,6 +31,7 @@ import pypdfium2 as pdfium
 from . import bidi
 from . import decorations
 from . import fonts as fontlib
+from .arabic_joining import forms as arabic_forms
 from .changes import (
     EditRejected,
     LinkChange,
@@ -149,6 +150,7 @@ class Word:
 
 
 _BRACKET = set("()[]{}<>«»‹›")
+_ALEFS = set("اأإآ")  # lam before these makes one glyph, lam-alef
 
 
 def _edge(ch: str) -> bool:
@@ -294,6 +296,21 @@ def _looks(word: Word, line: Line, rp: Replay) -> tuple[list[int], list[int]]:
     return looks, kinds
 
 
+def _label_text(label: str) -> str:
+    """A glyph's label as the page's text reads it: presentation forms as plain letters,
+    the Rial sign as the letters it's made of (its standard form spells it in Persian)."""
+    if len(label) == 1 and ord(label) == 0xFDFC:
+        return "ريال"
+    return unicodedata.normalize("NFKC", label)
+
+
+def _shape_of(first: str, last: str) -> str:
+    """The shape of letters drawn as one glyph, from its first and last letter's shapes."""
+    before = first in ("medi", "fina")
+    after = last in ("init", "medi")
+    return "medi" if before and after else "fina" if before else "init" if after else "isol"
+
+
 def family_matches(pdf_font_name: str, ps_name: str) -> bool:
     """Is this PDF font (maybe a subset: "ABCDEF+Carlito-Italic") that font file?"""
     return pdf_font_name.split("+")[-1].lower() == ps_name.lower()
@@ -403,8 +420,9 @@ def _base_name_from(font_name: str) -> str:
 
 
 class Fonts:
-    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line, lines: list[Line] | None = None):
+    def __init__(self, pdf: pikepdf.Pdf, page_index: int, rp: Replay, word_made: bool, line: Line, lines: list[Line] | None = None, doc: pymupdf.Document | None = None):
         self.pdf, self.page_index, self.rp, self.word_made, self.line = pdf, page_index, rp, word_made, line
+        self.doc = doc  # the whole file, to learn Arabic letter shapes from its other pages
         self.lines = lines or [line]  # the page's lines, to measure a font's size on
         self.embedded: dict[str, fontlib.EmbeddedFont] = {}
         self.warnings: list[str] = []
@@ -412,6 +430,7 @@ class Fonts:
         # Fonts that weren't available and what stood in for them, for the user to check.
         self.lookalikes: dict[tuple[str, str], dict] = {}
         self._notes: dict[tuple[str, str], int] = {}  # which warning tells about each
+        self._forms: dict[tuple, dict] = {}  # Arabic letter shapes learned, per font (and how widely)
 
     def _check_same_font(self, font_name: str, full: "fontlib.FullFont") -> None:
         """Warn when the installed font draws the line's existing glyphs differently
@@ -471,6 +490,8 @@ class Fonts:
             # of PDFs: as if it weren't installed.
 
         if not needs_shaping and self._from_copy(word, candidates):
+            return
+        if word.script == "R" and self._from_forms(word, font_name):
             return
         self._shape_stand_in(word, font_name)
 
@@ -546,6 +567,122 @@ class Fonts:
                 pieces.append(piece)
                 start = i
         return pieces
+
+    def _learned_forms(self, font_name: str, wide: bool = False) -> dict[str, dict[tuple[str, str], int]]:
+        """The Arabic letter shapes this page's own text shows for a font (with `wide`,
+        the document's other pages too: the nearest twenty that use the same font): for
+        each of its font resources here, (letters, shape) -> the code that draws it. A
+        letter's shape (alone, start, middle, end) follows from its neighbours in the
+        text. Only letters drawn visibly, whose label in the PDF is right, are learned;
+        a font that draws one letter in one shape with more than one glyph, or a pair of
+        letters as one glyph with a wrong label (stacked variants), is left out: its new
+        words can't be drawn from what the pages show."""
+        key = (font_name, wide)
+        if key in self._forms:
+            return self._forms[key]
+        table: dict[str, dict[tuple[str, str], set[int]]] = {}
+        spoiled: set[str] = set()
+        here = {self.rp.fonts[r].obj.objgen: r for r in self.rp.fonts if self.rp.fonts[r] is not None}
+        self._learn(self.lines, self.rp, font_name, table, spoiled, lambda r: r)
+        if wide and self.doc is not None:
+            near = sorted((k for k in range(self.doc.page_count) if k != self.page_index), key=lambda k: abs(k - self.page_index))
+            for k in near[:20]:
+                try:
+                    rp = replay(self.pdf, k)
+                except Unsupported:
+                    continue
+                # Their fonts by object: the same font object as one used here draws the same.
+                mine = {r: here.get(rp.fonts[r].obj.objgen) for r in rp.fonts if rp.fonts[r] is not None}
+                self._learn(page_lines(self.doc[k]), rp, font_name, table, spoiled, lambda r: mine.get(r))
+        learned = {}
+        for resource, forms in table.items():
+            if resource in spoiled or any(len(codes) > 1 for codes in forms.values()):
+                continue
+            learned[resource] = {key: next(iter(codes)) for key, codes in forms.items()}
+        self._forms[key] = learned
+        return learned
+
+    def _learn(self, lines: list[Line], rp: Replay, font_name: str, table: dict, spoiled: set, resource_here) -> None:
+        for line in lines:
+            order = list(line.order)
+            text = "".join(line.glyph_text(i) for i in order)
+            shapes = arabic_forms(text)
+            pos = 0
+            for i in order:
+                piece = line.glyph_text(i)
+                start, pos = pos, pos + len(piece)
+                g = line.glyphs[i]
+                if g.style.font != font_name or not g.traces or g.synthetic or g.suspect:
+                    continue
+                letters = "".join(c for c in piece if not unicodedata.combining(c))
+                if not letters or _script(letters) != "R":
+                    continue
+                drawn = rp.glyphs[g.traces[0]]
+                if drawn.paint.Tr in (3, 7):
+                    continue
+                info = rp.fonts.get(drawn.paint.font)
+                resource = resource_here(drawn.paint.font)
+                if info is None or resource is None:
+                    continue
+                label = _label_text(info.to_unicode.get(drawn.code, ""))
+                if label != unicodedata.normalize("NFKC", letters):
+                    if len(letters) > 1:
+                        spoiled.add(resource)  # pairs of letters with wrong labels: stacked variants
+                    continue
+                first = start + piece.index(letters[0])
+                last = start + piece.rindex(letters[-1])
+                if len(letters) == 1:
+                    shape = shapes[first]
+                else:
+                    # Letters drawn as one glyph (lam-alef, "ريال"): its shape from how its
+                    # first letter joins the one before and its last the one after.
+                    shape = _shape_of(shapes[first], shapes[last])
+                table.setdefault(resource, {}).setdefault((letters, shape), set()).add(drawn.code)
+
+    def _from_forms(self, word: Word, font_name: str) -> bool:
+        """An Arabic word drawn with the letter shapes the page already shows in its
+        font: exactly as the font itself would draw it, with no font file. Words with
+        vowel marks aren't: where a mark sits needs the font's positioning rules."""
+        text = word.text
+        if any(unicodedata.combining(c) for c in text) or "ـ" in text:
+            return False
+        shapes = arabic_forms(text)
+        if self._draw_from_forms(word, text, shapes, self._learned_forms(font_name)):
+            return True
+        # Shapes this page doesn't show may be on the document's other pages.
+        return self.doc is not None and self.doc.page_count > 1 and self._draw_from_forms(word, text, shapes, self._learned_forms(font_name, wide=True))
+
+    def _draw_from_forms(self, word: Word, text: str, shapes: list[str], learned: dict) -> bool:
+        for resource, forms in learned.items():
+            # Letters the font draws as one glyph wherever they come: lam-alef always,
+            # others ("ريال") when the page shows them so. Longest first.
+            joined = sorted({k[0] for k in forms if len(k[0]) > 1}, key=len, reverse=True)
+            keys, clusters = [], []
+            i = 0
+            while i < len(text):
+                seq = next((j for j in joined if text.startswith(j, i)), None)
+                if seq is None and text[i] == "ل" and i + 1 < len(text) and text[i + 1] in _ALEFS:
+                    seq = text[i : i + 2]  # lam-alef must be one glyph, learned or not
+                if seq is not None:
+                    keys.append((seq, _shape_of(shapes[i], shapes[i + len(seq) - 1])))
+                    clusters.append(i)
+                    i += len(seq)
+                    continue
+                keys.append((text[i], shapes[i]))
+                clusters.append(i)
+                i += 1
+            codes = [forms.get(k) for k in keys]
+            if any(c is None for c in codes):
+                continue
+            info = self.rp.fonts[resource]
+            if any(c not in info.widths for c in codes):
+                continue
+            # Right to left: the last letter is drawn first, on the left.
+            order = list(range(len(codes)))[::-1]
+            word.shaped = [(codes[k], clusters[k], info.width(codes[k]), 0.0, 0.0) for k in order]
+            word.choice = FontChoice(resource, None, info, [codes[k] for k in order])
+            return True
+        return False
 
     def _kind(self, font_name: str) -> tuple[bool | None, bool | None]:
         """(serif, fixed width) as the PDF describes its font; None where it doesn't."""
@@ -1018,7 +1155,7 @@ def replace_line(src: bytes, page_no: int, line_id: str, old_text: str, new_text
     main = rp.glyphs[old_visual[0].traces[0]]
     space = _space_width(rp, line)
 
-    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines)
+    fonts = Fonts(pdf, page_no, rp, word_made, line, all_lines, mu)
 
     # Words: unchanged ones are reused, the rest are new.
     new_pairs = _split_words(new_text)
