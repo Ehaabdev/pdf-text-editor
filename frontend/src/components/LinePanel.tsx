@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, addLine, editLine, type DocInfo, type EditOutcome, type TextLine, type TextSpan } from "../api";
+import { ApiError, addLine, addRow, deleteRow, editLine, getTables, type DocInfo, type EditOutcome, type PageTable, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 import { CLOSE, Icon } from "./Icon";
 import Loupe from "./Loupe";
@@ -14,7 +14,7 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
-export type Change = "changed" | "deleted" | "added";
+export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted";
 
 type Props = {
   doc: DocInfo;
@@ -29,7 +29,7 @@ type Props = {
   onWorking?: (working: boolean) => void;
 };
 
-type Mode = "view" | "edit" | "add";
+type Mode = "view" | "edit" | "add" | "row";
 
 export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onWorking }: Props) {
   const [mode, setMode] = useState<Mode>("view");
@@ -47,11 +47,65 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
+  // A line in a table with borders: its row can be added to or deleted.
+  const [table, setTable] = useState<{ table: PageTable; row: number } | null>(null);
+  const [cells, setCells] = useState<string[]>([]);
+  const [rowBusy, setRowBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setTable(null);
+    getTables(doc, page)
+      .then((tables) => {
+        for (const t of tables) {
+          const row = t.rows.findIndex((r) => r.some((c) => c.lines.includes(line.id)));
+          if (row >= 0 && alive) return setTable({ table: t, row });
+        }
+      })
+      .catch(() => {
+        // Without the table, its row can't be changed: the rest of the panel works.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [doc, page, line.id]);
+  const rowCells = table ? table.table.rows[table.row] : [];
+  const merged = rowCells.some((c) => c.merged);
+  useEffect(() => {
+    onWorking?.(rowBusy);
+  }, [rowBusy, onWorking]);
+
+  async function saveRow() {
+    if (rowBusy || !table) return;
+    setRowBusy(true);
+    setError(null);
+    try {
+      onEdited(await addRow(doc, page, line, where, cells), "row added");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
+  async function removeRow() {
+    if (rowBusy || !table) return;
+    setRowBusy(true);
+    setError(null);
+    try {
+      onEdited(await deleteRow(doc, page, line), "row deleted");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
   function show(next: Mode, side: "below" | "above" = "below") {
     setMode(next);
     setWhere(side);
     setAsItem(true);
     setDraft(next === "add" ? "" : line.display);
+    setCells(rowCells.map(() => ""));
     setError(null);
   }
 
@@ -95,6 +149,68 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
 
   const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
   const addTitle = where === "below" ? "Add line below" : "Add line above";
+  const rowTitle = where === "below" ? "Add row below" : "Add row above";
+
+  if (mode === "row" && table) {
+    return (
+      <section className="panel" aria-label={rowTitle}>
+        <div className="panel-head">
+          <h2 className="panel-title">{rowTitle}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
+            <Icon d={CLOSE} />
+          </button>
+        </div>
+        <p className="panel-lede">
+          Type each cell’s text, or leave a cell empty. The new row looks like this one, and the rows below move down to
+          make room.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveRow();
+          }}
+        >
+          <div className="row-cells" dir={table.table.rtl ? "rtl" : "ltr"}>
+            {rowCells.map((c, k) => (
+              <label key={k} className="row-cell">
+                <span className="row-cell-label">Column {k + 1}</span>
+                <input
+                  className="line-edit"
+                  dir="auto"
+                  value={cells[k] ?? ""}
+                  placeholder={c.text.length > 24 ? `${c.text.slice(0, 24)}…` : c.text}
+                  disabled={rowBusy}
+                  autoFocus={k === 0}
+                  onChange={(e) => setCells((now) => now.map((v, i) => (i === k ? e.target.value.replace(/[\r\n]+/g, " ") : v)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      show("view");
+                    }
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="edit-note">Each cell’s text stays on one line, in the style of its column. Totals aren’t recalculated.</p>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="edit-actions">
+            <button className="btn btn-primary" type="submit" disabled={rowBusy}>
+              {rowBusy && <span className="spinner" aria-hidden="true" />}
+              {rowBusy ? "Checking the change…" : "Add row"}
+            </button>
+            <button className="btn btn-secondary" type="button" disabled={rowBusy} onClick={() => show("view")}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </section>
+    );
+  }
   // The marker the new line gets as the list's next item, when the line is in a list.
   const marker = line.item?.[where] ?? null;
   const bullet = marker !== null && marker.length === 1 && !/[\p{L}\p{N}]/u.test(marker);
@@ -239,6 +355,33 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               Select more lines
             </button>
           </div>
+
+          {table && (
+            <div className="panel-section row-section">
+              <h3 className="panel-subtitle">Table row</h3>
+              {merged ? (
+                <p className="panel-note">This row has a cell merged with the row next to it: rows can’t be added or deleted here yet.</p>
+              ) : (
+                <div className="edit-actions">
+                  <button className="btn btn-secondary" onClick={() => show("row", "below")} disabled={deleting || rowBusy}>
+                    Add row below
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => show("row", "above")} disabled={deleting || rowBusy}>
+                    Add row above
+                  </button>
+                  <button className="btn btn-delete" onClick={() => void removeRow()} disabled={deleting || rowBusy}>
+                    {rowBusy && <span className="spinner" aria-hidden="true" />}
+                    {rowBusy ? "Deleting…" : "Delete row"}
+                  </button>
+                </div>
+              )}
+              {error && mode === "view" && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>

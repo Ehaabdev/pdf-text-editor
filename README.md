@@ -224,6 +224,18 @@ Before a change is accepted:
 - nothing outside the picture's old and new places changes by a single pixel (MuPDF and PDFium);
 - no other page changes, except the pages a picture was replaced on.
 
+## Table rows
+
+Click a line in a table with borders: the panel adds a row below or above its row, or deletes the row (`backend/app/rows.py`).
+
+- **A new row** looks like the row it's added next to, as Word's Insert Below and Above do. First everything below the spot, across the page, moves down one row's height (`moving.py`), the table's lower rows with it. Then the row's own borders and shading are drawn again in the room: its side borders, Word's little corner pieces under its top line, its shading however many strips it's drawn in, and the line along its bottom edge; not its top line (the row above's), nor the underlines and highlights of its text. A path that draws other rows too gives only its pieces in this row. Then each cell's text goes in, typed in a box per cell (in the table's direction: an Arabic table's first cell on the right), in the style of that cell's text (or the nearest cell with text in its column), against the same side of the cell with the same margin, or centered, as it is there.
+- **Deleting a row** takes its text away (as deleting lines does: links and underlines with it), then its pictures, borders and shading but its top line, then everything below moves up.
+- It's refused, with the reason, where it can't be done exactly: no room left at the bottom of the page (nothing goes onto the next page), a cell's text too long for its cell (cells don't wrap), a row with a cell merged with the next row, a table without borders, lines drawn through all the rows, or a table's only row.
+- Each step is checked as other changes are: what moves is exactly where it was, one row lower or higher; the copied borders and shading, drawn alone, look exactly like the row's own, pixel for pixel; nothing outside the row's place changes. The steps make one change: one Undo takes it all back.
+- Totals aren't recalculated: a "Total" row stays as it was, and can be edited like any line.
+
+On every bordered table of the test documents, adding a row below and above each row and deleting each row: 28 of 34, 27 of 34 and 32 of 34 are done; the others are refused, for a full page (6), a table's only row, and a line with an icon just above a table, which reads differently once the table moves.
+
 ## Download as…
 
 The Download button gives the edited PDF, or the same pages as another kind of file (`backend/app/exporting.py`, `GET /api/documents/{id}/export?format=…`):

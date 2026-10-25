@@ -270,6 +270,38 @@ export function addLine(doc: DocInfo, page: number, line: TextLine, text: string
   });
 }
 
+/** A table on a page (with borders): each row's cells in the table's order (an Arabic
+ *  table's first cell is on the right), with their text and the ids of their lines. */
+export type TableCell = { bbox: [number, number, number, number]; text: string; lines: string[]; merged: boolean };
+export type PageTable = { bbox: [number, number, number, number]; rtl: boolean; rows: TableCell[][] };
+
+const tablesCache = new Map<string, Promise<PageTable[]>>();
+
+export function getTables(doc: DocInfo, pageNo: number): Promise<PageTable[]> {
+  const key = `${doc.id}:${doc.revision}:${pageNo}`;
+  let p = tablesCache.get(key);
+  if (!p) {
+    p = fetch(`/api/documents/${doc.id}/pages/${pageNo}/tables?r=${doc.revision}`).then(async (res) => {
+      if (!res.ok) throw await errorFrom(res);
+      return (await res.json()).tables;
+    });
+    p.catch(() => tablesCache.delete(key));
+    tablesCache.set(key, p);
+  }
+  return p;
+}
+
+/** A new row below or above the row a line is in, looking like it; `cells`: its text, in
+ *  the table's order. */
+export function addRow(doc: DocInfo, page: number, line: TextLine, where: "below" | "above", cells: string[]): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/rows/add`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, where, cells });
+}
+
+/** The row a line is in, taken out of its table; the rows below move up. */
+export function deleteRow(doc: DocInfo, page: number, line: TextLine): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/rows/delete`, { revision: doc.revision, page, lineId: line.id, oldText: line.text });
+}
+
 /** What adding text at a clicked spot would do, worked out by the server before anything
  *  is written: a new list item or a new line next to a line (the text below moving down),
  *  text joining a line on its row, or text where clicked. */

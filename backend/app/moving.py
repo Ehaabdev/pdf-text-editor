@@ -261,17 +261,21 @@ def bottom_limit(doc: pymupdf.Document, page_no: int, lines: list[Line], crop: B
     return limit, footers
 
 
-def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float) -> Shift | None:
+def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> Shift | None:
     """What moves, and whether it can: everything in the anchor's column below `cut` (PDF
-    y), down by dy (up when negative). None when nothing is below."""
+    y), down by dy (up when negative). None when nothing is below. `column` (PDF x) says
+    which column instead: a whole table's width, for a new or deleted row."""
     page = doc[page_no]
     if rp.shadings:
         raise MoveRefused("the page has a color gradient, which can't be moved yet")
     crop = _crop(pdf, page_no)
-    cx0, cx1, cell = column_of(anchor, rp, crop)
+    if column is not None:
+        cx0, cx1, cell = column[0], column[1], False
+    else:
+        cx0, cx1, cell = column_of(anchor, rp, crop)
     rules = decorations._vertical_rules(rp)
     rects = {l.id: _pdf(page, l.bbox) for l in lines}
-    if not cell:
+    if not cell and column is None:
         others = [r for r in rects.values() if not (r[0] >= anchor[0] - 0.5 and r[2] <= anchor[2] + 0.5 and r[1] >= anchor[1] - 0.5 and r[3] <= anchor[3] + 0.5)]
         if _beside(anchor, others, size, rules):
             raise MoveRefused("this text sits in a column beside other text")
@@ -418,6 +422,8 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
                     continue
                 if f.box[2] <= cx0 + 0.5 or f.box[0] >= cx1 - 0.5:
                     continue
+                if p.kind == "path" and f.kind == "path" and min(p.box[2] - p.box[0], p.box[3] - p.box[1], f.box[2] - f.box[0], f.box[3] - f.box[1]) <= 3:
+                    continue  # borders meeting borders: a table's rows closing up
                 if min(moved[2], f.box[2]) - max(moved[0], f.box[0]) > 0.01 and min(moved[3], f.box[3]) - max(moved[1], f.box[1]) > 0.01:
                     raise MoveRefused("the text below would overlap the text above")
 
@@ -624,7 +630,7 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
     return outside(a, b, [], 1.0, slack) > 0
 
 
-def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float) -> tuple[bytes, list, int, Shift] | None:
+def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> tuple[bytes, list, int, Shift] | None:
     """Move everything in the anchor's column below `cut` (PDF y) down by dy (up when
     negative). Returns (the new file, the areas that changed, how many lines moved, the
     shift), or None when there's nothing below. Raises MoveRefused."""
@@ -638,7 +644,7 @@ def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, 
     if not matches_trace(rp, page) or rp.stray_restore or rp.open_text:
         raise MoveRefused("the page is built in a way that can't be moved safely yet")
     lines = page_lines(page)
-    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy)
+    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column)
     if shift is None:
         return None
     apply(pdf, page_no, rp, shift)

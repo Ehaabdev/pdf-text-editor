@@ -148,11 +148,15 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     offerCheck(outcome);
     const moved = (outcome.moved ?? 0) > 0;
     report(
-      change === "deleted"
-        ? moved ? "Line deleted. The text below moved up." : "Line deleted."
-        : change === "added"
-          ? moved ? "Line added. The text below moved down to make room." : "Line added."
-          : "Line changed.",
+      change === "row added"
+        ? "Row added. What was below it moved down to make room."
+        : change === "row deleted"
+          ? "Row deleted. What was below it moved up."
+          : change === "deleted"
+            ? moved ? "Line deleted. The text below moved up." : "Line deleted."
+            : change === "added"
+              ? moved ? "Line added. The text below moved down to make room." : "Line added."
+              : "Line changed.",
       outcome,
     );
   }

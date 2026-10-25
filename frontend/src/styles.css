@@ -3047,3 +3047,32 @@ html.theme-switching::view-transition-new(root) {
   font-weight: 600;
   letter-spacing: 0.06em;
 }
+
+/* A table row: its actions under the line's, and a box for each cell of a new row, in the
+   table's direction (an Arabic table's first cell on the right). */
+.row-section {
+  margin-top: 4px;
+}
+
+.row-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.row-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.row-cell-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.row-cell .line-edit {
+  min-height: 40px;
+  padding: 8px 10px;
+}

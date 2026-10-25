@@ -7,13 +7,14 @@ from functools import lru_cache
 from pathlib import Path, PurePath
 from urllib.parse import quote
 
+import pymupdf
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, exporting, images, limits
+from . import config, exporting, images, limits, rows
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -256,6 +257,15 @@ class AdditionRequest(BaseModel):
     item: bool = False
 
 
+class RowRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)  # a line in the row
+    oldText: str = Field(max_length=5000)
+    where: str = Field(default="below", pattern="^(below|above)$")
+    cells: list[str] = Field(default_factory=list, max_length=40)  # the new row's text, in the table's order
+
+
 class RevisionRequest(BaseModel):
     revision: int
 
@@ -360,6 +370,68 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("add", f"Added “{_short(result.text)}”", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+# Table rows -------------------------------------------------------------------------------
+
+
+@app.get("/api/documents/{doc_id}/pages/{page_no}/tables")
+def page_tables(doc_id: str, page_no: int):
+    """The page's tables with borders: each row's cells, their text and their lines."""
+    meta = _get_meta(doc_id)
+    path = store.current_path(meta)
+    try:
+        found = _tables(str(path), path.stat().st_mtime_ns, page_no)
+    except IndexError:
+        raise HTTPException(404, "That page doesn't exist.")
+    return JSONResponse({"tables": found}, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@lru_cache(maxsize=64)
+def _tables(path: str, mtime_ns: int, page_no: int) -> list[dict]:
+    lines = list(lines_for(Path(path), page_no)[2])
+    with pymupdf.open(path) as doc:
+        return rows.table_json(doc[page_no], lines)
+
+
+@app.post("/api/documents/{doc_id}/rows/add")
+async def add_table_row(doc_id: str, body: RowRequest):
+    """A new row below or above the row a line is in, looking like it, with its cells' text."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    if any(len(c) > 500 or any(b in c for b in ("\n", "\r", "\u2028", "\u2029")) for c in body.cells):
+        raise HTTPException(422, "A cell's text goes on one line.")
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(rows.add_row, src, body.page, body.lineId, body.oldText, body.where, body.cells)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("add", "Added a table row", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/rows/delete")
+async def delete_table_row(doc_id: str, body: RowRequest):
+    """The row a line is in taken out of its table; what's below moves up."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(rows.delete_row, src, body.page, body.lineId, body.oldText)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("delete", "Deleted a table row", result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
