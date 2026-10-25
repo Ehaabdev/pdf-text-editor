@@ -198,13 +198,17 @@ def add_line(
     where: str = "below",
     at: tuple[float, float] | None = None,
     make_room: bool = True,
+    align: str | None = None,
 ) -> EditResult:
     """Add `text` as a new line below (or above) the line `ref_id`, in its style. The text
     below it (from the line itself, adding above) first moves down one line spacing to
     make room, as in a word processor (moving.py), when that can be done exactly. With
     `at`, a point on the page as displayed (in points), the text goes there instead: it
     starts at the point (English runs right from it, Arabic left) with its middle at the
-    point's height, lined up with text already on that row or edge if it's close."""
+    point's height, lined up with text already on that row or edge if it's close. With
+    `align` ("left", "right" or "center"), exactly there instead, nothing lined up: the
+    text's left or right end at the point, or its middle (a table cell's text, as the
+    cell's other text sits, whichever way the new text runs)."""
     text = re.sub(r"\s+", " ", clean_text(text)).strip()
     if not text:
         raise EditRejected("Type the text to add.")
@@ -314,7 +318,7 @@ def add_line(
         joined.append(is_joined)
 
     if at is not None:
-        return _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joined, base, rtl, expected, fonts)
+        return _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joined, base, rtl, expected, fonts, align)
 
     # Where it goes: one line spacing from the reference, aligned as its paragraph is.
     spacing = _line_spacing(ref, all_lines, rp, style, paint, word_made)
@@ -419,14 +423,16 @@ def _crowded(baseline: float, box: pymupdf.Rect, ref: Line, lines: list[Line], r
     return False
 
 
-def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joined, base, rtl, expected, fonts) -> EditResult:
-    """Place the new text at a point the user tapped."""
+def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joined, base, rtl, expected, fonts, align=None) -> EditResult:
+    """Place the new text at a point the user tapped (or exactly, aligned, in a cell)."""
     tap = pymupdf.Point(at) * (page.derotation_matrix * ~page_matrix(page))
     ref_box = _pdf_rect(ref.bbox, page)
     height = ref_box.y1 - ref_box.y0
     # Its middle at the tap's height; on the row of text already there, if it's close
     # (an empty table cell next to a filled one).
     baseline = tap.y + (base - (ref_box.y0 + ref_box.y1) / 2)
+    if align is not None:
+        return _place_aligned(src, pdf, page, page_no, rp, ref, all_lines, tap, baseline, base, ref_box, visual, gaps, joined, rtl, expected, fonts, align)
     # Anywhere the new text would reach into a row of text, it goes on that row.
     row = [l for l in all_lines if _pdf_rect(l.bbox, page).y0 - 0.75 * height <= tap.y <= _pdf_rect(l.bbox, page).y1 + 0.75 * height]
     if row:
@@ -469,6 +475,26 @@ def _add_at(src, pdf, page, page_no, rp, ref, all_lines, at, visual, gaps, joine
     _check_room(new_box, None, ref, page, all_lines, rp, pdf, page_no, "there")
     # On a row with text already, the new text reads as part of that line: allowed.
     return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, may_join=True)
+
+
+def _place_aligned(src, pdf, page, page_no, rp, ref, all_lines, tap, baseline, base, ref_box, visual, gaps, joined, rtl, expected, fonts, align) -> EditResult:
+    """Text placed exactly at a point, nothing lined up or joined: its left end there,
+    its right end there, or centered on it."""
+    natural = sum(w.width for w in visual) + sum(gaps)
+    if align == "center":
+        start = tap.x - natural / 2
+    elif align == "left":
+        start = tap.x
+    else:
+        start = tap.x - natural
+    x = start
+    for w, gap in zip(visual, gaps + [0.0]):
+        w.x = x
+        x += w.width + gap
+    x0, x1 = visual[0].x, visual[-1].x + visual[-1].width
+    new_box = pymupdf.Rect(x0, baseline - (base - ref_box.y0), x1, baseline + (ref_box.y1 - base))
+    _check_room(new_box, None, ref, page, all_lines, rp, pdf, page_no, "there")
+    return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, may_join=False)
 
 
 def _text_area(page: pymupdf.Page, lines: list[Line]) -> tuple[float, float]:
@@ -734,6 +760,19 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
         else pymupdf.Rect()
     )
     own = {d.path for d in decorations.for_line(ref, rp)}
+    # A cell's shading may be drawn in strips (Word draws a 3-point strip at its top and
+    # bottom): strips across the text that together cover it are its background too.
+    across = [pymupdf.Rect(s.bbox) for p in rp.paths if p.fills and not p.strokes and not p.clip for s in p.subpaths
+              if pymupdf.Rect(s.bbox).x0 <= box.x0 + 0.01 and pymupdf.Rect(s.bbox).x1 >= box.x1 - 0.01 and pymupdf.Rect(s.bbox).height > 0]
+    backgrounds = [pymupdf.Rect(s.bbox) for p in rp.paths if p.fills and not p.strokes and not p.clip for s in p.subpaths]
+    covered, reach = False, box.y0
+    for r in sorted(across, key=lambda r: r.y0):
+        if r.y0 > reach + 0.05:
+            break
+        reach = max(reach, r.y1)
+        if reach >= box.y1 - 0.01:
+            covered = True
+            break
     for index, p in enumerate(rp.paths):
         if p.clip or not (p.fills or p.strokes) or index in own:
             continue
@@ -745,7 +784,11 @@ def _check_room(box: pymupdf.Rect, ref_box: pymupdf.Rect | None, ref: Line, page
                 raise EditRejected(f"{no_room}: it would cross a border, out of its table cell or paragraph.")
             if not r.intersects(tight):
                 continue
-            if p.fills and not p.strokes and r.contains(box):
+            if p.fills and not p.strokes and (
+                r.contains(box)
+                or (covered and r.x0 <= box.x0 + 0.01 and r.x1 >= box.x1 - 0.01)
+                or any(c.contains(box) and c.contains(r) for c in backgrounds)  # a layer of it (Word's inner shading)
+            ):
                 continue  # a background: page color, a cell's shading
             raise EditRejected(f"{no_room}: it would cross a line or a shape on the page.")
 

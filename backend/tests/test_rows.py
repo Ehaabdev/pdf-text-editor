@@ -1,0 +1,127 @@
+"""Table rows: a new row below or above a row, looking like it, with its cells' text; a
+row deleted; the rows below moving down or up; and nothing else on the page changing."""
+
+from pathlib import Path
+
+import pymupdf
+import pytest
+
+from app import limits
+from app.editing import EditRejected, comparable
+from app.rows import Spot, add_row, delete_row
+from app.tables import find_tables
+from app.textlayout import page_lines
+from conftest import upload
+
+FIXTURES = Path(__file__).parent / "fixtures"
+FRENCH = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+ARABIC = (FIXTURES / "word" / "arabic-quotation-word.pdf").read_bytes()
+
+
+def grid(src: bytes, page_no: int = 0) -> list[list[str]]:
+    """The first bordered table's text, row by row, in the table's order."""
+    page = pymupdf.open("pdf", src)[page_no]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    return [[comparable(" ".join(l.text for l in c.lines)) for c in Spot(table, r).cells] for r in range(len(table.rows) - 1)]
+
+
+def line_in_row(src: bytes, row: int, page_no: int = 0):
+    page = pymupdf.open("pdf", src)[page_no]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    return next(l for c in Spot(table, row).cells for l in c.lines)
+
+
+def lines_outside(src: bytes, top: float) -> list[tuple]:
+    """The page's lines above a height, as they read and where they are."""
+    page = pymupdf.open("pdf", src)[0]
+    return [(l.text, [round(v, 1) for v in l.bbox]) for l in page_lines(page) if l.bbox[3] < top]
+
+
+SOURCES = {"french": FRENCH, "arabic": ARABIC}
+
+
+@pytest.mark.parametrize(
+    "name, row, where, texts",
+    [
+        ("french", 1, "below", ["Pose et réglage", "2", "150,00 €", "300,00 €"]),
+        ("french", 0, "above", ["Devis", "", "", "Total"]),  # above the shaded header: shaded too
+        ("french", 4, "below", ["Remise", "", "", "100,00 €"]),  # under the last row
+        ("arabic", 2, "below", ["رسائل الترحيب", "1,000", "0.05", "50.00"]),  # right to left
+    ],
+)
+def test_a_new_row(name, row, where, texts):
+    src = SOURCES[name]
+    before = grid(src)
+    line = line_in_row(src, row)
+    result = add_row(src, 0, line.id, line.text, where, texts)
+    at = row + 1 if where == "below" else row
+    assert grid(result.pdf) == before[:at] + [[comparable(t) for t in texts]] + before[at:]
+    # Above the table nothing moved.
+    page = pymupdf.open("pdf", src)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    assert lines_outside(result.pdf, table.bbox[1]) == lines_outside(src, table.bbox[1])
+    assert result.marks and result.areas
+
+
+def test_a_row_is_deleted_and_the_rows_below_move_up():
+    before = grid(FRENCH)
+    for row in (0, 2, 4):  # the shaded header, a middle row, the last row
+        line = line_in_row(FRENCH, row)
+        result = delete_row(FRENCH, 0, line.id, line.text)
+        assert grid(result.pdf) == before[:row] + before[row + 1:]
+
+
+def test_add_then_delete_gives_the_table_back():
+    line = line_in_row(FRENCH, 1)
+    added = add_row(FRENCH, 0, line.id, line.text, "below", ["Pose", "2", "", ""])
+    line = line_in_row(added.pdf, 2)
+    deleted = delete_row(added.pdf, 0, line.id, line.text)
+    assert grid(deleted.pdf) == grid(FRENCH)
+    page_a = pymupdf.open("pdf", FRENCH)[0]
+    page_b = pymupdf.open("pdf", deleted.pdf)[0]
+    assert [(l.text, [round(v, 1) for v in l.bbox]) for l in page_lines(page_a)] == [(l.text, [round(v, 1) for v in l.bbox]) for l in page_lines(page_b)]
+
+
+def test_refused_with_a_reason():
+    # A cell's text stays on one line: too long for its cell.
+    line = line_in_row(FRENCH, 1)
+    with pytest.raises(EditRejected, match="doesn't fit in its cell"):
+        add_row(FRENCH, 0, line.id, line.text, "below", ["", "A quantity far too long for this narrow column of the table", "", ""])
+    # A full page: nothing goes onto the next one.
+    english = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
+    line = line_in_row(english, 1)
+    with pytest.raises(EditRejected, match="no room on this page"):
+        add_row(english, 0, line.id, line.text, "below", ["x", "", "", ""])
+    # A table's only row.
+    contract = (FIXTURES / "word" / "bilingual-contract-word.pdf").read_bytes()
+    line = line_in_row(contract, 0, page_no=1)
+    with pytest.raises(EditRejected, match="only row"):
+        delete_row(contract, 1, line.id, line.text)
+    # Not a table.
+    page = pymupdf.open("pdf", FRENCH)[0]
+    plain = next(l for l in page_lines(page) if l.text.startswith("Madame"))
+    with pytest.raises(EditRejected, match="isn't in a table"):
+        delete_row(FRENCH, 0, plain.id, plain.text)
+
+
+def test_through_the_website(client):
+    doc = upload(client, FRENCH, "devis.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    (table,) = client.get(f"{base}/pages/0/tables").json()["tables"]
+    assert len(table["rows"]) == 5 and not table["rtl"]
+    cell = table["rows"][1][0]
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["id"] == cell["lines"][0])
+    added = client.post(
+        f"{base}/rows/add",
+        json={"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "where": "below", "cells": ["Pose", "2", "", ""]},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["document"]["history"][-1]["summary"] == "Added a table row"
+    stale = client.post(f"{base}/rows/delete", json={"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"]})
+    assert stale.status_code == 409
+
+
+def test_row_changes_count_as_changes():
+    assert limits.kind_of("POST", "/api/documents/abc/rows/add") == "change"
+    assert limits.kind_of("POST", "/api/documents/abc/rows/delete") == "change"
