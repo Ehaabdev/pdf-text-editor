@@ -2901,6 +2901,10 @@ html.theme-switching::view-transition-new(root) {
   inset-inline-end: 0;
   z-index: 40;
   width: min(340px, calc(100vw - 24px));
+  /* On a short screen (a phone on its side) the choices scroll. */
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);

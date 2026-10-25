@@ -272,10 +272,24 @@ def _para_props(paragraph, *, rtl: bool, align: str, before: float, start: float
 
 _heights: dict = {}
 
+# Word's single line height, in ems, of fonts the server may not have (Office's and
+# Windows' own), read from the fonts on Windows: (Windows ascent + descent) / em.
+_KNOWN = {
+    "calibri": 1.221, "calibrilight": 1.221, "cambria": 1.172, "candara": 1.221, "consolas": 1.171,
+    "constantia": 1.221, "corbel": 1.221, "segoeui": 1.33, "aptos": 1.285, "aptosdisplay": 1.285,
+    "arial": 1.117, "timesnewroman": 1.107, "verdana": 1.215, "tahoma": 1.207, "georgia": 1.136,
+    "garamond": 1.125, "centurygothic": 1.191, "couriernew": 1.133, "trebuchetms": 1.161,
+    "bookantiqua": 1.243, "palatinolinotype": 1.349, "franklingothicmedium": 1.134, "gillsansmt": 1.16,
+    "lucidasansunicode": 1.537, "traditionalarabic": 1.495, "simplifiedarabic": 1.658,
+    "sakkalmajalla": 1.396, "arabictypesetting": 1.14, "dubai": 1.688, "andalus": 1.526,
+    "aldhabi": 1.75, "urdutypesetting": 1.703, "bahnschrift": 1.2, "leelawadeeui": 1.33, "nirmalaui": 1.33,
+}
+
 
 def word_line(style) -> float:
     """How tall Word makes a single-spaced line in this font and size (points): from
-    the font's own metrics when it's installed, else a usual 1.15 times the size."""
+    the font's own metrics when it's installed or known, else a usual 1.15 times the
+    size."""
     from .fonts import library
 
     entry = library().find(style.font)
@@ -291,7 +305,7 @@ def word_line(style) -> float:
                 _heights[key] = (os2.usWinAscent + os2.usWinDescent) / upm
             except Exception:
                 pass
-    em = _heights[key]
+    em = _heights[key] or _KNOWN.get(family_name(style.font).lower().replace(" ", ""))
     return (em if em else 1.15) * style.size
 
 
@@ -360,7 +374,7 @@ class Picture:
         return self.image.bbox
 
 
-def _picture(src: bytes, page_no: int, image: images.PageImage) -> Picture | None:
+def _picture(src, page_no: int, image: images.PageImage) -> Picture | None:
     x0, y0, x1, y1 = image.bbox
     try:
         png = images.picture_png(src, page_no, image.id, round((x1 - x0) * PICTURE_DPI / 72))
@@ -690,6 +704,7 @@ def document(src: bytes, name: str) -> exporting.Export:
 
     links: dict = {}
     notes = 0
+    listed = images.all_page_images(src)
     for n, (page, lines) in enumerate(pages):
         h = page.rect.height
         # A page of another size or the other way round starts a new Word section.
@@ -700,9 +715,9 @@ def document(src: bytes, name: str) -> exporting.Export:
             page_setup(word.add_section(WD_SECTION.NEW_PAGE), page.rect)
         fills = _segments(page)[2]
         info = _page_info(pdf, n, page, lines, fills)
-        found = [im for im in images.page_images(src, n)]
+        found = listed[n]
         text_lines = [l for l in lines if l.text.strip()]
-        pictures = [p for im in found if (not im.background or not text_lines) and (p := _picture(src, n, im))]
+        pictures = [p for im in found if (not im.background or not text_lines) and (p := _picture(pdf, n, im))]
         head = [l for l in lines if id(l) in header_ids]
         foot = [l for l in lines if id(l) in footer_ids]
         head_pics = [p for p in pictures if p.image.pages >= max(2, count // 2 + 1) and p.bbox[3] < 0.15 * h]

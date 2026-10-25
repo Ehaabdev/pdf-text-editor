@@ -55,14 +55,19 @@ def _xobjects(pdf: pikepdf.Pdf, page_no: int):
     return res.get("/XObject") or {}
 
 
-def _uses(pdf: pikepdf.Pdf) -> dict[tuple[int, int], set[int]]:
+def _uses(pdf: pikepdf.Pdf, replays: dict | None = None) -> dict[tuple[int, int], set[int]]:
     """For each image or form object: the pages that draw it."""
     out: dict[tuple[int, int], set[int]] = {}
     for n in range(len(pdf.pages)):
-        try:
-            rp = replay(pdf, n)
-        except Unsupported:
-            continue
+        if replays is not None:
+            rp = replays.get(n)
+            if rp is None:
+                continue
+        else:
+            try:
+                rp = replay(pdf, n)
+            except Unsupported:
+                continue
         xo = _xobjects(pdf, n)
         for im in rp.images:
             ins = rp.instructions[im.op]
@@ -77,49 +82,69 @@ def _uses(pdf: pikepdf.Pdf) -> dict[tuple[int, int], set[int]]:
 def page_images(src: bytes, page_no: int) -> list[PageImage]:
     """The pictures on a page, in drawing order."""
     doc = pymupdf.open("pdf", src)
-    page = doc[page_no]
     with pikepdf.open(io.BytesIO(src)) as pdf:
         try:
             rp = replay(pdf, page_no)
         except Unsupported:
             return []
-        xo = _xobjects(pdf, page_no)
-        uses = _uses(pdf)
-        area = page.rect.width * page.rect.height
-        out = []
-        for k, im in enumerate(rp.images):
-            ins = rp.instructions[im.op]
-            box = tuple(to_display(page, im.bbox) & page.rect)
-            if pymupdf.Rect(box).is_empty:
+        return _listing(doc[page_no], pdf, page_no, rp, _uses(pdf))
+
+
+def all_page_images(src: bytes) -> list[list[PageImage]]:
+    """The pictures on every page: each page read once (for a whole-file download)."""
+    doc = pymupdf.open("pdf", src)
+    with pikepdf.open(io.BytesIO(src)) as pdf:
+        replays = {}
+        for n in range(len(pdf.pages)):
+            try:
+                replays[n] = replay(pdf, n)
+            except Unsupported:
+                pass
+        uses = _uses(pdf, replays)
+        return [_listing(doc[n], pdf, n, replays[n], uses) if n in replays else [] for n in range(len(pdf.pages))]
+
+
+def _listing(page: pymupdf.Page, pdf: pikepdf.Pdf, page_no: int, rp: Replay, uses) -> list[PageImage]:
+    xo = _xobjects(pdf, page_no)
+    area = page.rect.width * page.rect.height
+    out = []
+    for k, im in enumerate(rp.images):
+        ins = rp.instructions[im.op]
+        box = tuple(to_display(page, im.bbox) & page.rect)
+        if pymupdf.Rect(box).is_empty:
+            continue
+        if isinstance(ins, pikepdf.ContentStreamInlineImage):
+            kind, name, w, h, pages = "inline", None, 0, 0, 1
+        else:
+            name = str(ins.operands[0])
+            obj = xo.get(name)
+            if obj is None:
                 continue
-            if isinstance(ins, pikepdf.ContentStreamInlineImage):
-                kind, name, w, h, pages = "inline", None, 0, 0, 1
-            else:
-                name = str(ins.operands[0])
-                obj = xo.get(name)
-                if obj is None:
-                    continue
-                kind = "image" if obj.get("/Subtype") == pikepdf.Name.Image else "drawing"
-                w, h = int(obj.get("/Width", 0)), int(obj.get("/Height", 0))
-                pages = len(uses.get(obj.objgen, {page_no})) if obj.is_indirect else 1
-            r = pymupdf.Rect(box)
-            out.append(PageImage(f"{page_no}-img-{k}", k, box, kind, name, w, h, pages, r.width * r.height > 0.6 * area))
-        return out
+            kind = "image" if obj.get("/Subtype") == pikepdf.Name.Image else "drawing"
+            w, h = int(obj.get("/Width", 0)), int(obj.get("/Height", 0))
+            pages = len(uses.get(obj.objgen, {page_no})) if obj.is_indirect else 1
+        r = pymupdf.Rect(box)
+        out.append(PageImage(f"{page_no}-img-{k}", k, box, kind, name, w, h, pages, r.width * r.height > 0.6 * area))
+    return out
 
 
 _PAINT = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*"}
 _SHOW = {"Tj", "TJ", "'", '"'}
 
 
-def picture_png(src: bytes, page_no: int, image_id: str, width: int) -> bytes:
+def picture_png(src: bytes | pikepdf.Pdf, page_no: int, image_id: str, width: int) -> bytes:
     """One picture alone, on a see-through background, cut to its place: what is shown
     being dragged while it's moved. Everything else on the page is left out, but the
-    page's clipping and colors stay, so the picture looks as it does on the page."""
-    pdf = pikepdf.open(io.BytesIO(src))
-    if not 0 <= page_no < len(pdf.pages):
+    page's clipping and colors stay, so the picture looks as it does on the page.
+    `src` may be an open file (for many pictures of one file): it isn't changed."""
+    whole = src if isinstance(src, pikepdf.Pdf) else pikepdf.open(io.BytesIO(src))
+    if not 0 <= page_no < len(whole.pages):
         raise EditRejected("That page doesn't exist.")
+    # A copy of just this page, to change.
+    pdf = pikepdf.new()
+    pdf.pages.append(whole.pages[page_no])
     try:
-        rp = replay(pdf, page_no)
+        rp = replay(pdf, 0)
     except Unsupported as e:
         raise EditRejected(str(e))
     k = _index(image_id)
@@ -137,8 +162,8 @@ def picture_png(src: bytes, page_no: int, image_id: str, width: int) -> bytes:
             if op in _PAINT:  # the path still clips, if it does, but isn't drawn
                 ins = _op([], "n")
         out.append(ins)
-    write_page(pdf, page_no, out)
-    page = pymupdf.open("pdf", _save(pdf))[page_no]
+    write_page(pdf, 0, out)
+    page = pymupdf.open("pdf", _save(pdf))[0]
     area = to_display(page, rp.images[k].bbox) & page.rect
     if area.is_empty:
         raise EditRejected("This picture isn't on the page.")
