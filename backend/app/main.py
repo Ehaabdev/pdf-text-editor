@@ -568,7 +568,10 @@ def export_document(doc_id: str, format: str = Query(..., max_length=20)):
         raise HTTPException(400, str(e))
     quoted = quote(out.filename)
     disposition = f"attachment; filename*=utf-8''{quoted}" if quoted != out.filename else f'attachment; filename="{out.filename}"'
-    return Response(out.data, media_type=out.media_type, headers={"Content-Disposition": disposition, "Cache-Control": "no-store"})
+    headers = {"Content-Disposition": disposition, "Cache-Control": "no-store"}
+    if out.note:
+        headers["X-Export-Note"] = quote(out.note)
+    return Response(out.data, media_type=out.media_type, headers=headers)
 
 
 @app.delete("/api/documents/{doc_id}", status_code=204)

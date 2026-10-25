@@ -6,6 +6,7 @@ type Item = { key: "pdf" | ExportFormat; name: string; note: string; badge: stri
 
 const ITEMS: Item[] = [
   { key: "pdf", name: "PDF", note: "Your edited file, as it is.", badge: "PDF", tone: "pdf" },
+  { key: "docx", name: "Word", note: "Text you can edit. Lines may wrap a little differently.", badge: "DOC", tone: "docx" },
   { key: "pptx", name: "PowerPoint", note: "Each page a slide, with text you can edit.", badge: "PPT", tone: "pptx" },
   { key: "pptx-pictures", name: "PowerPoint, as pictures", note: "Looks exactly the same. The text can't be edited.", badge: "PPT", tone: "pptx" },
   { key: "xlsx", name: "Excel", note: "The tables, with numbers you can add up.", badge: "XLS", tone: "xlsx" },
@@ -18,10 +19,12 @@ type Props = {
   /** A file was downloaded: the changes are kept somewhere now. */
   onDownloaded: () => void;
   onError: (message: string) => void;
+  /** Something to tell about the file that was made. */
+  onNote: (message: string) => void;
 };
 
 /** The Download button: the edited PDF, or the same pages as another kind of file. */
-export default function DownloadMenu({ doc, onDownloaded, onError }: Props) {
+export default function DownloadMenu({ doc, onDownloaded, onError, onNote }: Props) {
   const [open, setOpen] = useState(false);
   const [making, setMaking] = useState<ExportFormat | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
@@ -61,7 +64,7 @@ export default function DownloadMenu({ doc, onDownloaded, onError }: Props) {
     if (making) return;
     setMaking(format);
     try {
-      const { blob, filename } = await exportDocument(doc, format);
+      const { blob, filename, note } = await exportDocument(doc, format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -71,6 +74,7 @@ export default function DownloadMenu({ doc, onDownloaded, onError }: Props) {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
       onDownloaded();
+      if (note) onNote(note);
       setOpen(false);
     } catch (e) {
       onError(e instanceof ApiError ? e.message : "Couldn't make the file. Try again.");

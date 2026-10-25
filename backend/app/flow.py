@@ -70,6 +70,8 @@ def _first_word(band: list[Line]) -> float:
 @dataclass
 class Paragraph:
     bands: list[list[Line]]
+    # Where its text wraps: the edges of its column, box or cell (points).
+    wrap: tuple[float, float] = (0.0, 0.0)
 
     @property
     def lines(self) -> list[Line]:
@@ -174,12 +176,12 @@ def paragraphs(lines: list[Line], left: float | None = None, right: float | None
         # than a third of the page is taken for that, not for a column.
         return (a, b) if b - a >= (right - left) / 3 else (left, right)
 
-    out = [Paragraph([rows[0]])]
+    out = [Paragraph([rows[0]], sides(rows[0]))]
     for prev, row, gap in zip(rows, rows[1:], gaps):
         if _continues(prev, row, gap, usual.get(round(_size(prev)), overall), *sides(prev)):
             out[-1].bands.append(row)
         else:
-            out.append(Paragraph([row]))
+            out.append(Paragraph([row], sides(row)))
     return out
 
 

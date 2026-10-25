@@ -1,6 +1,7 @@
 """Download as…: the edited PDF as pictures, PowerPoint, Word or Excel."""
 
 import io
+import json
 import zipfile
 from pathlib import Path
 from urllib.parse import unquote
@@ -259,3 +260,98 @@ def test_raised_and_lowered_letters():
     line = next(l for l in page_lines(page) if l.text.startswith("Carbon savings"))
     rises = {text: rise for text, _, _, rise in pieces(line)}
     assert rises["2"] < 0 < rises["rd"]  # CO2, 3rd
+
+
+# Word ------------------------------------------------------------------------------------
+
+import docx  # noqa: E402
+
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _word(pdf: bytes):
+    out = exporting.export(pdf, "x.pdf", "docx")
+    return docx.Document(io.BytesIO(out.data)), out
+
+
+def _para(d, start: str):
+    return next(p for p in d.paragraphs if p.text.startswith(start))
+
+
+def test_arabic_paragraphs_are_right_to_left_with_their_fonts():
+    d, out = _word((WORD / "arabic-quotation-word.pdf").read_bytes())
+    p = _para(d, "رقم العرض")
+    assert p.text == "رقم العرض: Q-2026-0417"
+    assert p._p.pPr.find(f"{W}bidi") is not None
+    arabic, latin = p.runs
+    assert arabic._r.rPr.find(f"{W}rtl").get(f"{W}val") is None  # on
+    assert latin._r.rPr.find(f"{W}rtl").get(f"{W}val") == "false"
+    fonts = arabic._r.rPr.find(f"{W}rFonts")
+    assert fonts.get(f"{W}cs") == fonts.get(f"{W}ascii") == "Arial"
+    assert arabic._r.rPr.find(f"{W}szCs").get(f"{W}val") == "24"  # 12 pt for Arabic letters too
+    # Lines whose letters the PDF stores wrongly are marked, and the person is told.
+    assert out.note and "highlighted" in out.note
+    assert any(r._r.rPr.find(f"{W}highlight") is not None for p in d.paragraphs for r in p.runs)
+
+
+def test_a_wrapped_paragraph_is_one_paragraph():
+    d, _ = _word((WORD / "english-styles-word.pdf").read_bytes())
+    text = next(e["text"] for e in json.loads((WORD / "expected.json").read_text(encoding="utf-8")) if e["text"].startswith("Customers sent more"))
+    assert _para(d, "Customers sent more").text == text
+    assert _para(d, "Customers sent more")._p.pPr.find(f"{W}jc").get(f"{W}val") == "both"  # justified, as on the page
+
+
+def test_tables_keep_their_columns_shading_and_direction():
+    d, _ = _word((WORD / "arabic-quotation-word.pdf").read_bytes())
+    (table,) = d.tables
+    assert table._tbl.tblPr.find(f"{W}bidiVisual") is not None  # first column on the right
+    assert [c.text for c in table.rows[0].cells] == ["الخدمة", "الكمية", "سعر الوحدة (ريال)", "الإجمالي (ريال)"]
+    shading = table.rows[0].cells[0]._tc.tcPr.find(f"{W}shd")
+    assert shading.get(f"{W}fill") == "DEEAF6"
+
+
+def test_links_raised_letters_and_underlines():
+    d, _ = _word((WORD / "english-styles-word.pdf").read_bytes())
+    p = _para(d, "Full statistics")
+    link = p._p.find(f"{W}hyperlink")
+    target = p.part.rels[link.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")].target_ref
+    assert target == "https://dashboard.example.com/q3"
+    assert link.find(f".//{W}u") is not None
+    carbon = _para(d, "Carbon savings")
+    raised = [r for r in carbon.runs if r._r.rPr.find(f"{W}position") is not None]
+    assert {r.text for r in raised} == {"2", "rd"}
+
+
+def test_headers_footers_and_pictures():
+    d, _ = _word((FIXTURES / "images" / "images-word.pdf").read_bytes())
+    header = d.sections[0].header
+    assert header._element.findall(f".//{W}drawing")  # the logo on every page
+    status = _para(d, "Status:")
+    kinds = [("picture" if r._r.find(f".//{W}drawing") is not None else r.text) for r in status.runs]
+    assert kinds.index("picture") == 2 and kinds[0] == "Status:"  # the icon after "Status: "
+    (table,) = d.tables
+    assert table.rows[0].cells[1]._tc.findall(f".//{W}drawing")  # the signature in its cell
+    d, _ = _word((WORD / "arabic-quotation-word.pdf").read_bytes())
+    footer = d.sections[0].footer
+    fields = [f.get(f"{W}instr") for f in footer._element.iter(f"{W}fldSimple")]
+    assert fields == ["PAGE", "NUMPAGES"]  # "صفحة 1 من 2" counts by itself
+
+
+def test_each_page_starts_a_page():
+    d, _ = _word((WORD / "english-styles-word.pdf").read_bytes())
+    breaks = d.element.body.findall(f".//{W}pageBreakBefore")
+    assert len(breaks) == 1
+
+
+def test_odd_pages():
+    doc = pymupdf.open()
+    doc.new_page()  # empty
+    p = doc.new_page()
+    p.insert_text((72, 72), "Turned page", fontsize=12)
+    p.set_rotation(90)
+    p = doc.new_page(width=300, height=200)
+    p.insert_image(p.rect, filename=str(FIXTURES / "images" / "photo.jpg"))  # a scan: a picture, no text
+    d, _ = _word(doc.tobytes())
+    assert [p.text for p in d.paragraphs if p.text] == ["Turned page"]
+    assert len(d.inline_shapes) == 1
+    assert [(round(s.page_width.pt), round(s.page_height.pt)) for s in d.sections] == [(595, 842), (842, 595), (300, 200)]

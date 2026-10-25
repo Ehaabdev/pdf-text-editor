@@ -824,7 +824,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             Changes
             {applied > 0 && <span className="count">{applied}</span>}
           </button>
-          <DownloadMenu doc={doc} onDownloaded={() => setDownloaded(doc.revision)} onError={(text) => setNotice({ text, tone: "error" })} />
+          <DownloadMenu
+            doc={doc}
+            onDownloaded={() => setDownloaded(doc.revision)}
+            onError={(text) => setNotice({ text, tone: "error" })}
+            onNote={(text) => setNotice({ text, tone: "warning" })}
+          />
         </div>
       </header>
 

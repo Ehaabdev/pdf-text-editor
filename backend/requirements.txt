@@ -10,4 +10,5 @@ numpy
 pypdfium2
 Pillow
 python-pptx
+python-docx
 openpyxl

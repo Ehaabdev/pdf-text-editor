@@ -338,7 +338,7 @@ export function downloadUrl(doc: DocInfo): string {
 export type ExportFormat = "docx" | "pptx" | "pptx-pictures" | "xlsx" | "jpg" | "png";
 
 /** The PDF made into another kind of file, with the name the server gives it. */
-export async function exportDocument(doc: DocInfo, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
+export async function exportDocument(doc: DocInfo, format: ExportFormat): Promise<{ blob: Blob; filename: string; note: string | null }> {
   let res: Response;
   try {
     res = await fetch(`/api/documents/${doc.id}/export?format=${format}&r=${doc.revision}`);
@@ -350,5 +350,7 @@ export async function exportDocument(doc: DocInfo, format: ExportFormat): Promis
   const encoded = /filename\*=utf-8''([^;]+)/i.exec(header);
   const plain = /filename="([^"]+)"/i.exec(header);
   const filename = encoded ? decodeURIComponent(encoded[1]) : plain ? plain[1] : `${doc.name.replace(/\.pdf$/i, "")}.${format}`;
-  return { blob: await res.blob(), filename };
+  // Something to tell the person about the file (lines to check, say).
+  const note = res.headers.get("X-Export-Note");
+  return { blob: await res.blob(), filename, note: note ? decodeURIComponent(note) : null };
 }

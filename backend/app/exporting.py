@@ -3,6 +3,7 @@
 - "jpg", "png": a picture of every page (one file, or a zip of them).
 - "pptx-pictures": PowerPoint, every page a slide showing a picture of it: it looks the
   same, but its text can't be edited.
+- "docx": Word, the pages as paragraphs, tables and pictures that flow (wordfile.py).
 - "pptx": PowerPoint, every page a slide with its text in text boxes you can edit (slides.py).
 - "xlsx": Excel, a sheet for every table (tables.py), numbers as numbers.
 
@@ -37,6 +38,7 @@ class Export:
     data: bytes
     filename: str
     media_type: str
+    note: str | None = None  # something to tell the person about the file
 
 
 ZIP = "application/zip"
@@ -284,7 +286,7 @@ def _xlsx(doc: pymupdf.Document, name: str) -> Export:
 
 # All formats -----------------------------------------------------------------------------
 
-FORMATS = ("jpg", "png", "pptx-pictures", "pptx", "xlsx")
+FORMATS = ("jpg", "png", "pptx-pictures", "pptx", "xlsx", "docx")
 
 
 def export(src: bytes, name: str, fmt: str) -> Export:
@@ -300,4 +302,8 @@ def export(src: bytes, name: str, fmt: str) -> Export:
         from .slides import deck
 
         return deck(src, name)
+    if fmt == "docx":
+        from .wordfile import document
+
+        return document(src, name)
     return _pptx_pictures(doc, name)

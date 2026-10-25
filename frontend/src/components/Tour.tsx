@@ -61,7 +61,7 @@ export function editorSteps(narrow: boolean): Step[] {
     },
     {
       title: "Download",
-      text: "When you're done, download your edited PDF, or the same pages as another kind of file: PowerPoint, Excel or pictures. The file is deleted from the server an hour after you last use it. Open this guide again any time with the ? button.",
+      text: "When you're done, download your edited PDF, or the same pages as another kind of file: Word, PowerPoint, Excel or pictures. The file is deleted from the server an hour after you last use it. Open this guide again any time with the ? button.",
       targets: () => [q(".download-wrap > .btn-primary")],
     },
   ];

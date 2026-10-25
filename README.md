@@ -212,6 +212,29 @@ Before a change is accepted:
 - nothing outside the picture's old and new places changes by a single pixel (MuPDF and PDFium);
 - no other page changes, except the pages a picture was replaced on.
 
+## Download as…
+
+The Download button gives the edited PDF, or the same pages as another kind of file (`backend/app/exporting.py`, `GET /api/documents/{id}/export?format=…`):
+
+| Choice | What you get |
+|---|---|
+| **Word** | The pages as a document that flows: paragraphs (wrapped lines joined), tables, pictures, header and footer. Text you can edit; lines may wrap a little differently. |
+| **PowerPoint** | Every page a slide: a picture of the page without its text, and every line on top in its own text box, editable. |
+| **PowerPoint, as pictures** | Every page a slide showing a picture of it: looks exactly the same, text can't be edited. |
+| **Excel** | Every table a sheet; amounts become numbers. A PDF without tables gives its text, a paragraph a row. |
+| **JPG / PNG pictures** | A picture of every page, 200 dpi (one file, or a zip). |
+
+The text in Word, PowerPoint and Excel always comes from the editor's own reading of the page, never from another library's: that keeps Arabic and mixed Arabic and English right. (pdf2docx, tried first, got 114 of the 326 paragraphs of the test documents exactly right, and garbled Arabic: "ريال" became "لاير". The Word export gets 317; the rest are mostly letters the PDF itself stores wrongly.)
+
+- **Paragraphs** (`flow.py`): pieces of one row are read in their direction; rows join when the first was wrapped (the next row's first word wouldn't have fitted at its end); a bigger gap, a new size or a list marker starts a new paragraph. Text in a box or a column wraps at that box's or column's edge, found from a drawn box, text beside it, or several lines ending at the same place.
+- **Tables** (`tables.py`): columns and rows from the drawn borders (Word draws each cell's border as its own piece; pieces at nearly the same place are one), merged cells where there's no border between two cells, shading; or, without borders, text in columns over three rows or more. Arabic tables start on the right.
+- **Word**: alignment (start, end, centered, justified, Arabic kashida), indents, the space before each paragraph and the line spacing as on the page; each piece in its font, size, color, bold, italic, raised or lowered, underlined, struck through, highlighted or linked. Arabic paragraphs and pieces are right-to-left, and Arabic letters get their font as Word's "complex script" font, as Word itself saves them. Pictures go where they were: on a line of their own, inside a table cell, or within a line (an icon). Text and pictures repeated at the top or bottom of the pages go into the header and footer, with live page numbers. Each page starts a new page; a page of another size starts a new section.
+- **PowerPoint**: the page's text is taken out of the picture underneath with the same removal deleting a line uses. Lines the PDF stores with wrong letters, turned text and invisible text stay in the picture. PowerPoint decides a piece's direction by its language, so Arabic pieces are marked Arabic (otherwise a colon between Arabic and English jumps to the end).
+- **Excel**: amounts written the English or French way (1,700.00 / 1 700,00 € / 15 %) become numbers with a format that shows them as written; codes with leading zeros, dates and phone numbers stay text.
+- Lines whose letters the PDF stores wrongly are highlighted in yellow in Word, and the website says how many.
+
+Known limits: shapes drawn with lines (a logo made of shapes, a chart) don't come into Word; a page in two columns becomes one column, wrapped at the column's width; text boxes become indented paragraphs.
+
 ## The website
 
 - A list of small page pictures sits beside the pages; on phones, the page number button opens it.
