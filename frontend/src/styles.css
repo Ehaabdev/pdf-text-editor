@@ -2876,3 +2876,164 @@ html.theme-switching::view-transition-new(root) {
     max-height: 110px;
   }
 }
+
+/* Download as…: a glass menu under the Download button, each kind of file with its own
+   colored tile, like a file's icon. */
+.download-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-inline-start: 4px;
+}
+
+.bar-actions .download-wrap .btn-primary {
+  margin-inline-start: 0;
+}
+
+.download-chevron {
+  display: inline-flex;
+  margin-inline-start: -2px;
+  opacity: 0.85;
+}
+
+.download-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  inset-inline-end: 0;
+  z-index: 40;
+  width: min(340px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  /* Inside the bar, whose own blur stops a second one: the glass color laid three times
+     over, nearly solid, so what's behind doesn't show through the words. */
+  background:
+    linear-gradient(var(--glass-strong), var(--glass-strong)),
+    linear-gradient(var(--glass-strong), var(--glass-strong)),
+    linear-gradient(var(--glass-strong), var(--glass-strong));
+  box-shadow: var(--glass-shadow);
+  transform-origin: top right;
+  animation: menu-in 240ms var(--spring);
+}
+
+[dir="rtl"] .download-menu {
+  transform-origin: top left;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-menu {
+    animation: none;
+  }
+}
+
+.download-title {
+  margin: 4px 10px 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.download-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.download-item:hover:not(:disabled),
+.download-item:focus-visible {
+  outline: none;
+  background: var(--accent-wash);
+}
+
+.download-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.download-item .spinner {
+  margin-inline-start: auto;
+  color: var(--accent);
+}
+
+/* A little page with a folded corner, in the color people know the program by. */
+.download-badge {
+  --tone: #6b5cf0;
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: end center;
+  width: 36px;
+  height: 44px;
+  padding-bottom: 7px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 72%, #ffffff), var(--tone));
+  color: #ffffff;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  clip-path: polygon(0 0, 66% 0, 100% 27%, 100% 100%, 0 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.download-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34%;
+  height: 27%;
+  border-bottom-left-radius: 4px;
+  background: color-mix(in srgb, var(--tone) 40%, #ffffff);
+}
+
+.download-badge--pdf {
+  --tone: #d6402f;
+}
+
+.download-badge--docx {
+  --tone: #2b62d6;
+}
+
+.download-badge--pptx {
+  --tone: #d5582c;
+}
+
+.download-badge--xlsx {
+  --tone: #1d8a4e;
+}
+
+.download-badge--img {
+  --tone: #7a56e8;
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.download-name {
+  font-weight: 600;
+}
+
+.download-note {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--muted);
+}

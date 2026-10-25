@@ -5,6 +5,7 @@ import sys
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path, PurePath
+from urllib.parse import quote
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, images, limits
+from . import config, exporting, images, limits
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -554,6 +555,20 @@ def download_document(doc_id: str):
     if meta.version > 0:
         name = name[:-4] + "-edited.pdf"
     return FileResponse(store.current_path(meta), media_type="application/pdf", filename=name)
+
+
+@app.get("/api/documents/{doc_id}/export")
+def export_document(doc_id: str, format: str = Query(..., max_length=20)):
+    """Download as…: the current PDF as pictures, PowerPoint, Word or Excel (exporting.py)."""
+    meta = _get_meta(doc_id)
+    name = meta.name[:-4] + "-edited.pdf" if meta.version > 0 else meta.name  # as Download names it
+    try:
+        out = exporting.export(store.current_path(meta).read_bytes(), name, format)
+    except exporting.UnknownFormat as e:
+        raise HTTPException(400, str(e))
+    quoted = quote(out.filename)
+    disposition = f"attachment; filename*=utf-8''{quoted}" if quoted != out.filename else f'attachment; filename="{out.filename}"'
+    return Response(out.data, media_type=out.media_type, headers={"Content-Disposition": disposition, "Cache-Control": "no-store"})
 
 
 @app.delete("/api/documents/{doc_id}", status_code=204)

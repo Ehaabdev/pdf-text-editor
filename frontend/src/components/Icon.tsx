@@ -45,3 +45,4 @@ export const MAGNIFIER = "M8.5 3.5a5 5 0 100 10 5 5 0 000-10zM12.2 12.2l4.3 4.3"
 export const HELP = "M10 17.5a7.5 7.5 0 100-15 7.5 7.5 0 000 15zM7.9 7.7a2.2 2.2 0 014.2.9c0 1.5-2.1 1.8-2.1 3.3M10 14.3h.01";
 export const PAGES = "M7 3.5h6.5l3 3V15H7zM4 6.5v10h9";
 export const PICTURE = "M3.5 4.5h13v11h-13zM3.5 13l4-4 3.5 3.5 2-2 4 4M12.5 7.5h.01";
+export const CHEVRON_DOWN = "M6 8l4 4 4-4";

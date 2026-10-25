@@ -315,6 +315,7 @@ The app runs as a service (`deploy/pdf-editor.service`) that may write only `/va
 | `PDFEDIT_RATE_UPLOADS_PER_HOUR` | `30` | Files one visitor may open per hour |
 | `PDFEDIT_RATE_CHANGES_PER_HOUR` | `300` | Changes (and undo, redo) one visitor may make per hour |
 | `PDFEDIT_RATE_READS_PER_MINUTE` | `900` | Page images and the like one visitor may load per minute |
+| `PDFEDIT_RATE_EXPORTS_PER_HOUR` | `60` | Downloads as Word, PowerPoint, Excel or pictures one visitor may make per hour |
 | `PDFEDIT_HEAVY_JOBS` | `2` | Changes and uploads worked on at once; more wait their turn |
 | `PDFEDIT_MAX_VERSIONS` | `60` | Changes kept per file (each keeps a full copy); then: download, and open the download |
 | `PDFEDIT_MAX_DOC_MB` | `300` | Space all of a file's versions may take |

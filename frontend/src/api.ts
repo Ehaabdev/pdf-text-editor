@@ -333,3 +333,22 @@ export function goToVersion(doc: DocInfo, version: number): Promise<DocInfo> {
 export function downloadUrl(doc: DocInfo): string {
   return `/api/documents/${doc.id}/download?r=${doc.revision}`;
 }
+
+/** Download as…: the formats the server can make from the PDF. */
+export type ExportFormat = "docx" | "pptx" | "pptx-pictures" | "xlsx" | "jpg" | "png";
+
+/** The PDF made into another kind of file, with the name the server gives it. */
+export async function exportDocument(doc: DocInfo, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/documents/${doc.id}/export?format=${format}&r=${doc.revision}`);
+  } catch {
+    throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0);
+  }
+  if (!res.ok) throw await errorFrom(res);
+  const header = res.headers.get("Content-Disposition") ?? "";
+  const encoded = /filename\*=utf-8''([^;]+)/i.exec(header);
+  const plain = /filename="([^"]+)"/i.exec(header);
+  const filename = encoded ? decodeURIComponent(encoded[1]) : plain ? plain[1] : `${doc.name.replace(/\.pdf$/i, "")}.${format}`;
+  return { blob: await res.blob(), filename };
+}

@@ -8,3 +8,6 @@ uharfbuzz
 fonttools
 numpy
 pypdfium2
+Pillow
+python-pptx
+openpyxl

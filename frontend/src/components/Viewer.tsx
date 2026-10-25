@@ -4,7 +4,6 @@ import {
   addImage,
   deleteImage,
   deleteLines,
-  downloadUrl,
   goToVersion,
   moveImage,
   pictureUrl,
@@ -21,8 +20,9 @@ import AddTextPanel, { type Spot } from "./AddTextPanel";
 import ChangesPanel from "./ChangesPanel";
 import CheckPanel from "./CheckPanel";
 import CloseDialog from "./CloseDialog";
+import DownloadMenu from "./DownloadMenu";
 import HomePanel from "./HomePanel";
-import { ADD_TEXT, BOXES, CHANGES, CLOSE, DOWNLOAD, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PICTURE, PLUS, REDO, UNDO } from "./Icon";
+import { ADD_TEXT, BOXES, CHANGES, CLOSE, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PICTURE, PLUS, REDO, UNDO } from "./Icon";
 import ImagePanel, { PICTURE_TYPES, PlacePicturePanel, pictureProblem } from "./ImagePanel";
 import LinePanel, { type Change } from "./LinePanel";
 import PageView, { type Flash } from "./PageView";
@@ -824,16 +824,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             Changes
             {applied > 0 && <span className="count">{applied}</span>}
           </button>
-          <a
-            className="btn btn-primary"
-            href={downloadUrl(doc)}
-            download={doc.name}
-            aria-label="Download PDF"
-            onClick={() => setDownloaded(doc.revision)}
-          >
-            <Icon d={DOWNLOAD} />
-            <span className="wide-only">Download</span>
-          </a>
+          <DownloadMenu doc={doc} onDownloaded={() => setDownloaded(doc.revision)} onError={(text) => setNotice({ text, tone: "error" })} />
         </div>
       </header>
 

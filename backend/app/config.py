@@ -22,6 +22,7 @@ MAX_RENDER_PIXELS = 20_000_000
 RATE_UPLOADS_PER_HOUR = int(os.environ.get("PDFEDIT_RATE_UPLOADS_PER_HOUR", "30"))
 RATE_CHANGES_PER_HOUR = int(os.environ.get("PDFEDIT_RATE_CHANGES_PER_HOUR", "300"))
 RATE_READS_PER_MINUTE = int(os.environ.get("PDFEDIT_RATE_READS_PER_MINUTE", "900"))
+RATE_EXPORTS_PER_HOUR = int(os.environ.get("PDFEDIT_RATE_EXPORTS_PER_HOUR", "60"))
 HEAVY_JOBS = int(os.environ.get("PDFEDIT_HEAVY_JOBS", "2"))  # changes and uploads at once
 MAX_VERSIONS = int(os.environ.get("PDFEDIT_MAX_VERSIONS", "60"))  # stored changes per file
 MAX_DOC_BYTES = int(os.environ.get("PDFEDIT_MAX_DOC_MB", "300")) * 1024 * 1024  # all its versions
