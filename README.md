@@ -249,7 +249,7 @@ Click a line in a table with borders and choose **Add column left**, **Add colum
 - Checked: every glyph, shape and picture where it was or exactly one column's width further left; nothing outside the table changes; the table, drawn, is pixel for pixel what it was left of the column, and right of it one column's width further left (a letter or bar exactly between two pixels may match at twice the size; PDFium, which rounds each letter to a whole pixel, may differ by a few pixels there once MuPDF has matched exactly); every line reads the same; the page reads as the same table with one column fewer.
 - Refused, with the reason: merged cells, rows split into columns differently, a table's only column, something drawn across the table's edge.
 
-On the test documents, every column of every bordered table (30): all deleted; a column added left and right of each: 51 of 52 (one refused: a line just above the table would read differently). In the samples, the tables have merged cells or rows split differently: refused.
+On the test documents, every column of every bordered table (30): all deleted; a column added left and right of each: 55 of 60 (refused: 4 for a table as wide as the page with full columns, 1 where a line just above the table would read differently). In the samples, the tables have merged cells or rows split differently: refused.
 
 ## Moving lines and tables
 

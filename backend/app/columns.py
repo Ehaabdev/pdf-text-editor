@@ -500,6 +500,8 @@ def _widths_for_new_column(page: pymupdf.Page, table: Table, lines: list[Line], 
     columns = [l.column for l in lines if l.column]
     area = (min(c[0] for c in columns), max(c[1] for c in columns)) if columns else (old[0], old[-1])
     beside = math.floor(max(0.0, (old[0] - area[0]) if table.rtl else (area[1] - old[-1])))
+    if beside < MIN_WIDTH:
+        beside = 0  # a sliver: a table as wide as the text keeps its edge in line with it
     wanted = max(MIN_WIDTH, math.floor(min(widths)))
     width = min(wanted, beside + sum(spare))
     if width < MIN_WIDTH:
