@@ -5,7 +5,7 @@ export type Lookalike = { font: string; substitute: string; sameWidths: boolean;
 
 /** One change, as listed: what it was and where (page, x0, y0, x1, y1 in points). */
 export type Change = {
-  kind: "edit" | "delete" | "add" | "image";
+  kind: "edit" | "delete" | "add" | "image" | "move";
   summary: string;
   pages: number[];
   areas: [number, number, number, number, number][];
@@ -340,6 +340,24 @@ export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: s
 }
 
 export type PickedLine = { page: number; line: TextLine };
+
+/** What would move: a picture of it alone (see-through around it) and the box it covers
+ *  on the page, in points as displayed; or the other lines it can only move with. */
+export type MovePreview =
+  | { box: [number, number, number, number]; image: string; lines: string[]; together?: undefined }
+  | { together: string[]; message: string };
+
+const moved = (lines: TextLine[]) => lines.map((l) => ({ lineId: l.id, oldText: l.text }));
+
+/** Lines on one page (with `table`, the whole table the first is in), before they're dragged. */
+export function previewMove(doc: DocInfo, page: number, lines: TextLine[], table: boolean): Promise<MovePreview> {
+  return postJson(`/api/documents/${doc.id}/moves/preview`, { revision: doc.revision, page, lines: moved(lines), table });
+}
+
+/** Move them by dx, dy points (right, down) on their page; their old place stays empty. */
+export function moveLines(doc: DocInfo, page: number, lines: TextLine[], table: boolean, dx: number, dy: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/moves`, { revision: doc.revision, page, lines: moved(lines), table, dx, dy });
+}
 
 /** Delete whole lines, on any pages, as one change: one Undo brings them all back. */
 export function deleteLines(doc: DocInfo, lines: PickedLine[]): Promise<EditOutcome> {

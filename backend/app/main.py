@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import re
 import sys
@@ -14,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, exporting, images, limits, rows
+from . import config, dragging, exporting, images, limits, rows
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -266,6 +267,20 @@ class RowRequest(BaseModel):
     cells: list[str] = Field(default_factory=list, max_length=40)  # the new row's text, in the table's order
 
 
+class MovedLine(BaseModel):
+    lineId: str = Field(max_length=32)
+    oldText: str = Field(max_length=5000)
+
+
+class MoveRequest(BaseModel):
+    revision: int
+    page: int
+    lines: list[MovedLine] = Field(min_length=1, max_length=300)  # on one page
+    table: bool = False  # the whole table the first line is in
+    dx: float = Field(default=0.0, ge=-5000, le=5000)  # points as displayed: right
+    dy: float = Field(default=0.0, ge=-5000, le=5000)  # down
+
+
 class RevisionRequest(BaseModel):
     revision: int
 
@@ -432,6 +447,49 @@ async def delete_table_row(doc_id: str, body: RowRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("delete", "Deleted a table row", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+# Moving lines or a table -------------------------------------------------------------------
+
+
+@app.post("/api/documents/{doc_id}/moves/preview")
+async def move_preview(doc_id: str, body: MoveRequest):
+    """What would move, as a picture on a see-through background with the box it covers
+    on the page; or the lines it can only move with."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    targets = [(l.lineId, l.oldText) for l in body.lines]
+    try:
+        png, box, ids = await run_in_threadpool(dragging.preview, src, body.page, targets, body.table)
+    except dragging.Together as e:
+        return {"together": [l.id for l in e.lines], "message": str(e)}
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    return {"box": box, "lines": ids, "image": "data:image/png;base64," + base64.b64encode(png).decode("ascii")}
+
+
+@app.post("/api/documents/{doc_id}/moves")
+async def move_lines(doc_id: str, body: MoveRequest):
+    """The lines (or the table) moved by dx, dy on their page; their old place stays empty."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    targets = [(l.lineId, l.oldText) for l in body.lines]
+    try:
+        result = await run_in_threadpool(dragging.move, src, body.page, targets, body.dx, body.dy, body.table)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    n = result.moved
+    summary = "Moved a table" if body.table else f"Moved “{_short(body.lines[0].oldText)}”" if n == 1 else f"Moved {n} lines"
+    entry = _entry("move", summary, result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:

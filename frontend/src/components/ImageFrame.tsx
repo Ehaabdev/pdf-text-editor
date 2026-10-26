@@ -9,6 +9,8 @@ type Props = {
   page: { width: number; height: number };
   /** The picture shown in the frame. */
   src: string;
+  /** False for lines or a table being moved: no corners to resize them by. */
+  resizable?: boolean;
   onChange: (box: Box) => void;
 };
 
@@ -17,7 +19,7 @@ const MIN = 8; // points
 
 /** A picture being placed: drag it to move it, drag a corner to resize it (its shape
  *  kept). Works with a mouse and with a finger; it stays on the page. */
-export default function ImageFrame({ box, page, src, onChange }: Props) {
+export default function ImageFrame({ box, page, src, resizable = true, onChange }: Props) {
   const frame = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number; box: Box; corner: (typeof CORNERS)[number] | null; scale: number } | null>(null);
 
@@ -73,7 +75,7 @@ export default function ImageFrame({ box, page, src, onChange }: Props) {
   return (
     <div
       ref={frame}
-      className="image-frame"
+      className={`image-frame${resizable ? "" : " image-frame--text"}`}
       style={{
         left: pct(box[0], page.width),
         top: pct(box[1], page.height),
@@ -86,10 +88,10 @@ export default function ImageFrame({ box, page, src, onChange }: Props) {
       onPointerCancel={up}
       onClick={(e) => e.stopPropagation()}
       role="img"
-      aria-label="The picture: drag it to move it, drag a corner to resize it"
+      aria-label={resizable ? "The picture: drag it to move it, drag a corner to resize it" : "What you're moving: drag it to its new place"}
     >
       <img src={src} alt="" draggable={false} />
-      {CORNERS.map((c) => (
+      {resizable && CORNERS.map((c) => (
         <span
           key={c}
           className={`image-handle image-handle--${c}`}

@@ -77,6 +77,8 @@ class Shift:
     links: list[LinkChange]
     old_box: Box  # everything that moves, before
     lines: list[str] = field(default_factory=list)  # ids of the lines that move, as read before
+    dx: float = 0.0  # PDF units; positive moves right (a dragged block; text below moves only down or up)
+    saved: bool = False  # each piece moved inside q ... Q (exact), not by a cm undone after it
 
     @property
     def glyphs(self) -> set[int]:
@@ -463,18 +465,49 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     return Shift(page_no, dy, moving, links, box, moved_lines)
 
 
-def _cm(p: Piece, dy: float) -> tuple[list, list]:
-    """A cm moving what follows by dy on the page (down when positive), and its inverse."""
-    m = mul(mul(p.ctm, (1, 0, 0, 1, 0, -dy)), inverse(p.ctm))
+def _cm(p: Piece, dy: float, dx: float = 0.0) -> tuple[list, list]:
+    """A cm moving what follows by dy on the page (down when positive) and dx (right),
+    and its inverse."""
+    m = mul(mul(p.ctm, (1, 0, 0, 1, dx, -dy)), inverse(p.ctm))
     tx, ty = round(m[4], 6), round(m[5], 6)
     return [1, 0, 0, 1, tx, ty], [1, 0, 0, 1, -tx, -ty]
+
+
+# What a text object can set that lasts after it: its font and text spacing, colors, the
+# graphics state. Set again after a q ... Q put around it, so what follows sees the same.
+_LASTING = {"Tf", "Tc", "Tw", "Tz", "TL", "Ts", "Tr", "rg", "RG", "g", "G", "k", "K", "cs", "CS", "sc", "SC", "scn", "SCN", "gs", "w", "J", "j", "M", "d", "ri", "i"}
+
+
+def _lasting(rp: Replay, p: Piece) -> list | None:
+    """The instructions in a piece whose effect lasts after it; None when a q ... Q can't
+    be put around it: a clipping path (it must last), or text that clips."""
+    if p.kind == "clip":
+        return None
+    out = []
+    for k in range(p.start, p.end + 1):
+        ins = rp.instructions[k]
+        if isinstance(ins, pikepdf.ContentStreamInlineImage):
+            continue
+        op = str(ins.operator)
+        if op == "Tr" and ins.operands and int(ins.operands[0]) >= 4:
+            return None
+        if op in _LASTING:
+            out.append(ins)
+    return out
 
 
 def apply(pdf: pikepdf.Pdf, page_no: int, rp: Replay, shift: Shift) -> None:
     before: dict[int, list] = {}
     after: dict[int, list] = {}
     for p in shift.pieces:
-        go, back = _cm(p, shift.dy)
+        go, back = _cm(p, shift.dy, shift.dx)
+        lasting = _lasting(rp, p) if shift.saved else None
+        if lasting is not None:
+            # Undoing a cm with another leaves a rounding error in what follows (a page
+            # drawn at 0.74999996875 points per unit); a Q restores exactly.
+            before.setdefault(p.start, []).extend([pikepdf.ContentStreamInstruction([], pikepdf.Operator("q")), pikepdf.ContentStreamInstruction(go, pikepdf.Operator("cm"))])
+            after.setdefault(p.end, [])[0:0] = [pikepdf.ContentStreamInstruction([], pikepdf.Operator("Q")), *lasting]
+            continue
         before.setdefault(p.start, []).append(pikepdf.ContentStreamInstruction(go, pikepdf.Operator("cm")))
         after.setdefault(p.end, []).insert(0, pikepdf.ContentStreamInstruction(back, pikepdf.Operator("cm")))
     out = []
@@ -501,17 +534,17 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
         fail("the page can't be read back")
     if not matches_trace(new_rp, new_page):
         fail("the page can't be read back")
-    dy = shift.dy
+    dy, dx = shift.dy, shift.dx
 
-    # Every glyph is drawn as before: where it was, or exactly dy lower.
+    # Every glyph is drawn as before: where it was, or exactly dy lower (and dx further right).
     moved = shift.glyphs
     if len(new_rp.glyphs) != len(rp.glyphs):
         fail("text on the page would have changed")
     for t, (a, b) in enumerate(zip(rp.glyphs, new_rp.glyphs)):
-        d = dy if t in moved else 0.0
+        d, e = (dy, dx) if t in moved else (0.0, 0.0)
         if (
             a.code != b.code
-            or abs(a.origin[0] - b.origin[0]) > 0.01
+            or abs(a.origin[0] + e - b.origin[0]) > 0.01
             or abs(a.origin[1] - d - b.origin[1]) > 0.01
             or (a.paint.font, a.paint.size, a.paint.fill, a.paint.Tr) != (b.paint.font, b.paint.size, b.paint.fill, b.paint.Tr)
             or not _close(a.paint.trm2, b.paint.trm2, 1e-6)
@@ -523,22 +556,23 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     if len(new_rp.paths) != len(rp.paths) or len(new_rp.images) != len(rp.images):
         fail("the page's shapes would have changed")
     for i, (a, b) in enumerate(zip(rp.paths, new_rp.paths)):
-        d = dy if i in moved_paths else 0.0
+        d, e = (dy, dx) if i in moved_paths else (0.0, 0.0)
         x0, y0, x1, y1 = a.bbox
-        if a.op != b.op or a.clip != b.clip or not _close(b.bbox, (x0, y0 - d, x1, y1 - d), 0.01):
+        if a.op != b.op or a.clip != b.clip or not _close(b.bbox, (x0 + e, y0 - d, x1 + e, y1 - d), 0.01):
             fail("the page's shapes would have changed")
     for i, (a, b) in enumerate(zip(rp.images, new_rp.images)):
-        d = dy if i in moved_images else 0.0
+        d, e = (dy, dx) if i in moved_images else (0.0, 0.0)
         x0, y0, x1, y1 = a.bbox
-        if not _close(b.bbox, (x0, y0 - d, x1, y1 - d), 0.01):
+        if not _close(b.bbox, (x0 + e, y0 - d, x1 + e, y1 - d), 0.01):
             fail("the page's pictures would have changed")
 
-    # MuPDF's own list of shapes agrees.
-    moved_boxes = [rp.paths[i].bbox for i in moved_paths]
+    # MuPDF's own list of shapes agrees. It lists what paints, not clipping (a table cell's
+    # clip, moving with its text, is often its shading's very rectangle, which stays).
+    moved_boxes = [rp.paths[i].bbox for i in moved_paths if rp.paths[i].fills or rp.paths[i].strokes]
     expected = []
     for look, r in _drawings(old_page):
         if any(_close(r, m, 0.15) for m in moved_boxes):
-            r = (r[0], r[1] - dy, r[2], r[3] - dy)
+            r = (r[0] + dx, r[1] - dy, r[2] + dx, r[3] - dy)
         expected.append((look, r))
     unused = _drawings(new_page)
     if len(unused) != len(expected):
@@ -554,7 +588,7 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     x0, y0, x1, y1 = shift.old_box
     pad = (-2, -2, 2, 2)
     old_area = to_display(old_page, shift.old_box) + pad
-    new_area = to_display(old_page, (x0, y0 - dy, x1, y1 - dy)) + pad
+    new_area = to_display(old_page, (x0 + dx, y0 - dy, x1 + dx, y1 - dy)) + pad
     boxes = [tuple(old_area), tuple(new_area)]
     old_mu, old_pf = render(old_bytes, page_no)
     new_mu, new_pf = render(new_bytes, page_no)
@@ -564,21 +598,37 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     # The block looks the same at its new place: rendered at a zoom that moves it by a
     # whole number of pixels, so each glyph lands on the same fraction of a pixel.
     a = to_display(old_page, (x0, y0, x0, y0))
-    b = to_display(old_page, (x0, y0 - dy, x0, y0 - dy))
+    b = to_display(old_page, (x0 + dx, y0 - dy, x0 + dx, y0 - dy))
     vx, vy = b.x0 - a.x0, b.y0 - a.y0
-    length = math.hypot(vx, vy)
-    zoom = max(1, round(2 * length)) / length
-    sx, sy = round(vx * zoom), round(vy * zoom)
+    if abs(vx) > 1e-6 and abs(vy) > 1e-6:
+        # Both ways (a dragged block, put on a half-point grid): twice the size moves it
+        # by whole pixels both ways.
+        zoom = 2.0
+        if abs(vx * zoom - round(vx * zoom)) > 1e-3 or abs(vy * zoom - round(vy * zoom)) > 1e-3:
+            fail("the move isn't a whole number of half points")
+    else:
+        length = math.hypot(vx, vy)
+        zoom = max(1, round(2 * length)) / length
     # Drawn alone, without what stays put (a background picture behind it, text beside
     # it), which the checks above already proved unchanged.
     old_pieces = _pieces(rp)
     moving_ids = {(p.kind, p.start) for p in shift.pieces}
     keep = {n for n, p in enumerate(old_pieces) if (p.kind, p.start) in moving_ids}
-    old_mu, old_pf = render(_only(old_bytes, page_no, keep), page_no, zoom)
-    new_mu, new_pf = render(_only(new_bytes, page_no, keep), page_no, zoom)
-    # PDFium rounds glyph positions to whole pixels: a pixel of slack, as in the other checks.
-    for before, after, slack in ((old_mu, new_mu, 0), (old_pf, new_pf, 1)):
-        if _differs_after_shift(before, after, old_area, zoom, sx, sy, slack):
+    alone_old, alone_new = _only(old_bytes, page_no, keep), _only(new_bytes, page_no, keep)
+
+    def differs(z: float) -> list[bool]:
+        sx, sy = round(vx * z), round(vy * z)
+        old_mu, old_pf = render(alone_old, page_no, z)
+        new_mu, new_pf = render(alone_new, page_no, z)
+        # PDFium rounds glyph positions to whole pixels: a pixel of slack, as in the other checks.
+        return [_differs_after_shift(before, after, old_area, z, sx, sy, slack) for before, after, slack in ((old_mu, new_mu, 0), (old_pf, new_pf, 1))]
+
+    first = differs(zoom)
+    if any(first):
+        # A glyph exactly between two pixels can round either way, at its old place and
+        # its new one; at twice the size it's on a pixel. Each engine must match at one size.
+        again = differs(2 * zoom)
+        if any(a and b for a, b in zip(first, again)):
             fail("the moved text wouldn't look exactly the same")
 
     # Every line reads the same: the moved ones at their new place.
@@ -627,7 +677,18 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
     b = after[y0 + sy : y1 + sy, x0 + sx : x1 + sx].astype(int)
     if not slack:
         return int((np.abs(a - b) > 24).sum()) > 0
-    return outside(a, b, [], 1.0, slack) > 0
+    # Each pixel within the range of the other's around it, give or take the same 24
+    # levels of grey (PDFium's gap between two letters, one a pixel further: 248 or 255).
+    def spread(img, fn):
+        out = img.copy()
+        for dy in range(-slack, slack + 1):
+            for dx in range(-slack, slack + 1):
+                out = fn(out, np.roll(np.roll(img, dy, 0), dx, 1))
+        return out
+
+    lo_a, hi_a, lo_b, hi_b = spread(a, np.minimum), spread(a, np.maximum), spread(b, np.minimum), spread(b, np.maximum)
+    changed = (b < lo_a - 24) | (b > hi_a + 24) | (a < lo_b - 24) | (a > hi_b + 24)
+    return int(changed.sum()) > 0
 
 
 def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> tuple[bytes, list, int, Shift] | None:

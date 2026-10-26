@@ -4,9 +4,12 @@ import {
   addImage,
   deleteImage,
   deleteLines,
+  getLines,
   goToVersion,
   moveImage,
+  moveLines,
   pictureUrl,
+  previewMove,
   redoEdit,
   undoEdit,
   type DocInfo,
@@ -25,6 +28,7 @@ import HomePanel from "./HomePanel";
 import { ADD_TEXT, BOXES, CHANGES, CLOSE, HELP, Icon, MAGNIFIER, Mark, MINUS, PAGES, PICTURE, PLUS, REDO, UNDO } from "./Icon";
 import ImagePanel, { PICTURE_TYPES, PlacePicturePanel, pictureProblem } from "./ImagePanel";
 import LinePanel, { type Change } from "./LinePanel";
+import { MovePanel, TogetherPanel } from "./MovePanel";
 import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
 import PagesPanel from "./PagesPanel";
@@ -54,8 +58,21 @@ function useWidth(ref: React.RefObject<HTMLElement | null>) {
 type Notice = { text: string; tone: "done" | "warning" | "error"; detail?: string };
 type HistoryEntry = DocInfo["history"][number];
 type Box = [number, number, number, number];
-/** A picture being put on a page (a new one) or moved: dragged in a frame until saved. */
-type Frame = { page: number; box: Box; mode: "add" | "move"; src: string; from?: Box; image?: PageImage; file?: File };
+/** A picture being put on a page (a new one) or moved, or lines or a table being moved
+ *  ("text": shown as a picture of them alone): dragged in a frame until saved. */
+type Frame = {
+  page: number;
+  box: Box;
+  mode: "add" | "move" | "text";
+  src: string;
+  from?: Box;
+  image?: PageImage;
+  file?: File;
+  lines?: TextLine[];
+  table?: boolean;
+};
+/** Lines the PDF stores as one with others: asked before moving them all. */
+type Together = { page: number; lines: TextLine[]; table: boolean; others: string[]; message: string };
 
 // Every change the server accepts has passed its checks, among them that nothing outside
 // the changed lines differs by a single pixel.
@@ -243,6 +260,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   const [frame, setFrame] = useState<Frame | null>(null);
   const [frameSaving, setFrameSaving] = useState(false);
   const [frameError, setFrameError] = useState<string | null>(null);
+  const [together, setTogether] = useState<Together | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
   const pictureInput = useRef<HTMLInputElement>(null);
   // A new picture is shown from the file itself until it's added: let go of it after.
   const addUrl = frame?.mode === "add" ? frame.src : null;
@@ -344,6 +363,40 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     img.src = url;
   }
 
+  /** Lines on a page (with `table`, the table the first is in) picked up to be dragged:
+   *  shown as a picture of them alone, over their place. */
+  async function startTextMove(page: number, lines: TextLine[], table: boolean) {
+    if (moveBusy) return;
+    setMoveBusy(true);
+    setFrameError(null);
+    try {
+      const plan = await previewMove(doc, page, lines, table);
+      if (plan.together) {
+        setTogether({ page, lines, table, others: plan.together, message: plan.message });
+        return;
+      }
+      setTogether(null);
+      clearSelection();
+      stopPlacing();
+      setShowChanges(false);
+      setShowPages(false);
+      setFrame({ page, box: [...plan.box], mode: "text", src: plan.image, from: [...plan.box], lines, table });
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Something went wrong. Try again.", tone: "error" });
+    } finally {
+      setMoveBusy(false);
+    }
+  }
+
+  /** Move the lines with the ones the PDF stores them with. */
+  async function moveTogether() {
+    if (!together) return;
+    const { page, lines, table, others } = together;
+    const all = (await getLines(doc, page)).lines;
+    const more = all.filter((l) => others.includes(l.id) && !lines.some((m) => m.id === l.id));
+    await startTextMove(page, [...lines, ...more], table);
+  }
+
   function startMove() {
     if (!imagePick) return;
     const { page, image } = imagePick;
@@ -376,6 +429,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     const resized = from && (Math.abs(f.box[2] - f.box[0] - (from[2] - from[0])) > 0.5 || Math.abs(f.box[3] - f.box[1] - (from[3] - from[1])) > 0.5);
     setFrameSaving(true);
     setFrameError(null);
+    if (f.mode === "text" && from) {
+      try {
+        const outcome = await moveLines(doc, f.page, f.lines ?? [], !!f.table, f.box[0] - from[0], f.box[1] - from[1]);
+        setFrame(null);
+        onChange(outcome.document);
+        lightUp(outcome.document, outcome.document.history.at(-1));
+        const n = f.lines?.length ?? 0;
+        report(f.table ? "Table moved." : n === 1 ? "Line moved." : "Lines moved.", outcome);
+      } catch (e) {
+        setFrameError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+      } finally {
+        setFrameSaving(false);
+      }
+      return;
+    }
     try {
       const outcome = f.mode === "add" ? await addImage(doc, f.page, f.file!, f.box) : await moveImage(doc, f.page, f.image!, f.box);
       setFrame(null);
@@ -579,6 +647,21 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       }
       // Not while typing, nor from inside the panel (Backspace on its buttons is a Mac's Delete).
       const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], .dock, dialog");
+      // What's being placed or moved: the arrow keys nudge it a point (Shift: ten), on its page.
+      const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (frame && nudge && !inText && !frameSaving) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const size = doc.pages[frame.page];
+        setFrame((now) => {
+          if (!now) return now;
+          const [x0, y0, x1, y1] = now.box;
+          const dx = Math.min(Math.max(nudge[0] * step, -x0), size.width - x1);
+          const dy = Math.min(Math.max(nudge[1] * step, -y0), size.height - y1);
+          return { ...now, box: [x0 + dx, y0 + dy, x1 + dx, y1 + dy] };
+        });
+        return;
+      }
       if (e.key === "Escape") {
         // A picture being placed or moved is let go first; a picked one stays picked.
         if (frame) {
@@ -692,9 +775,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           if (window.matchMedia?.("(max-width: 1023.98px)").matches) setShowPages(false);
         }}
       />
-    ) : compare ? null : frame ? (
+    ) : compare ? null : frame?.mode === "text" ? (
+      <MovePanel
+        table={!!frame.table}
+        count={frame.lines?.length ?? 0}
+        saving={frameSaving}
+        error={frameError}
+        onSave={() => void saveFrame()}
+        onCancel={cancelFrame}
+      />
+    ) : frame ? (
       <PlacePicturePanel
-        mode={frame.mode}
+        mode={frame.mode === "add" ? "add" : "move"}
         box={frame.box}
         saving={frameSaving}
         error={frameError}
@@ -733,6 +825,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
           </p>
         </section>
       )
+    ) : together ? (
+      <TogetherPanel message={together.message} busy={moveBusy} onTogether={() => void moveTogether()} onCancel={() => setTogether(null)} />
     ) : imagePick ? (
       <ImagePanel
         doc={doc}
@@ -756,9 +850,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         onWorking={setWorking}
         onDelete={() => void remove(picked)}
         onSelectMore={() => setAdding(true)}
+        moving={moveBusy}
+        onMove={(table) => void startTextMove(picked[0].page, [picked[0].line], table)}
       />
     ) : picked.length > 0 || adding ? (
-      <SelectionPanel picked={picked} deleting={deleting} onDelete={() => void remove(picked)} onClose={clearSelection} />
+      <SelectionPanel
+        picked={picked}
+        deleting={deleting}
+        moving={moveBusy}
+        onDelete={() => void remove(picked)}
+        onMove={() => void startTextMove(picked[0].page, picked.map((p) => p.line), false)}
+        onClose={clearSelection}
+      />
     ) : null;
 
   return (
@@ -885,7 +988,13 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     onSelectImage={(image) => selectImage(i, image)}
                     frame={
                       frame?.page === i
-                        ? { box: frame.box, src: frame.src, from: frame.from, onChange: (box) => setFrame((now) => now && { ...now, box }) }
+                        ? {
+                            box: frame.box,
+                            src: frame.src,
+                            from: frame.from,
+                            resizable: frame.mode !== "text",
+                            onChange: (box) => setFrame((now) => now && { ...now, box }),
+                          }
                         : null
                     }
                     version={shownVersion}

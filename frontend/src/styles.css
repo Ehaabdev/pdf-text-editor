@@ -1446,6 +1446,12 @@ html.theme-switching::view-transition-new(root) {
     0 12px 30px -12px rgba(5, 10, 30, 0.5);
 }
 
+/* Lines or a table being moved: a picture of them alone, see-through around the letters,
+   so what's under the new place shows. */
+.image-frame--text {
+  background: rgba(47, 107, 255, 0.05);
+}
+
 .image-frame img {
   display: block;
   width: 100%;
