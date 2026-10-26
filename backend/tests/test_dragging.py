@@ -184,3 +184,50 @@ def test_through_the_website(client):
 def test_moves_count_as_changes():
     assert limits.kind_of("POST", "/api/documents/abc/moves") == "change"
     assert limits.kind_of("POST", "/api/documents/abc/moves/preview") == "read"
+
+
+def _readable(src: bytes, page_no: int) -> bool:
+    """The editor can still read and change the page."""
+    import io
+
+    import pikepdf
+
+    from app.pdfcontent import matches_trace, replay
+
+    rp = replay(pikepdf.open(io.BytesIO(src)), page_no)
+    return matches_trace(rp, pymupdf.open("pdf", src)[page_no]) and not rp.stray_restore and not rp.open_text
+
+
+@pytest.mark.parametrize("name", ["word/turkish-quote-word.pdf", "chrome/turkish-quote-chrome.pdf"])
+def test_a_moved_line_can_be_changed_after(name):
+    from app.adding import add_line
+    from app.deleting import delete_lines
+    from app.editing import replace_line
+
+    src = (FIXTURES / name).read_bytes()
+    line = find(src, "Mehmet Çelik", 1)
+    moved = dragging.move(src, 1, [(line.id, line.text)], -150, 40).pdf
+    assert _readable(moved, 1)
+    line = find(moved, "Mehmet Çelik", 1)
+    edited = replace_line(moved, 1, line.id, line.text, "Mehmet Çelikkaya").pdf
+    assert _readable(edited, 1) and find(edited, "Mehmet Çelikkaya", 1)
+    added = add_line(moved, 1, "Satış Müdürü", line.id, line.text, "below").pdf
+    assert _readable(added, 1) and find(added, "Satış Müdürü", 1)
+    again = dragging.move(moved, 1, [(line.id, line.text)], 0, 30).pdf
+    assert _readable(again, 1)
+    deleted = delete_lines(again, [(1, find(again, "Mehmet Çelik", 1).id, "Mehmet Çelik")]).pdf
+    assert _readable(deleted, 1) and not any(l.text == "Mehmet Çelik" for l in lines_of(deleted, 1))
+
+
+def test_a_moved_table_can_get_rows():
+    from app import rows
+
+    page = pymupdf.open("pdf", TURKISH)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    first = table.lines[0]
+    moved = dragging.move(TURKISH, 0, [(first.id, first.text)], 0, 160, table=True).pdf
+    page = pymupdf.open("pdf", moved)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    cell = table.cells[len(table.cells) // 2].lines[0]
+    added = rows.add_row(moved, 0, cell.id, cell.text, "below", ["Yeni", "1", "", ""]).pdf
+    assert _readable(added, 0)

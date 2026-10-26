@@ -404,10 +404,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     setFrame({ page, box: [...image.bbox], mode: "move", src: pictureUrl(doc, page, image, 800), from: [...image.bbox], image });
   }
 
-  /** A tap on a page while a picture is in a frame: the picture goes there. A picture
-   *  being moved stays on its page. */
+  /** A tap on a page while something is in a frame: it goes there. A new picture can go
+   *  on any page; a picture, lines or a table being moved stay on their page. */
   function placeFrame(page: number, x: number, y: number) {
-    if (!frame || (frame.mode === "move" && page !== frame.page)) return;
+    if (!frame || (frame.mode !== "add" && page !== frame.page)) return;
     setFrame({ ...frame, page, box: around(page, x, y, frame.box[2] - frame.box[0], frame.box[3] - frame.box[1]) });
   }
 
