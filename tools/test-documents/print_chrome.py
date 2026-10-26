@@ -130,7 +130,7 @@ def print_page(name: str):
     print(f"saved {out.name}")
 
 
-HAND_WRITTEN = ["decorations", "additions", "images"]
+HAND_WRITTEN = ["decorations", "additions", "images", "tables"]
 
 if __name__ == "__main__":
     # python print_chrome.py decorations   -> only that document

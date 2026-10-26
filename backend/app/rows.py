@@ -108,6 +108,12 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
             rows.append([
                 {
                     "bbox": [round(v, 2) for v in c.bbox],
+                    # Where it is in the table's grid (column 0: the leftmost on the page), and
+                    # how many rows and columns it covers when merged.
+                    "row": c.row,
+                    "col": c.col,
+                    "rowspan": c.rowspan,
+                    "colspan": c.colspan,
                     "text": " ".join(l.text for l in c.lines),
                     "lines": [l.id for l in c.lines],
                     "merged": c.rowspan > 1 or any(o.rowspan > 1 and o.row <= r < o.row + o.rowspan for o in table.cells),

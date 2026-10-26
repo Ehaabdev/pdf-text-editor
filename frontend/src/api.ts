@@ -271,8 +271,19 @@ export function addLine(doc: DocInfo, page: number, line: TextLine, text: string
 }
 
 /** A table on a page (with borders): each row's cells in the table's order (an Arabic
- *  table's first cell is on the right), with their text and the ids of their lines. */
-export type TableCell = { bbox: [number, number, number, number]; text: string; lines: string[]; merged: boolean };
+ *  table's first cell is on the right), with their text and the ids of their lines. A cell
+ *  merged over several rows is listed in its first row only; `col` counts from the left of
+ *  the page, whatever the table's direction. */
+export type TableCell = {
+  bbox: [number, number, number, number];
+  row: number;
+  col: number;
+  rowspan: number;
+  colspan: number;
+  text: string;
+  lines: string[];
+  merged: boolean;
+};
 export type PageTable = { bbox: [number, number, number, number]; rtl: boolean; rows: TableCell[][] };
 
 const tablesCache = new Map<string, Promise<PageTable[]>>();

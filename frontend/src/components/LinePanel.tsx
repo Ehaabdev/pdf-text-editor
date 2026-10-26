@@ -110,10 +110,28 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     }
   }
 
-  // A new column: which side (on the page), and a box for each row's cell.
+  // A new column: which side (on the page), and a box for each of its cells.
   const [side, setSide] = useState<"left" | "right">("right");
   const [colCells, setColCells] = useState<string[]>([]);
   const rowCount = table ? table.table.rows.length : 0;
+  const clicked = table?.table.rows.flat().find((c) => c.lines.includes(line.id));
+  // The rows where the new column gets a cell of its own: one beside each cell of the column
+  // it's added to (beside a merged cell, its last column on the right, its first on the left),
+  // as tall as that cell. A cell merged across the new column's place gets wider instead.
+  function newCellRows(next: "left" | "right"): { rows: number[]; widened: number } {
+    if (!table || !clicked) return { rows: [], widened: 0 };
+    const k = next === "right" ? clicked.col + clicked.colspan - 1 : clicked.col;
+    const edge = next === "right" ? k + 1 : k;
+    const rows: number[] = [];
+    let widened = 0;
+    for (const c of table.table.rows.flat()) {
+      if (c.col > k || k >= c.col + c.colspan) continue;
+      if (c.col < edge && edge < c.col + c.colspan) widened += 1;
+      else rows.push(c.row);
+    }
+    return { rows: rows.sort((a, b) => a - b), widened };
+  }
+  const newCells = newCellRows(side);
   // A row's name for its box: the text of its first cell (in the table's order), else its number.
   function rowLabel(r: number): string {
     const first = (table?.table.rows[r]?.find((c) => c.text.trim())?.text ?? "").trim();
@@ -226,7 +244,7 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
           }}
         >
           <div className="column-cells">
-            {colCells.map((value, r) => (
+            {newCells.rows.map((r, n) => (
               <label key={r} className="row-cell">
                 <span className="row-cell-label" dir="auto">
                   {rowLabel(r)}
@@ -234,9 +252,9 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
                 <input
                   className="line-edit"
                   dir="auto"
-                  value={value}
+                  value={colCells[r] ?? ""}
                   disabled={rowBusy}
-                  autoFocus={r === 0}
+                  autoFocus={n === 0}
                   onChange={(e) => setColCells((now) => now.map((v, i) => (i === r ? e.target.value.replace(/[\r\n]+/g, " ") : v)))}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
@@ -248,7 +266,13 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               </label>
             ))}
           </div>
-          <p className="edit-note">Each cell’s text stays on one line, in the style of the cell beside it.</p>
+          <p className="edit-note">
+            Each cell’s text stays on one line, in the style of the cell beside it.
+            {newCells.widened > 0 &&
+              (newCells.widened === 1
+                ? " A merged cell across the new column’s place gets wider instead of getting a new cell."
+                : " Merged cells across the new column’s place get wider instead of getting new cells.")}
+          </p>
           {error && (
             <p className="error" role="alert">
               {error}
