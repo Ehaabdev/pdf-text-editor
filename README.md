@@ -238,14 +238,18 @@ On every bordered table of the test documents, adding a row below and above each
 
 ## Table columns
 
-Click a line in a table with borders and choose **Delete column**: its column goes and the table gets narrower, as in Word (`backend/app/columns.py`).
+Click a line in a table with borders and choose **Add column left**, **Add column right** or **Delete column** (`backend/app/columns.py`).
+
+**Adding a column.** A box for each row takes the new cells' text (or leave them empty). The new column is as wide as the narrowest column, if there's room: the table grows where the page has room beside it (on its right, or its left for an Arabic table); otherwise each column gives up whole points of its empty space, its text keeping the side of the cell it keeps to (or its middle) and the table's own margin, its pictures still fitting. Every rectangle's ends move with the edge they're on, or with the nearer side of their cell (a cell's inner shading keeps its margin); a clip smaller than its cell goes with what it clips. The new column gets the look of the one it's added beside: its shading, bars and inner shading drawn again right after them, and that column's edge bars on the new edge. Its text goes in as a new line does, in the style of the cell beside it. Checked: every glyph where it was or moved along its row with its cell, every rectangle where it should be (moved, stretched or drawn again), nothing outside the table's old and new places changed, each cell's text drawn alone looking the same at its new place, every line reading the same, and the page reading as the table with its new column. Refused when there's no room (a table as wide as the page whose columns are full), as for deleting.
+
+**Deleting a column.** Its column goes and the table gets narrower, as in Word.
 
 - A table is drawn as rectangles: each cell's shading and clipping, thin bars on the column edges, bars between them along the rows, small squares where they meet. The column's text goes first, as deleting lines does (with its underlines and links), then its rectangles and pictures, and the bars of one of its edges: its right one, or its left one for the last column, so the table keeps its outer border. Everything right of it moves left by exactly the column's width: rectangles by having their four numbers rewritten, text and pictures whole, inside `q … Q`, as a dragged block does.
 - Text is judged by its visible letters: Word puts the spaces of a row's empty cells in the same text object as the text before them.
 - Checked: every glyph, shape and picture where it was or exactly one column's width further left; nothing outside the table changes; the table, drawn, is pixel for pixel what it was left of the column, and right of it one column's width further left (a letter or bar exactly between two pixels may match at twice the size; PDFium, which rounds each letter to a whole pixel, may differ by a few pixels there once MuPDF has matched exactly); every line reads the same; the page reads as the same table with one column fewer.
 - Refused, with the reason: merged cells, rows split into columns differently, a table's only column, something drawn across the table's edge.
 
-On the test documents, every column of every bordered table (30): all deleted. In the samples, the tables have merged cells or rows split differently: refused.
+On the test documents, every column of every bordered table (30): all deleted; a column added left and right of each: 51 of 52 (one refused: a line just above the table would read differently). In the samples, the tables have merged cells or rows split differently: refused.
 
 ## Moving lines and tables
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, addLine, addRow, deleteColumn, deleteRow, editLine, getTables, type DocInfo, type EditOutcome, type PageTable, type TextLine, type TextSpan } from "../api";
+import { ApiError, addColumn, addLine, addRow, deleteColumn, deleteRow, editLine, getTables, type DocInfo, type EditOutcome, type PageTable, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 import { CLOSE, Icon } from "./Icon";
 import Loupe from "./Loupe";
@@ -14,7 +14,7 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
-export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted" | "column deleted";
+export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted" | "column added" | "column deleted";
 
 type Props = {
   doc: DocInfo;
@@ -33,7 +33,7 @@ type Props = {
   onWorking?: (working: boolean) => void;
 };
 
-type Mode = "view" | "edit" | "add" | "row";
+type Mode = "view" | "edit" | "add" | "row" | "column";
 
 export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onMove, moving = false, onWorking }: Props) {
   const [mode, setMode] = useState<Mode>("view");
@@ -110,6 +110,37 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     }
   }
 
+  // A new column: which side (on the page), and a box for each row's cell.
+  const [side, setSide] = useState<"left" | "right">("right");
+  const [colCells, setColCells] = useState<string[]>([]);
+  const rowCount = table ? table.table.rows.length : 0;
+  // A row's name for its box: the text of its first cell (in the table's order), else its number.
+  function rowLabel(r: number): string {
+    const first = (table?.table.rows[r]?.find((c) => c.text.trim())?.text ?? "").trim();
+    if (!first) return `Row ${r + 1}`;
+    return first.length > 28 ? `${first.slice(0, 28)}…` : first;
+  }
+
+  function showColumn(next: "left" | "right") {
+    setMode("column");
+    setSide(next);
+    setColCells(Array.from({ length: rowCount }, () => ""));
+    setError(null);
+  }
+
+  async function saveColumn() {
+    if (rowBusy || !table) return;
+    setRowBusy(true);
+    setError(null);
+    try {
+      onEdited(await addColumn(doc, page, line, side, colCells), "column added");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
   async function removeColumn() {
     if (rowBusy || !table) return;
     setRowBusy(true);
@@ -173,6 +204,69 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
   const style = `the font (${fontLabel(line.font)}), size (${pointSize(line.size)}) and color`;
   const addTitle = where === "below" ? "Add line below" : "Add line above";
   const rowTitle = where === "below" ? "Add row below" : "Add row above";
+
+  if (mode === "column" && table) {
+    const title = side === "left" ? "Add column left" : "Add column right";
+    return (
+      <section className="panel" aria-label={title}>
+        <div className="panel-head">
+          <h2 className="panel-title">{title}</h2>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close">
+            <Icon d={CLOSE} />
+          </button>
+        </div>
+        <p className="panel-lede">
+          Type each new cell’s text, or leave it empty. The new column looks like this one; the others give it room from
+          their empty space (or the table grows, where the page has room beside it).
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveColumn();
+          }}
+        >
+          <div className="column-cells">
+            {colCells.map((value, r) => (
+              <label key={r} className="row-cell">
+                <span className="row-cell-label" dir="auto">
+                  {rowLabel(r)}
+                </span>
+                <input
+                  className="line-edit"
+                  dir="auto"
+                  value={value}
+                  disabled={rowBusy}
+                  autoFocus={r === 0}
+                  onChange={(e) => setColCells((now) => now.map((v, i) => (i === r ? e.target.value.replace(/[\r\n]+/g, " ") : v)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      show("view");
+                    }
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="edit-note">Each cell’s text stays on one line, in the style of the cell beside it.</p>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="edit-actions">
+            <button className="btn btn-primary" type="submit" disabled={rowBusy}>
+              {rowBusy && <span className="spinner" aria-hidden="true" />}
+              {rowBusy ? "Checking the change…" : "Add column"}
+            </button>
+            <button className="btn btn-secondary" type="button" disabled={rowBusy} onClick={() => show("view")}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </section>
+    );
+  }
 
   if (mode === "row" && table) {
     return (
@@ -406,6 +500,12 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               <div className="edit-actions">
                 <button className="btn btn-secondary" onClick={() => onMove(true)} disabled={deleting || rowBusy || moving}>
                   Move table
+                </button>
+                <button className="btn btn-secondary" onClick={() => showColumn("left")} disabled={deleting || rowBusy || moving}>
+                  Add column left
+                </button>
+                <button className="btn btn-secondary" onClick={() => showColumn("right")} disabled={deleting || rowBusy || moving}>
+                  Add column right
                 </button>
                 <button className="btn btn-delete" onClick={() => void removeColumn()} disabled={deleting || rowBusy || moving}>
                   Delete column

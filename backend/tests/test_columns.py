@@ -92,3 +92,61 @@ def test_through_the_website(client):
 
 def test_column_changes_count_as_changes():
     assert limits.kind_of("POST", "/api/documents/abc/columns/delete") == "change"
+
+
+# Adding a column -------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["word/french-quote-word.pdf", "word/arabic-quotation-word.pdf", "word/english-styles-word.pdf", "additions/additions-chrome.pdf"])
+@pytest.mark.parametrize("where", ["left", "right"])
+def test_an_empty_column_is_added_beside_each_column(name, where):
+    src = (FIXTURES / name).read_bytes()
+    table = table_of(src)
+    before = grid(table)
+    for col in range(len(table.cols) - 1):
+        line = next(l for c in table.cells if c.col == col for l in c.lines)
+        result = columns.add_column(src, 0, line.id, line.text, where, [])
+        after = table_of(result.pdf)
+        at = col + 1 if where == "right" else col
+        assert grid(after) == [row[:at] + [""] + row[at:] for row in before]
+        assert after.rows == pytest.approx(table.rows, abs=0.6)
+        # The table stays as wide (taking the columns' empty space) or grows where the page has room.
+        assert after.bbox[2] - after.bbox[0] >= table.bbox[2] - table.bbox[0] - 0.6
+
+
+@pytest.mark.parametrize("fonts", ["installed", "server"])
+def test_a_column_with_text(fonts, monkeypatch):
+    if fonts == "server":
+        from app.fonts import library
+
+        monkeypatch.setattr(library(), "find", lambda name: None)
+    src = (FIXTURES / "word" / "turkish-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    line = next(l for c in table.cells if c.col == 2 for l in c.lines)  # Birim Fiyat
+    texts = ["Fiyat 2", "%5", "%5", "%0", ""]  # letters the PDF's copies have (bold has no "d")
+    result = columns.add_column(src, 0, line.id, line.text, "right", texts)
+    after = grid(table_of(result.pdf))
+    assert [row[3] for row in after] == [comparable(t) for t in texts]
+    assert result.lookalikes == []
+
+
+def test_no_room_for_a_column():
+    # Both columns of the contract's table are full and it spans the page.
+    src = (FIXTURES / "word" / "bilingual-contract-word.pdf").read_bytes()
+    table = table_of(src)
+    line = table.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="no room for another column"):
+        columns.add_column(src, 0, line.id, line.text, "right", [])
+
+
+def test_adding_through_the_website(client):
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    doc = upload(client, src, "devis.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["text"] == "Quantité")
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "where": "right", "cells": ["Unité", "pièce", "forfait", "jour", ""]}
+    done = client.post(f"{base}/columns/add", json=body)
+    assert done.status_code == 200, done.text
+    assert done.json()["document"]["history"][-1]["summary"] == "Added a table column"
+    assert limits.kind_of("POST", "/api/documents/abc/columns/add") == "change"
