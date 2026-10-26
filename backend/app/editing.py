@@ -1447,7 +1447,7 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         if id(a) in untouched and id(b) in untouched and b.visual == a.visual + 1:
             kept_spaces |= {t for t in line.members if a.u1 - 0.01 <= rp.glyphs[t].origin[0] <= b.u0 + 0.01 and t not in keep}
     remove = set(line.members) - keep - kept_spaces
-    if not remove:
+    if not remove and not any(w.is_new for w in visual):
         return EditResult(src, warnings, line.text)
 
     runs: list[PlacedRun] = []
@@ -1506,10 +1506,20 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
     # Draw the block next to the line's own visible letters: hidden members (a cell's
     # paragraph mark) can sit in a neighbouring cell, whose clipping would hide the text.
     ink_traces = [t for w in old for t in w.traces if t in remove]
-    first = min(ink_traces) if ink_traces else min(remove)
+    # Only words added after the others (nothing taken away): next to the line's letters.
+    first = min(ink_traces) if ink_traces else min(remove) if remove else min(t for w in old for t in w.traces)
     insert_after = rp.et_after.get(rp.glyphs[first].op)
     if insert_after is None:
         raise EditRejected("This page is built in a way that can't be edited safely yet.")
+    # The line may be clipped to a box (a table cell, a text box): letters past its edge
+    # would be drawn, read back, and never show.
+    from .moving import _clip_scopes
+
+    nx0, nx1 = visual[0].x, visual[-1].x + visual[-1].width
+    for i, end in _clip_scopes(rp).items():
+        c = rp.paths[i]
+        if c.end < insert_after < end and (nx0 < c.bbox[0] - 0.5 or nx1 > c.bbox[2] + 0.5):
+            raise EditRejected("The new text is too long for the box it's in: its end would be hidden. Shorten it a little.")
     block = draw_block(runs, rp.glyphs[first].ctm, None)
     write_page(pdf, page_no, rewrite(rp, remove, insert_after, block, path_changes))
     apply_links(pdf, page_no, link_changes)
@@ -1525,7 +1535,9 @@ def _apply(src, pdf, mu, rp, page_no, line, old, visual, column, word_made, warn
         x0, y0, x1, y1 = rp.paths[c.path].bbox
         boxes += [(x0, y0, x1, y1)] + [(a, y0, b, y1) for a, b in c.spans]
     drawn = "".join(w.text for w in visual if w.is_new)
-    area, mark = _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes)
+    # Where each new word with letters or digits is drawn: it must show there.
+    words = [(w.x, base - 0.2 * size, w.x + w.width, base + 0.75 * size) for w in visual if w.is_new and any(c.isalnum() for c in w.text) and w.width > 0]
+    area, mark = _verify(src, result, page_no, line, new_text, boxes, drawn, rp, path_changes, link_changes, words)
     return EditResult(result, warnings, new_text, [(page_no, *area)], [(page_no, *mark)], list(fonts.lookalikes.values()))
 
 
@@ -1629,7 +1641,7 @@ def _link_changes(pdf, page_no, rp, line, visual, remove, warnings) -> list[Link
 
 
 def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_text: str, boxes, drawn: str,
-            rp: Replay, path_changes: list[PathChange], link_changes: list[LinkChange]) -> tuple[tuple, tuple]:
+            rp: Replay, path_changes: list[PathChange], link_changes: list[LinkChange], words=()) -> tuple[tuple, tuple]:
     """Check the edit; return the area (as displayed) outside which nothing changed, and
     the old and new lines' boxes together, to show people."""
     new_doc = pymupdf.open("pdf", new_bytes)
@@ -1653,11 +1665,20 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, line: Line, new_te
     if outside(old_mu, new_mu, [tuple(area)], 2.0, 0) or outside(old_pf, new_pf, [tuple(area)], 2.0, 1):
         fail("other parts of the page would have moved")
     # The new text leaves ink, in both engines: text can vanish (a clipping window, a
-    # wrong colour) while pixels still change.
+    # wrong colour) while pixels still change. As much as its letters would, compared
+    # with the old text's: "Report ID: NW-Q3-2026-118" made "ID: 7" leaves a seventh.
+    letters = lambda t: sum(1 for c in t if not c.isspace())
+    share = min(1.0, letters(new_text) / max(1, letters(line.text)))
     for before, after in ((old_mu, new_mu), (old_pf, new_pf)):
         had, has = ink(before, tuple(area), 2.0), ink(after, tuple(area), 2.0)
-        if has < max(1, 0.3 * had) * (1 if had else 0) or (had == 0 and has == 0):
+        if has < max(1, 0.3 * share * had) * (1 if had else 0) or (had == 0 and has == 0):
             fail("the new text wasn't visible")
+        # And each new word shows where it was put (the old text's ink elsewhere on the
+        # line can't stand in for it): a word drawn white, or cut off by a clip, doesn't.
+        for b in words:
+            r = to_display(page, b)
+            if ink(after, tuple(r), 2.0) < max(2, 0.02 * r.width * r.height * 4):
+                fail("the new text wasn't visible")
 
     # The line reads back as typed.
     cands = [l for l in page_lines(page) if pymupdf.Rect(l.bbox).intersects(area)]
