@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, addLine, addRow, deleteRow, editLine, getTables, type DocInfo, type EditOutcome, type PageTable, type TextLine, type TextSpan } from "../api";
+import { ApiError, addLine, addRow, deleteColumn, deleteRow, editLine, getTables, type DocInfo, type EditOutcome, type PageTable, type TextLine, type TextSpan } from "../api";
 import { fontLabel, pointSize, styleLabel } from "../fonts";
 import { CLOSE, Icon } from "./Icon";
 import Loupe from "./Loupe";
@@ -14,7 +14,7 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
-export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted";
+export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted" | "column deleted";
 
 type Props = {
   doc: DocInfo;
@@ -103,6 +103,19 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
     setError(null);
     try {
       onEdited(await deleteRow(doc, page, line), "row deleted");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
+  async function removeColumn() {
+    if (rowBusy || !table) return;
+    setRowBusy(true);
+    setError(null);
+    try {
+      onEdited(await deleteColumn(doc, page, line), "column deleted");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
     } finally {
@@ -393,6 +406,9 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
               <div className="edit-actions">
                 <button className="btn btn-secondary" onClick={() => onMove(true)} disabled={deleting || rowBusy || moving}>
                   Move table
+                </button>
+                <button className="btn btn-delete" onClick={() => void removeColumn()} disabled={deleting || rowBusy || moving}>
+                  Delete column
                 </button>
               </div>
               {error && mode === "view" && (

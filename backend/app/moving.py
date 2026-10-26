@@ -662,9 +662,9 @@ def _line_key(line: Line, vector) -> tuple:
     return (line.text, round(x0 + vector[0], 1), round(y0 + vector[1], 1), round(x1 + vector[0], 1), round(y1 + vector[1], 1))
 
 
-def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, slack: int = 0) -> bool:
+def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, slack: int = 0, allow: int = 0) -> bool:
     """Do the pixels of `area` (as displayed) differ from those sx, sy pixels further on?
-    With slack, a pixel may match any of its neighbours instead."""
+    With slack, a pixel may match any of its neighbours instead; `allow` pixels may differ."""
     h, w = before.shape
     x0, y0 = max(0, int(area.x0 * zoom)), max(0, int(area.y0 * zoom))
     x1, y1 = min(w, int(area.x1 * zoom) + 1), min(h, int(area.y1 * zoom) + 1)
@@ -688,7 +688,7 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
 
     lo_a, hi_a, lo_b, hi_b = spread(a, np.minimum), spread(a, np.maximum), spread(b, np.minimum), spread(b, np.maximum)
     changed = (b < lo_a - 24) | (b > hi_a + 24) | (a < lo_b - 24) | (a > hi_b + 24)
-    return int(changed.sum()) > 0
+    return int(changed.sum()) > allow
 
 
 def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> tuple[bytes, list, int, Shift] | None:

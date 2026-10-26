@@ -169,6 +169,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         ? "Row added. What was below it moved down to make room."
         : change === "row deleted"
           ? "Row deleted. What was below it moved up."
+          : change === "column deleted"
+            ? "Column deleted. The table is narrower now."
           : change === "deleted"
             ? moved ? "Line deleted. The text below moved up." : "Line deleted."
             : change === "added"

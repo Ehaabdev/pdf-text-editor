@@ -236,6 +236,17 @@ Click a line in a table with borders: the panel adds a row below or above its ro
 
 On every bordered table of the test documents, adding a row below and above each row and deleting each row: 28 of 34, 27 of 34 and 32 of 34 are done; the others are refused, for a full page (6), a table's only row, and a line with an icon just above a table, which reads differently once the table moves.
 
+## Table columns
+
+Click a line in a table with borders and choose **Delete column**: its column goes and the table gets narrower, as in Word (`backend/app/columns.py`).
+
+- A table is drawn as rectangles: each cell's shading and clipping, thin bars on the column edges, bars between them along the rows, small squares where they meet. The column's text goes first, as deleting lines does (with its underlines and links), then its rectangles and pictures, and the bars of one of its edges: its right one, or its left one for the last column, so the table keeps its outer border. Everything right of it moves left by exactly the column's width: rectangles by having their four numbers rewritten, text and pictures whole, inside `q … Q`, as a dragged block does.
+- Text is judged by its visible letters: Word puts the spaces of a row's empty cells in the same text object as the text before them.
+- Checked: every glyph, shape and picture where it was or exactly one column's width further left; nothing outside the table changes; the table, drawn, is pixel for pixel what it was left of the column, and right of it one column's width further left (a letter or bar exactly between two pixels may match at twice the size; PDFium, which rounds each letter to a whole pixel, may differ by a few pixels there once MuPDF has matched exactly); every line reads the same; the page reads as the same table with one column fewer.
+- Refused, with the reason: merged cells, rows split into columns differently, a table's only column, something drawn across the table's edge.
+
+On the test documents, every column of every bordered table (30): all deleted. In the samples, the tables have merged cells or rows split differently: refused.
+
 ## Moving lines and tables
 
 Pick a line and choose **Move line**, pick several lines (Shift-click) and choose **Move**, or pick a line in a table and choose **Move table**. A picture of just what moves (see-through around it) comes up over it: drag it, click a spot, or nudge it with the arrow keys (Shift: ten points), then **Put it here**. Its old place is left empty. It stays on its page (`backend/app/dragging.py`).

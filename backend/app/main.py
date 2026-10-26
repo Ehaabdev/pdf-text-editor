@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config, dragging, exporting, images, limits, rows
+from . import columns, config, dragging, exporting, images, limits, rows
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -447,6 +447,25 @@ async def delete_table_row(doc_id: str, body: RowRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("delete", "Deleted a table row", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/columns/delete")
+async def delete_table_column(doc_id: str, body: RowRequest):
+    """The column a line is in taken out of its table; the table gets narrower."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(columns.delete_column, src, body.page, body.lineId, body.oldText)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("delete", "Deleted a table column", result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:
