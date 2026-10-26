@@ -160,7 +160,7 @@ export default function UploadScreen({ onOpen, notice }: { onOpen: (d: DocInfo) 
 
             <ul className="facts">
               <li>
-                English, Français,{" "}
+                English, Français, Türkçe,{" "}
                 <span lang="ar" dir="rtl">
                   العربية
                 </span>

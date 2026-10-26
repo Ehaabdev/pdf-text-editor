@@ -28,7 +28,14 @@ type Props = {
   selectedImageId?: string | null;
   onSelectImage?: (image: PageImage) => void;
   /** A picture being placed or moved on this page: dragged and resized in a frame. */
-  frame?: { box: [number, number, number, number]; src: string; from?: number[] | null; onChange: (box: [number, number, number, number]) => void } | null;
+  frame?: {
+    box: [number, number, number, number];
+    src: string;
+    from?: number[] | null;
+    /** A picture's corners resize it; lines or a table only move. */
+    resizable?: boolean;
+    onChange: (box: [number, number, number, number]) => void;
+  } | null;
   onPlace: (x: number, y: number) => void;
   /** Comparing: which stored version to show (0 is the original), with editing off. */
   version?: number;
@@ -215,7 +222,7 @@ export default function PageView({
             aria-hidden="true"
           />
         )}
-        {frame && <ImageFrame box={frame.box} page={size} src={frame.src} onChange={frame.onChange} />}
+        {frame && <ImageFrame box={frame.box} page={size} src={frame.src} resizable={frame.resizable ?? true} onChange={frame.onChange} />}
         {lines && editable && !frame && (
           <div className="page-overlay">
             {lines.lines.map((line) => {

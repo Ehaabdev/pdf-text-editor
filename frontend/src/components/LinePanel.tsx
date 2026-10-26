@@ -25,13 +25,17 @@ type Props = {
   onEdited: (outcome: EditOutcome, change: Change) => void;
   onDelete: () => void;
   onSelectMore: () => void;
+  /** Pick the line up to drag it (with `table`, the whole table it's in). */
+  onMove: (table: boolean) => void;
+  /** The line or table is being picked up. */
+  moving?: boolean;
   /** The server is checking this panel's change. */
   onWorking?: (working: boolean) => void;
 };
 
 type Mode = "view" | "edit" | "add" | "row";
 
-export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onWorking }: Props) {
+export default function LinePanel({ doc, line, page, deleting, onClose, onEdited, onDelete, onSelectMore, onMove, moving = false, onWorking }: Props) {
   const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState(line.display);
   const [where, setWhere] = useState<"below" | "above">("below");
@@ -354,6 +358,10 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
             <button className="btn btn-secondary" onClick={() => show("add", "above")} disabled={deleting}>
               Add line above
             </button>
+            <button className="btn btn-secondary" onClick={() => onMove(false)} disabled={deleting || moving}>
+              {moving && <span className="spinner" aria-hidden="true" />}
+              Move line
+            </button>
             <button className="btn btn-delete" onClick={onDelete} disabled={deleting}>
               {deleting && <span className="spinner" aria-hidden="true" />}
               {deleting ? "Deleting…" : "Delete line"}
@@ -365,7 +373,7 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
 
           {table && (
             <div className="panel-section row-section">
-              <h3 className="panel-subtitle">Table row</h3>
+              <h3 className="panel-subtitle">Table</h3>
               {merged ? (
                 <p className="panel-note">This row has a cell merged with the row next to it: rows can’t be added or deleted here yet.</p>
               ) : (
@@ -382,6 +390,11 @@ export default function LinePanel({ doc, line, page, deleting, onClose, onEdited
                   </button>
                 </div>
               )}
+              <div className="edit-actions">
+                <button className="btn btn-secondary" onClick={() => onMove(true)} disabled={deleting || rowBusy || moving}>
+                  Move table
+                </button>
+              </div>
               {error && mode === "view" && (
                 <p className="error" role="alert">
                   {error}

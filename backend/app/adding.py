@@ -49,6 +49,7 @@ from .editing import (
     Word,
     _original_first,
     _alignment,
+    _middle,
     _bracket_insides,
     _glyph_texts,
     _looks,
@@ -639,7 +640,7 @@ def _column(ref: Line, old: list[Word], page: pymupdf.Page) -> tuple[float, floa
 def _mode(ref: Line, old: list[Word], column, space: float, neighbours, page: pymupdf.Page, lines: list[Line]) -> str:
     """center, end (flush to the edge a line doesn't start from: a right-aligned English
     line) or start. A justified paragraph's last line is start-aligned, and so is a new one."""
-    mode = _alignment(ref, sorted(old, key=lambda w: w.u0), column, space, neighbours)
+    mode = _alignment(ref, sorted(old, key=lambda w: w.u0), column, space, neighbours, _middle(page))
     if mode == "center":
         return "center"
     if mode == "justify":

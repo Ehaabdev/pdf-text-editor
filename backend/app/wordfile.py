@@ -19,6 +19,7 @@ new page. Lines whose letters the PDF stores wrongly are highlighted, so they ca
 checked.
 """
 
+import contextvars
 import io
 import re
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ from .textlayout import Line, page_lines
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PICTURE_DPI = 200
 NEAR = 3.0  # points: "at the edge", "centered"
+_LANGUAGE = contextvars.ContextVar("language", default="en-US")  # the document's Latin text
 
 
 # What each letter looks like -------------------------------------------------------------
@@ -198,7 +200,7 @@ def _rpr(look: Look):
         "shd": dict(val="clear", color="auto", fill=look.shade.upper()) if look.shade and not look.unsure else None,
         "position": dict(val=round(look.rise / 100000 * style.size * 2)) if look.rise else None,
         "rtl": {} if look.rtl else dict(val="false"),
-        "lang": dict(val="en-US", bidi="ar-SA"),
+        "lang": dict(val=_LANGUAGE.get(), bidi="ar-SA"),
     }
     rpr = _el("w:rPr")
     for tag in _RPR_ORDER:
@@ -659,6 +661,7 @@ def document(src: bytes, name: str) -> exporting.Export:
     pdf = pikepdf.open(io.BytesIO(src))
     pages = [(page, page_lines(page)) for page in doc]
     count = len(pages)
+    _LANGUAGE.set(exporting.latin_language(l.text for _, lines in pages for l in lines))
     header_ids, footer_ids = _repeated(pages)
     body_lines = [l for _, lines in pages for l in lines if id(l) not in header_ids | footer_ids]
     left, right = flow.edges(body_lines or [l for _, ls in pages for l in ls])

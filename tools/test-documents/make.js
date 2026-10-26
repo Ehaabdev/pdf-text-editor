@@ -503,22 +503,111 @@ function englishStyles() {
   });
 }
 
+// 5. Turkish quotation -------------------------------------------------------------------
+// Letters Word's simple fonts (Windows-1252) have (ç ö ü) and letters they haven't
+// (ğ ı İ ş), often in one word: Müşteri, Görüşme, İşçilik, Çağdaş. Turkish amounts
+// (1.250,00 ₺, %20) in a ruled table.
+
+function turkishQuote() {
+  const D = "turkish-quote";
+  const body = { font: "Calibri", size: 11 };
+  const heading = { font: "Cambria", size: 14, bold: true, color: "1F4E79" };
+  const bullet = { style: body, list: "bullets", spacingAfter: 60 };
+  return new Document({
+    numbering,
+    sections: [
+      {
+        headers: { default: pageHeader(D, "Yıldız Işık Mühendislik Ltd. Şti. - Atatürk Cad. No: 45, Şişli / İstanbul", false, { font: "Calibri", size: 9, color: "595959" }) },
+        footers: { default: pageFooter(["Sayfa ", PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES], false, { font: "Calibri", size: 9 }) },
+        children: [
+          para(D, "İstanbul, 21 Ekim 2026", { style: body, align: AlignmentType.RIGHT }),
+          para(D, [["FİYAT TEKLİFİ No: 2026-118", { font: "Cambria", size: 20, bold: true, color: "1F4E79" }]], { align: AlignmentType.CENTER, spacingAfter: 240 }),
+          para(D, "Sayın Şükrü Öztürk", { style: body, spacingAfter: 0 }),
+          para(D, "Çağdaş Gıda Sanayi ve Ticaret A.Ş.", { style: body, spacingAfter: 0 }),
+          para(D, "Bağdat Caddesi No: 212, Kadıköy / İstanbul", { style: body, spacingAfter: 240 }),
+          para(D, [["Konu:", { bold: true }], " ofis aydınlatma sisteminin yenilenmesi"], { style: body }),
+          para(
+            D,
+            "Sayın Öztürk, 14 Ekim tarihli görüşmemize istinaden, ofisinizin aydınlatma sisteminin yenilenmesi için hazırladığımız teklifimizi bilginize sunarız. Ekibimiz, işin tamamını belirlenen takvime uygun olarak, yüksek kalite ve düşük enerji tüketimi ilkeleriyle gerçekleştirmeyi taahhüt eder.",
+            { style: body, align: AlignmentType.BOTH },
+          ),
+          para(
+            D,
+            "“Doğru ışık, bir mekânın havasını değiştirir” diyor kurucumuz. Bu yüzden her projeye ihtiyaçlarınızın ayrıntılı bir incelemesiyle başlıyoruz!",
+            { style: { font: "Times New Roman", size: 12, italic: true } },
+          ),
+          para(
+            D,
+            "Müşteri memnuniyeti, iş güvenliği ve çevreye saygı çalışmalarımızın temelidir. Görüşme sırasında belirttiğiniz ölçüler ışığında toplantı salonu, açık ofis ve yönetim katı için ayrı çözümler öneriyoruz.",
+            { style: { font: "Arial", size: 11 }, align: AlignmentType.BOTH },
+          ),
+          para(D, [["IŞIKLANDIRMA VE GÜVENLİK ÇALIŞMALARI", heading]]),
+          para(
+            D,
+            ["Dış cephe, düşük tüketimli projektörlerle aydınlatılacaktır; bakım maliyeti oldukça düşüktür. ", ["ÇOK ÖNEMLİ", { bold: true, underline: true }], ": zemin kat ve 1. kattaki çıkışlar, toplam 450 m² alanda çalışmalar boyunca açık kalacaktır."],
+            { style: body, align: AlignmentType.BOTH },
+          ),
+          para(D, [["Hizmet Ayrıntıları", heading]]),
+          table(
+            D,
+            [
+              ["Ürün / Hizmet", "Miktar", "Birim Fiyat", "Tutar"],
+              ["LED panel armatür (60×60)", "24", "1.250,00 ₺", "30.000,00 ₺"],
+              ["Kablolama ve bağlantı işleri", "1", "8.500,00 ₺", "8.500,00 ₺"],
+              ["İşçilik (götürü)", "3 gün", "4.200,00 ₺", "12.600,00 ₺"],
+              ["Toplam", "", "", "51.100,00 ₺"],
+            ],
+            [3826, 1400, 1900, 1900],
+            { header: true, headerFill: "DEEAF6", boldLast: true, style: { font: "Calibri", size: 10.5 } },
+          ),
+          para(D, "KDV (%20): 10.220,00 TL", { style: body, align: AlignmentType.RIGHT, spacingAfter: 0 }),
+          para(D, [["Genel Toplam: 61.320,00 TL", { bold: true, color: "C00000" }]], { style: body, align: AlignmentType.RIGHT }),
+          pageBreak(),
+          para(D, [["Koşullar", heading]]),
+          para(D, "Teklif geçerlilik süresi: 30 gün", bullet),
+          para(D, "Ödeme: %50 peşin, %50 iş bitiminde", bullet),
+          para(D, "Armatürlerde 2 yıl garanti", bullet),
+          para(D, "İş süresi: 3 hafta (resmî tatiller hariç)", { style: body, list: "bullets" }),
+          para(
+            D,
+            ["Not: fiyatlara KDV dahil değildir. Sorularınız için bize 0212 555 01 23 numaralı telefondan veya ", { hyperlink: "mailto:bilgi@example.com", text: "bilgi@example.com" }, " adresinden ulaşabilirsiniz."],
+            { style: body, align: AlignmentType.BOTH },
+          ),
+          para(D, "Şirketimiz 2009 yılından beri kamu ve özel sektör projelerinde çalışmaktadır.", { style: { font: "Segoe UI", size: 10, color: "404040" } }),
+          para(D, "Saygılarımızla,", { style: body, spacingAfter: 480 }),
+          para(D, [["Mehmet Çelik", { bold: true }]], { style: body, align: AlignmentType.RIGHT, spacingAfter: 0 }),
+          para(D, [["Genel Müdür", { italic: true }]], { style: body, align: AlignmentType.RIGHT }),
+        ],
+      },
+    ],
+  });
+}
+
+const DOCUMENTS = [
+  ["arabic-quotation", arabicQuotation],
+  ["french-quote", frenchQuote],
+  ["bilingual-contract", bilingualContract],
+  ["english-styles", englishStyles],
+  ["turkish-quote", turkishQuote],
+];
+
+// node make.js                 every document
+// node make.js turkish-quote   just that one: the others' files and answers stay as they are
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const all = [];
-  for (const [name, build] of [
-    ["arabic-quotation", arabicQuotation],
-    ["french-quote", frenchQuote],
-    ["bilingual-contract", bilingualContract],
-    ["english-styles", englishStyles],
-  ]) {
+  const only = process.argv.slice(2);
+  const answers = path.join(OUT, "expected.json");
+  const all = only.length ? JSON.parse(fs.readFileSync(answers, "utf8")).filter((p) => !only.includes(p.doc)) : [];
+  for (const [name, build] of DOCUMENTS) {
+    if (only.length && !only.includes(name)) continue;
     expected = [];
     const doc = build();
     fs.writeFileSync(path.join(OUT, `${name}.docx`), await Packer.toBuffer(doc));
     all.push(...expected);
     console.log(`${name}.docx: ${expected.length} paragraphs`);
   }
-  fs.writeFileSync(path.join(OUT, "expected.json"), JSON.stringify(all, null, 1) + "\n", "utf8");
+  fs.writeFileSync(answers, JSON.stringify(all, null, 1) + "\n", "utf8");
 }
+
 
 main();

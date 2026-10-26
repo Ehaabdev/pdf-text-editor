@@ -7,7 +7,7 @@ import pymupdf
 import pytest
 
 WORD = Path(__file__).parent / "fixtures" / "word"
-DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles"]
+DOCS = ["arabic-quotation", "french-quote", "bilingual-contract", "english-styles", "turkish-quote"]
 EXPECTED = json.loads((WORD / "expected.json").read_text(encoding="utf-8"))
 EDITS = json.loads((WORD / "edits.json").read_text(encoding="utf-8"))
 

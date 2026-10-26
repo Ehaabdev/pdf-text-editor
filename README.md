@@ -1,6 +1,6 @@
 # PDF Editor
 
-A free web tool to edit the text in a PDF: change, add or remove words while keeping the original font, size and color. Works on phones and laptops. Supports English, French and Arabic.
+A free web tool to edit the text in a PDF: change, add or remove words while keeping the original font, size and color. Works on phones and laptops. Supports English, Arabic, French and Turkish.
 
 Licensed under the GNU AGPL v3 (see `LICENSE`). Anyone running this as a public website must offer its source code to users.
 
@@ -43,7 +43,7 @@ Turning a page (/Rotate), with or without a crop box, doesn't change what is rea
 1. **Replay.** The page's drawing instructions are replayed (`pdfcontent.py`), and every glyph must land where MuPDF puts it. If not, the page uses something not modelled yet and the edit is refused.
 2. **Keep unchanged words.** Words that didn't change keep their original glyphs. Changed words are shaped with the installed font (`fonts.py`, HarfBuzz), with the line's own letter spacing. A word that replaces one old word keeps its letters' looks, so superscripts ("3rd" to "21st"), subscripts ("CO2" to "CO3") and small capitals stay as they were. A spelled-out "third" isn't half raised. The font must match by its exact name: a missing bold or italic is never swapped for the regular weight.
 3. **Choose the font.** The PDF's embedded copy of the font is reused only when it has every glyph needed, drawn identically, with correct copy/search labels. Otherwise the installed font's glyphs are embedded.
-4. **Lay out.** The line keeps its alignment: left, right, centered, or justified (detected from the paragraph's other lines). Outside tables, the page's side margins are taken to mirror each other, so a short line on a sparse page can still grow. Text that would run into other text or a picture on the same row is refused. Word documents follow Word's ordering of mixed Arabic and English. Other PDFs follow the Unicode bidi algorithm (`bidi.py`).
+4. **Lay out.** The line keeps its alignment: left, right, centered, or justified (detected from the paragraph's other lines). A line set against the far margin (a date or a signature at the right of an English, French or Turkish letter) keeps that edge and grows the other way. Outside tables, the page's side margins are taken to mirror each other, so a short line on a sparse page can still grow. Text that would run into other text or a picture on the same row is refused. Word documents follow Word's ordering of mixed Arabic and English. Other PDFs follow the Unicode bidi algorithm (`bidi.py`).
 5. **Decorations and links follow.** Underlines, strikethroughs and highlights (`decorations.py`) are redrawn under the words' new place. A link's clickable area moves with its words. A link whose target is its own text ("mailto:" plus the address shown) gets the new text as its target; any other target stays, and the user is told.
 6. **Check before accepting.** The edit is refused, and nothing changes, unless:
    - the line reads back as typed;
@@ -76,7 +76,7 @@ Known limits:
 No edit is refused for want of a font. New letters are drawn, in this order:
 
 1. **In the installed font itself**, when the server has it.
-2. **With the PDF's own letters.** A PDF carries a copy of every letter it uses, in its own font. New English and French words take each letter the copy has from it, exactly as on the page, letter by letter. New Arabic words are drawn from the letter shapes the document's text already shows in that font: which glyph draws each letter alone, at the start, in the middle and at the end of a word (Unicode's joining rules decide which shape a letter takes; lam-alef and other letters drawn as one glyph, like "ريال", are learned too). On this PC, with the real fonts to compare, every Arabic word drawn this way is drawn with exactly the glyphs the font itself would use (`Fonts._from_forms`). This is skipped for words with vowel marks (where a mark sits needs the font's own rules) and for fonts that draw pairs of letters as one glyph depending on their neighbours (Traditional Arabic's stacked pairs).
+2. **With the PDF's own letters.** A PDF carries a copy of every letter it uses, in its own font. New English, French and Turkish words take each letter the copy has from it, exactly as on the page, letter by letter. Word often puts a font in a PDF as two copies, the letters of its old Western code page (é, ç, ö) in one and the others (ş, ğ, ı, İ, ₺) in the other: a word takes its letters from either. A letter a copy lists with width 0 (a code Word didn't use) or can't read back as itself counts as missing there. New Arabic words are drawn from the letter shapes the document's text already shows in that font: which glyph draws each letter alone, at the start, in the middle and at the end of a word (Unicode's joining rules decide which shape a letter takes; lam-alef and other letters drawn as one glyph, like "ريال", are learned too). On this PC, with the real fonts to compare, every Arabic word drawn this way is drawn with exactly the glyphs the font itself would use (`Fonts._from_forms`). This is skipped for words with vowel marks (where a mark sits needs the font's own rules) and for fonts that draw pairs of letters as one glyph depending on their neighbours (Traditional Arabic's stacked pairs).
 3. **With a stand-in**, for letters the PDF doesn't have: the font's look-alike (below), or else a free font of its kind (serif, sans-serif or fixed width, as the PDF describes the font; a Naskh or a plainer Arabic font), sized to match the line. Only these letters are named in the note, and the website shows a close before/after to check them: keep it, or undo it. Letters already checked on a line aren't asked about again.
 
 Only a character no font here has at all (a Chinese character, say) is refused, by name.
@@ -236,6 +236,25 @@ Click a line in a table with borders: the panel adds a row below or above its ro
 
 On every bordered table of the test documents, adding a row below and above each row and deleting each row: 28 of 34, 27 of 34 and 32 of 34 are done; the others are refused, for a full page (6), a table's only row, and a line with an icon just above a table, which reads differently once the table moves.
 
+## Moving lines and tables
+
+Pick a line and choose **Move line**, pick several lines (Shift-click) and choose **Move**, or pick a line in a table and choose **Move table**. A picture of just what moves (see-through around it) comes up over it: drag it, click a spot, or nudge it with the arrow keys (Shift: ten points), then **Put it here**. Its old place is left empty. It stays on its page (`backend/app/dragging.py`).
+
+- What moves: the lines' text, each text object kept whole and moved by a translation (as `moving.py` moves text), with its underlines, strikethroughs, highlights and links; a table with borders moves with everything drawn inside them: text, borders, shading and pictures. A table without borders moves as its lines.
+- Inside `q … Q`, not undone by a second translation: on a page drawn at 0.74999996875 points per unit (Chrome), undoing leaves a rounding error that shifts what's drawn after it by a hair. What the moved text object sets that lasts (its font, color, spacing) is set again after the `Q`.
+- Clipping that applies only to what moves goes with it (Word clips a table cell's text to its cell); clipping that applies to other things too stays, and the move must stay inside it (Chrome shows a page's text only inside its margins).
+- A move goes by half points, so that, at twice the size, it's a whole number of pixels both ways.
+
+It's refused, with the reason, before anything is done:
+- the new place isn't empty: other text, a picture, a line or a shape (a background under both the old and the new place is fine), a form field or comment;
+- off the page, or outside the clipping that stays;
+- a line the PDF stores as one with other lines (Word draws English and Arabic side by side as one): the website offers to move them together;
+- something drawn across a table's edge, a shape drawn together with other shapes, a link that also covers other text, a turned page.
+
+And after, by the same checks as other moves: every glyph, shape, picture and link is where it was or exactly as far away as the move; nothing outside the old and new places changes by a single pixel (MuPDF and PDFium); drawn on its own, what moved looks the same at its new place (a glyph exactly between two pixels can round either way: then it must match at twice the size); and every line reads the same. A line dropped on the same row as other text would be read as one line with it, and a line moved into a margin can change how a mixed English and Arabic line is read: both are refused, saying which.
+
+On the test documents, each line dragged to an empty spot found by scanning (sideways, up or down, and diagonally, in turn) and each table in all three ways: 424 lines and 27 tables moved; 53 lines and 6 tables refused, nearly all for landing on another line's row; every one of 130 drops onto text refused. On the real samples: 129 lines moved, 4 refused (another line's row).
+
 ## Download as…
 
 The Download button gives the edited PDF, or the same pages as another kind of file (`backend/app/exporting.py`, `GET /api/documents/{id}/export?format=…`):
@@ -252,9 +271,9 @@ The text in Word, PowerPoint and Excel always comes from the editor's own readin
 
 - **Paragraphs** (`flow.py`): pieces of one row are read in their direction; rows join when the first was wrapped (the next row's first word wouldn't have fitted at its end); a bigger gap, a new size or a list marker starts a new paragraph. Text in a box or a column wraps at that box's or column's edge, found from a drawn box, text beside it, or several lines ending at the same place.
 - **Tables** (`tables.py`): columns and rows from the drawn borders (Word draws each cell's border as its own piece; pieces at nearly the same place are one), merged cells where there's no border between two cells, shading; or, without borders, text in columns over three rows or more. Arabic tables start on the right.
-- **Word**: alignment (start, end, centered, justified, Arabic kashida), indents, the space before each paragraph and the line spacing as on the page; each piece in its font, size, color, bold, italic, raised or lowered, underlined, struck through, highlighted or linked. Arabic paragraphs and pieces are right-to-left, and Arabic letters get their font as Word's "complex script" font, as Word itself saves them. Pictures go where they were: on a line of their own, inside a table cell, or within a line (an icon). Text and pictures repeated at the top or bottom of the pages go into the header and footer, with live page numbers. Each page starts a new page; a page of another size starts a new section.
+- **Word**: alignment (start, end, centered, justified, Arabic kashida), indents, the space before each paragraph and the line spacing as on the page; each piece in its font, size, color, bold, italic, raised or lowered, underlined, struck through, highlighted or linked. Arabic paragraphs and pieces are right-to-left, and Arabic letters get their font as Word's "complex script" font, as Word itself saves them. The rest is marked English, or French or Turkish when the document is (for Word's spelling check). Pictures go where they were: on a line of their own, inside a table cell, or within a line (an icon). Text and pictures repeated at the top or bottom of the pages go into the header and footer, with live page numbers. Each page starts a new page; a page of another size starts a new section.
 - **PowerPoint**: the page's text is taken out of the picture underneath with the same removal deleting a line uses. Lines the PDF stores with wrong letters, turned text and invisible text stay in the picture. PowerPoint decides a piece's direction by its language, so Arabic pieces are marked Arabic (otherwise a colon between Arabic and English jumps to the end).
-- **Excel**: amounts written the English or French way (1,700.00 / 1 700,00 € / 15 %) become numbers with a format that shows them as written; codes with leading zeros, dates and phone numbers stay text.
+- **Excel**: amounts written the English, French or Turkish way (1,700.00 / 1 700,00 € / 1.250,00 ₺ / 15 % / %20) become numbers with a format that shows them as written; codes with leading zeros, dates and phone numbers stay text.
 - Lines whose letters the PDF stores wrongly are highlighted in yellow in Word, and the website says how many.
 
 Known limits: shapes drawn with lines (a logo made of shapes, a chart) don't come into Word; a page in two columns becomes one column, wrapped at the column's width; text boxes become indented paragraphs.
@@ -323,6 +342,7 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 | `french-quote` | Every French accent, œ/æ, « guillemets », French non-breaking spaces, ligatures, superscript, a price table |
 | `bilingual-contract` | English and Arabic side by side, Arabic sentences with English words, phone numbers and URLs, and the reverse |
 | `english-styles` | Many fonts and sizes, style changes mid-sentence, links, shading, text box, small caps, two columns |
+| `turkish-quote` | Turkish letters (ç ğ ı İ ö ş ü, often in one word: Müşteri, İşçilik), capitals with dotted and dotless I, Turkish amounts (1.250,00 ₺, %20) in a price table, five fonts |
 
 `backend/tests/fixtures/additions/` has lists (numbered and bulleted, English and Arabic), a centered title, a justified paragraph, a right-aligned line and a table with an empty cell, with free space after each, for adding text. It is saved by Word and printed by Chrome.
 

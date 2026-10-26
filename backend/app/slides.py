@@ -32,7 +32,7 @@ def _editable(line: Line, rp) -> bool:
     return all(rp.glyphs[t].paint.Tr not in _INVISIBLE for t in line.members)
 
 
-def _text_box(slide, line: Line, at, scale: float) -> None:
+def _text_box(slide, line: Line, at, scale: float, language: str = "en-US") -> None:
     from pptx.dml.color import RGBColor
     from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
     from pptx.oxml.ns import qn
@@ -74,8 +74,8 @@ def _text_box(slide, line: Line, at, scale: float) -> None:
         # alone: without it, a colon between Arabic and English jumps to the line's end.
         if rtl:
             rpr.set("lang", "ar-SA")
-        elif line.rtl:
-            rpr.set("lang", "en-US")
+        elif line.rtl or language != "en-US":
+            rpr.set("lang", language)
         if rise:
             rpr.set("baseline", str(rise))  # raised (3rd) or lowered (CO2), in 1/1000 %
 
@@ -129,6 +129,7 @@ def deck(src: bytes, name: str) -> exporting.Export:
     pdf.save(out)
     background = pymupdf.open("pdf", out.getvalue())
 
+    language = exporting.latin_language(l.text for ls in plans.values() for l in ls)
     slides, size = exporting.new_deck(doc)
     for n, page in enumerate(doc):
         x, y, w, h = exporting._fitted(page, size)
@@ -137,5 +138,5 @@ def deck(src: bytes, name: str) -> exporting.Export:
         slide.shapes.add_picture(io.BytesIO(picture), exporting.emu(x), exporting.emu(y), exporting.emu(w), exporting.emu(h))
         scale = w / page.rect.width
         for line in plans.get(n, []):
-            _text_box(slide, line, (x, y), scale)
+            _text_box(slide, line, (x, y), scale, language)
     return exporting.Export(exporting.save_deck(slides), f"{name}.pptx", exporting.PPTX)
