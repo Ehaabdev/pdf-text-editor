@@ -302,6 +302,17 @@ export function deleteRow(doc: DocInfo, page: number, line: TextLine): Promise<E
   return postJson(`/api/documents/${doc.id}/rows/delete`, { revision: doc.revision, page, lineId: line.id, oldText: line.text });
 }
 
+/** A new column left or right (on the page) of the column a line is in, looking like it;
+ *  `cells`: its text, top to bottom. */
+export function addColumn(doc: DocInfo, page: number, line: TextLine, where: "left" | "right", cells: string[]): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/columns/add`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, where, cells });
+}
+
+/** The column a line is in, taken out of its table; the table gets narrower. */
+export function deleteColumn(doc: DocInfo, page: number, line: TextLine): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/columns/delete`, { revision: doc.revision, page, lineId: line.id, oldText: line.text });
+}
+
 /** What adding text at a clicked spot would do, worked out by the server before anything
  *  is written: a new list item or a new line next to a line (the text below moving down),
  *  text joining a line on its row, or text where clicked. */

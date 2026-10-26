@@ -3082,3 +3082,12 @@ html.theme-switching::view-transition-new(root) {
   min-height: 40px;
   padding: 8px 10px;
 }
+
+/* A new column: a box for each row, one under the other, named after the row. */
+.column-cells {
+  display: grid;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
