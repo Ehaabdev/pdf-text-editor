@@ -262,9 +262,6 @@ def _check_spot(page: pymupdf.Page, pdf: pikepdf.Pdf, plan: Plan, pieces: list[P
     crop = moving._crop(pdf, plan.page_no)
     if not _within(new, crop):
         raise EditRejected("It would go off the page. Drop it where all of it fits.")
-    for b in plan.bounds:
-        if not _within(new, b, 0.5):
-            raise EditRejected("Part of it would be cut off there: this PDF shows it only inside an area of the page (its margins, or a box). Drop it inside.")
     old = plan.ink
     moving_ids = {(p.kind, p.start) for p in plan.pieces}
     for p in pieces:
@@ -279,6 +276,10 @@ def _check_spot(page: pymupdf.Page, pdf: pikepdf.Pdf, plan: Plan, pieces: list[P
                 continue  # a background under both places
             what = "a picture" if p.kind == "image" else "a line or a shape"
             raise EditRejected(f"It would land on {what}. Drop it in an empty spot.")
+    # After what's in the way: that's what people see.
+    for b in plan.bounds:
+        if not _within(new, b, 0.5):
+            raise EditRejected("Part of it would be cut off there: this PDF shows it only inside an area of the page (its margins, or a box). Drop it inside.")
     for a in pdf.pages[plan.page_no].obj.get("/Annots") or []:
         subtype = a.get("/Subtype")
         if subtype in (pikepdf.Name.Link, pikepdf.Name.Popup) or "/Rect" not in a:
