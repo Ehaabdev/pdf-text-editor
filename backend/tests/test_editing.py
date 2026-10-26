@@ -319,3 +319,55 @@ def test_undo_undo_then_a_new_edit(client=None):
         assert has(doc, "Yearly Service Report") and has(doc, "NW-Q3-2026-118")
         doc = undo(doc)
         assert has(doc, "Quarterly Service Report") and not doc["canUndo"]
+
+
+def test_a_line_made_much_shorter_is_saved():
+    # The visibility check expects ink for the new text's letters, not the old text's:
+    # "Report ID: NW-Q3-2026-118" made "ID: 7" leaves a seventh of the ink.
+    src = pdf_path("word", "english-styles").read_bytes()
+    page_no, line = find_line(src, "Report ID")
+    result = replace_line(src, page_no, line.id, line.text, "ID: 7")
+    assert find_line(result.pdf, "ID: 7") is not None
+
+
+def test_new_text_drawn_invisibly_is_refused(monkeypatch):
+    from app import editing
+    from app.pdfcontent import Paint
+
+    # As if the new letters were drawn white on the white page: they read back right, but
+    # nothing shows. The check must catch it.
+    white = (((1,), "g"),)
+    monkeypatch.setattr(editing, "Paint", lambda font, size, Tz, Tr, trm2, fill, *rest: Paint(font, size, Tz, Tr, trm2, white, *rest))
+    src = pdf_path("word", "english-styles").read_bytes()
+    page_no, line = find_line(src, "Report ID")
+    with pytest.raises(EditRejected, match="wasn't visible"):
+        replace_line(src, page_no, line.id, line.text, "ID: 7")
+
+
+def test_new_text_past_its_box_edge_is_refused():
+    # A line clipped to a box (a table cell, a text box): letters past the box's edge
+    # would be drawn, read back, and never show. Said plainly, before anything is drawn.
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    font = str(Path(__file__).parents[1] / "lookalikes" / "LiberationSans-Regular.ttf")
+    page.insert_text((110, 230), "Cell text", fontname="LS", fontfile=font, fontsize=12)
+    # A full-width line further down: the page's text area is wide.
+    page.insert_text((72, 500), "A line of plain text running across the whole width of the page area", fontname="LS", fontfile=font, fontsize=12)
+    first = page.get_contents()[0]
+    body = doc.xref_stream(first).decode("latin-1").strip()
+    doc.update_stream(first, "\n".join(["q 100 600 200 30 re W n", body, "Q"]).encode("latin-1"))
+    src = doc.tobytes()
+    page_no, line = find_line(src, "Cell text")
+    assert find_line(replace_line(src, page_no, line.id, line.text, "Cell text two").pdf, "Cell text two")
+    with pytest.raises(EditRejected, match="too long for the box"):
+        replace_line(src, page_no, line.id, line.text, "Cell text that goes on far past the edge of its box")
+
+
+@pytest.mark.parametrize("source", SOURCES)
+def test_words_added_after_the_others_are_drawn(source):
+    # Nothing taken away, words only added at the end: they used to be dropped silently
+    # where the line had no trailing space to redraw (Chrome).
+    src = pdf_path(source, "french-quote").read_bytes()
+    page_no, line = find_line(src, "Société Bérénice")
+    result = replace_line(src, page_no, line.id, line.text, line.text.strip() + " SARL")
+    assert find_line(result.pdf, "Société Bérénice & Fils SARL") is not None
