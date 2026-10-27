@@ -453,7 +453,15 @@ def _copy_row(src: bytes, page_no: int, band: tuple, down: float, holes: list = 
     picked = _edge_paths(rp, *edge) if edge else _row_paths(rp, band, _skipped(rp, in_row), holes, inner)
     if not picked:
         raise EditRejected("This table's borders can't be found, so a row can't be added to it yet.")
-    after = {rp.paths[i].end: [_op([], "q"), _op(_translate(rp.paths[i].ctm, down), "cm"), *_path_ops(rp, i, subs), _op([], "Q")] for i, subs in picked.items()}
+    reach = _reach_up(rp, picked, down, holes)
+    after = {}
+    for i, subs in picked.items():
+        ops = _path_ops(rp, i, subs)
+        if i in reach:
+            # Its top drawn up to the border above (see _reach_up).
+            sp = rp.paths[i].subpaths[subs[0]]
+            ops = [_op(_re_rows(rp.paths[i].ctm, [float(v) for v in rp.instructions[sp.first].operands], sp.bbox[1], sp.bbox[3] + reach[i]), "re"), rp.instructions[rp.paths[i].end]]
+        after[rp.paths[i].end] = [_op([], "q"), _op(_translate(rp.paths[i].ctm, down), "cm"), *ops, _op([], "Q")]
     out = []
     for k, ins in enumerate(rp.instructions):
         out.append(ins)
@@ -462,8 +470,34 @@ def _copy_row(src: bytes, page_no: int, band: tuple, down: float, holes: list = 
     buf = io.BytesIO()
     pdf.save(buf)
     new = buf.getvalue()
-    _verify_copy(src, new, page_no, rp, picked, band, down)
+    _verify_copy(src, new, page_no, rp, picked, band, down, reach)
     return new, picked
+
+
+def _reach_up(rp: Replay, picked: dict, down: float, holes: list) -> dict:
+    """The copied side borders of merged cells that the new row goes inside, whose top
+    would stop short of the border above: path -> how much higher to draw it. Chrome gives
+    the little square where two rows' borders meet to the row below's side border, and
+    inside a merged cell no line along the row covers it; a gap of a hair would show."""
+    out = {}
+    if not holes:
+        return out
+    for i, subs in picked.items():
+        path = rp.paths[i]
+        if len(subs) != 1 or len(path.subpaths) != 1 or abs(path.ctm[1]) > 1e-9 or abs(path.ctm[2]) > 1e-9:
+            continue
+        sp = path.subpaths[subs[0]]
+        a, b, c, d = sp.bbox
+        if c - a > THIN or d - b <= THIN or sp.first != sp.last or str(rp.instructions[sp.first].operator) != "re":
+            continue
+        x = (a + c) / 2
+        if not any(abs(x - h) <= THIN for h0, h1 in holes for h in (h0, h1)):
+            continue
+        top = d - down
+        above = [o.bbox[1] for q in rp.paths for o in q.subpaths if abs((o.bbox[0] + o.bbox[2]) / 2 - x) < 0.1 and o.bbox[2] - o.bbox[0] <= THIN and top < o.bbox[1] <= top + 1.0]
+        if above:
+            out[i] = min(above) - top
+    return out
 
 
 def _edge_paths(rp: Replay, y: float, x0: float, x1: float) -> dict[int, list[int]]:
@@ -479,7 +513,7 @@ def _edge_paths(rp: Replay, y: float, x0: float, x1: float) -> dict[int, list[in
     return out
 
 
-def _verify_copy(old: bytes, new: bytes, page_no: int, rp: Replay, picked: dict[int, list[int]], band: tuple, down: float) -> None:
+def _verify_copy(old: bytes, new: bytes, page_no: int, rp: Replay, picked: dict[int, list[int]], band: tuple, down: float, reach: dict | None = None) -> None:
     """Nothing changed but the new row: the same text, every shape as it was with the
     copies right after their originals, nothing outside the new row's place different
     by a pixel; and the copies look exactly like the row's own borders and shading."""
@@ -498,7 +532,7 @@ def _verify_copy(old: bytes, new: bytes, page_no: int, rp: Replay, picked: dict[
             boxes = [p.subpaths[k].bbox for k in picked[i]]
             x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
             x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
-            expected.append((p.op, (x0, y0 - down, x1, y1 - down)))
+            expected.append((p.op, (x0, y0 - down, x1, y1 - down + (reach or {}).get(i, 0.0))))
     got = [(p.op, p.bbox) for p in new_rp.paths]
     if len(got) != len(expected) or any(a[0] != b[0] or any(abs(u - v) > 0.01 for u, v in zip(a[1], b[1])) for a, b in zip(expected, got)):
         fail("the table's lines would have been drawn wrongly")
