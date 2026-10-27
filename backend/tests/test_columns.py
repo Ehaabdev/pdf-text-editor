@@ -139,6 +139,78 @@ def test_no_room_for_a_column():
         columns.add_column(src, 0, line.id, line.text, "right", [])
 
 
+# Merged cells -----------------------------------------------------------------------------------
+
+MERGED = FIXTURES / "tables" / "tables-chrome.pdf"  # tables.html: four tables with merged cells
+
+
+def tables_of(src: bytes) -> list:
+    page = pymupdf.open("pdf", src)[0]
+    return [t for t in find_tables(page, page_lines(page)) if t.ruled]
+
+
+def cells_of(table) -> list:
+    """(row, column, rows, columns, text) of each cell."""
+    return sorted((c.row, c.col, c.rowspan, c.colspan, comparable(" ".join(l.text for l in c.lines))) for c in table.cells)
+
+
+def test_a_column_through_merged_cells_is_deleted():
+    src = MERGED.read_bytes()
+    for n, table in enumerate(tables_of(src)):
+        for col in range(len(table.cols) - 1):
+            cell = next(c for c in table.cells if c.col == col and c.colspan == 1 and c.lines)
+            result = columns.delete_column(src, 0, cell.lines[0].id, cell.lines[0].text)
+            after = tables_of(result.pdf)[n]
+            width = table.cols[col + 1] - table.cols[col]
+            assert after.bbox[2] - after.bbox[0] == pytest.approx(table.bbox[2] - table.bbox[0] - width, abs=0.6)
+            # Its cells go; a cell merged across it is a column narrower.
+            gone = lambda c: c.col == col and c.colspan == 1
+            across = lambda c: c.col <= col < c.col + c.colspan
+            want = sorted((c.row, c.col if c.col <= col else c.col - 1, c.rowspan, c.colspan - across(c), comparable(" ".join(l.text for l in c.lines))) for c in table.cells if not gone(c))
+            # Its cells were all that split two rows: they read as one now.
+            if (n, col) == (1, 1):
+                want = [(0, 0, 2, 1, "North"), (0, 1, 1, 1, "120"), (0, 2, 1, 1, "135"), (0, 3, 1, 1, "150"), (1, 1, 1, 1, "4"), (1, 2, 1, 1, "6"), (1, 3, 1, 1, "5")]
+            if (n, col) == (3, 1):
+                want = [(0, 0, 2, 1, "Ground floor"), (0, 1, 1, 1, "40 m²"), (1, 1, 1, 1, "25 m²"), (2, 0, 1, 1, "First floor"), (2, 1, 1, 1, "30 m²")]
+            assert cells_of(after) == want, (n, col)
+    # A merged cell's centered text stays in its middle.
+    table = tables_of(src)[0]
+    line = next(c for c in table.cells if c.row == 0 and c.col == 1).lines[0]  # Site survey
+    total = next(c for c in tables_of(columns.delete_column(src, 0, line.id, line.text).pdf)[0].cells if c.colspan == 1 and c.row == 5 and c.col == 1)
+    left, right = total.lines[0].bbox[0] - total.bbox[0], total.bbox[2] - total.lines[0].bbox[2]
+    assert left == pytest.approx(right, abs=1.0)
+
+
+def test_deleting_from_a_merged_cell_is_refused():
+    src = MERGED.read_bytes()
+    total = next(c for c in tables_of(src)[0].cells if c.colspan > 1)
+    with pytest.raises(EditRejected, match="one column wide"):
+        columns.delete_column(src, 0, total.lines[0].id, total.lines[0].text)
+
+
+def test_a_column_is_added_beside_merged_cells():
+    src = MERGED.read_bytes()
+    for n, table in enumerate(tables_of(src)):
+        for cell in (c for c in table.cells if c.lines):
+            for where in ("left", "right"):
+                after = tables_of(columns.add_column(src, 0, cell.lines[0].id, cell.lines[0].text, where, []).pdf)[n]
+                assert len(after.cols) == len(table.cols) + 1
+                # Every cell keeps its text and its rows.
+                assert sorted((r, rs, t) for r, _, rs, _, t in cells_of(after) if t) == sorted((r, rs, t) for r, _, rs, _, t in cells_of(table) if t)
+    schedule = tables_of(src)[0]
+    # Inside "Total" (two columns wide): it gets wider, the other rows get a cell.
+    line = next(c for c in schedule.cells if c.row == 0 and c.col == 1).lines[0]
+    after = cells_of(tables_of(columns.add_column(src, 0, line.id, line.text, "right", []).pdf)[0])
+    assert (5, 1, 1, 3, "Total: 15 working days") in after and [c for c in after if c[1] == 2] == [(r, 2, 1, 1, "") for r in range(5)]
+    # Beside "Phase one" (five rows tall): a new cell as tall, with text typed for it.
+    phase = next(c for c in schedule.cells if c.rowspan > 1)
+    result = columns.add_column(src, 0, phase.lines[0].id, phase.lines[0].text, "right", ["Phase two", "", "", "", "", "Later"])
+    assert [c for c in cells_of(tables_of(result.pdf)[0]) if c[1] == 1] == [(0, 1, 5, 1, "Phase two"), (5, 1, 1, 1, "Later")]
+    # A row whose merged cell gets wider has no new cell to type in.
+    with pytest.raises(EditRejected, match="gets wider"):
+        columns.add_column(src, 0, line.id, line.text, "right", ["", "", "", "", "", "x"])
+
+
 def test_adding_through_the_website(client):
     src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
     doc = upload(client, src, "devis.pdf").json()

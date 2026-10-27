@@ -79,6 +79,14 @@ class Shift:
     lines: list[str] = field(default_factory=list)  # ids of the lines that move, as read before
     dx: float = 0.0  # PDF units; positive moves right (a dragged block; text below moves only down or up)
     saved: bool = False  # each piece moved inside q ... Q (exact), not by a cm undone after it
+    # Rectangles that get taller (or shorter) instead of moving: a table cell merged over the
+    # rows on both sides of the spot. Their re instruction -> (path, its new operands, its
+    # new box); their bottom moves by dy, their top stays.
+    stretch: dict = field(default_factory=dict)
+    # Glyphs held still while the rest moves (a merged cell's text, put in its place after):
+    # until then lines may read otherwise (a row's borders not drawn yet), so the reading
+    # check is left to the caller, at the end.
+    held: frozenset = frozenset()
 
     @property
     def glyphs(self) -> set[int]:
@@ -263,10 +271,12 @@ def bottom_limit(doc: pymupdf.Document, page_no: int, lines: list[Line], crop: B
     return limit, footers
 
 
-def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> Shift | None:
+def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: frozenset = frozenset()) -> Shift | None:
     """What moves, and whether it can: everything in the anchor's column below `cut` (PDF
     y), down by dy (up when negative). None when nothing is below. `column` (PDF x) says
-    which column instead: a whole table's width, for a new or deleted row."""
+    which column instead: a whole table's width, for a new or deleted row. The pieces
+    starting at the instructions in `stretch` neither move nor stop the move: they get
+    taller (a merged table cell around the spot), which the caller arranges."""
     page = doc[page_no]
     if rp.shadings:
         raise MoveRefused("the page has a color gradient, which can't be moved yet")
@@ -322,6 +332,8 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         x0, y0, x1, y1 = p.box
         inside = x0 >= cx0 - 0.5 and x1 <= cx1 + 0.5
         apart = x1 <= cx0 + 0.5 or x0 >= cx1 - 0.5
+        if p.start in stretch:
+            continue
         if p.kind == "clip":
             clips.append(p)  # decided by what it clips, below
             continue
@@ -510,9 +522,12 @@ def apply(pdf: pikepdf.Pdf, page_no: int, rp: Replay, shift: Shift) -> None:
             continue
         before.setdefault(p.start, []).append(pikepdf.ContentStreamInstruction(go, pikepdf.Operator("cm")))
         after.setdefault(p.end, []).insert(0, pikepdf.ContentStreamInstruction(back, pikepdf.Operator("cm")))
+    taller = {re_at: ops for re_at, (_path, ops, _box) in shift.stretch.items()}
     out = []
     for k, ins in enumerate(rp.instructions):
         out += before.get(k, [])
+        if k in taller:
+            ins = pikepdf.ContentStreamInstruction(taller[k], pikepdf.Operator("re"))
         out.append(ins)
         out += after.get(k, [])
     write_page(pdf, page_no, out)
@@ -550,15 +565,17 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
             or not _close(a.paint.trm2, b.paint.trm2, 1e-6)
         ):
             fail("text on the page would have changed")
-    # And every shape and picture.
+    # And every shape and picture (a merged cell's rectangles taller or shorter).
     moved_paths = {p.index for p in shift.pieces if p.kind in ("path", "clip")}
     moved_images = {p.index for p in shift.pieces if p.kind == "image"}
+    taller = {path: box for path, _ops, box in shift.stretch.values()}
     if len(new_rp.paths) != len(rp.paths) or len(new_rp.images) != len(rp.images):
         fail("the page's shapes would have changed")
     for i, (a, b) in enumerate(zip(rp.paths, new_rp.paths)):
         d, e = (dy, dx) if i in moved_paths else (0.0, 0.0)
         x0, y0, x1, y1 = a.bbox
-        if a.op != b.op or a.clip != b.clip or not _close(b.bbox, (x0 + e, y0 - d, x1 + e, y1 - d), 0.01):
+        want = taller.get(i, (x0 + e, y0 - d, x1 + e, y1 - d))
+        if a.op != b.op or a.clip != b.clip or not _close(b.bbox, want, 0.01):
             fail("the page's shapes would have changed")
     for i, (a, b) in enumerate(zip(rp.images, new_rp.images)):
         d, e = (dy, dx) if i in moved_images else (0.0, 0.0)
@@ -569,10 +586,13 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     # MuPDF's own list of shapes agrees. It lists what paints, not clipping (a table cell's
     # clip, moving with its text, is often its shading's very rectangle, which stays).
     moved_boxes = [rp.paths[i].bbox for i in moved_paths if rp.paths[i].fills or rp.paths[i].strokes]
+    taller_boxes = [(rp.paths[i].bbox, box) for i, box in taller.items() if rp.paths[i].fills or rp.paths[i].strokes]
     expected = []
     for look, r in _drawings(old_page):
         if any(_close(r, m, 0.15) for m in moved_boxes):
             r = (r[0] + dx, r[1] - dy, r[2] + dx, r[3] - dy)
+        else:
+            r = next((box for old, box in taller_boxes if _close(r, old, 0.15)), r)
         expected.append((look, r))
     unused = _drawings(new_page)
     if len(unused) != len(expected):
@@ -590,6 +610,8 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     old_area = to_display(old_page, shift.old_box) + pad
     new_area = to_display(old_page, (x0 + dx, y0 - dy, x1 + dx, y1 - dy)) + pad
     boxes = [tuple(old_area), tuple(new_area)]
+    for i, box in taller.items():
+        boxes.append(tuple(to_display(old_page, _union([rp.paths[i].bbox, box])) + pad))
     old_mu, old_pf = render(old_bytes, page_no)
     new_mu, new_pf = render(new_bytes, page_no)
     if outside(old_mu, new_mu, boxes, 2.0, 0) or outside(old_pf, new_pf, boxes, 2.0, 1):
@@ -635,7 +657,7 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     vector = (vx, vy)
     expect = sorted(_line_key(l, vector if l.id in shift.lines else (0.0, 0.0)) for l in lines)
     got = sorted(_line_key(l, (0.0, 0.0)) for l in page_lines(new_page))
-    if len(expect) != len(got) or any(e[0] != g[0] or not _close(e[1:], g[1:], 0.3) for e, g in zip(expect, got)):
+    if not shift.held and (len(expect) != len(got) or any(e[0] != g[0] or not _close(e[1:], g[1:], 0.3) for e, g in zip(expect, got))):
         fail("the moved text would read differently")
     check_other_pages(old_bytes, new_bytes, {page_no})
     return [(page_no, *boxes[0]), (page_no, *boxes[1])]
@@ -691,10 +713,16 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
     return int(changed.sum()) > allow
 
 
-def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None) -> tuple[bytes, list, int, Shift] | None:
+def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: dict | None = None, hold: frozenset = frozenset()) -> tuple[bytes, list, int, Shift] | None:
     """Move everything in the anchor's column below `cut` (PDF y) down by dy (up when
     negative). Returns (the new file, the areas that changed, how many lines moved, the
-    shift), or None when there's nothing below. Raises MoveRefused."""
+    shift), or None when there's nothing below. Raises MoveRefused.
+
+    `stretch`: rectangles that get taller by dy instead (shorter when it's negative), their
+    top staying: a piece's first instruction -> (its re instruction, its path, the re's new
+    operands, its new box). A table cell merged over the rows on both sides of a new row.
+    `hold`: pieces (by their first instruction) that stay put, whichever side they're on:
+    that cell's text, which the caller then puts where it sits in the cell."""
     doc = pymupdf.open("pdf", src)
     pdf = pikepdf.open(io.BytesIO(src))
     try:
@@ -705,9 +733,15 @@ def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, 
     if not matches_trace(rp, page) or rp.stray_restore or rp.open_text:
         raise MoveRefused("the page is built in a way that can't be moved safely yet")
     lines = page_lines(page)
-    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column)
+    stretch = stretch or {}
+    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column, frozenset(stretch) | hold)
     if shift is None:
-        return None
+        if not stretch:
+            return None
+        # Nothing below moves (the table's last row), but the merged cell still changes.
+        shift = Shift(page_no, dy, [], [], _union(rp.paths[path].bbox for _re, path, _ops, _box in stretch.values()))
+    shift.stretch = {re_at: (path, ops, box) for re_at, path, ops, box in stretch.values()}
+    shift.held = frozenset(t for p in _pieces(rp) if p.start in hold for t in p.glyphs)
     apply(pdf, page_no, rp, shift)
     out = io.BytesIO()
     pdf.save(out)

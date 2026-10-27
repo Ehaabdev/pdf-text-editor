@@ -164,3 +164,113 @@ def test_through_the_website(client):
 def test_row_changes_count_as_changes():
     assert limits.kind_of("POST", "/api/documents/abc/rows/add") == "change"
     assert limits.kind_of("POST", "/api/documents/abc/rows/delete") == "change"
+
+
+# Merged cells -----------------------------------------------------------------------------------
+
+MERGED = FIXTURES / "tables" / "tables-chrome.pdf"  # tables.html: four tables with merged cells
+
+
+def merged_tables(src: bytes) -> list:
+    page = pymupdf.open("pdf", src)[0]
+    return [t for t in find_tables(page, page_lines(page)) if t.ruled]
+
+
+def cells_of(table) -> list:
+    """(row, column, rows, columns, text) of each cell."""
+    return sorted((c.row, c.col, c.rowspan, c.colspan, comparable(" ".join(l.text for l in c.lines))) for c in table.cells)
+
+
+def line_in(table, text: str):
+    return next(l for c in table.cells for l in c.lines if l.text == text)
+
+
+def centered(table, text: str) -> bool:
+    cell = next(c for c in table.cells if any(l.text == text for l in c.lines))
+    top = min(l.bbox[1] for l in cell.lines) - cell.bbox[1]
+    bottom = cell.bbox[3] - max(l.bbox[3] for l in cell.lines)
+    return abs(top - bottom) <= 1.5  # Chrome puts a line's box half a point off its middle
+
+
+ROOMS = [
+    (0, 0, 3, 1, "Ground floor"), (0, 1, 1, 1, "Lobby"), (0, 2, 1, 1, "40 m²"),
+    (1, 1, 1, 1, "Office"), (1, 2, 2, 1, "25 m²"),
+    (2, 1, 1, 1, "Store"),
+    (3, 0, 1, 1, "First floor"), (3, 1, 1, 1, "Meeting room"), (3, 2, 1, 1, "30 m²"),
+]
+
+
+def test_rows_added_inside_merged_cells():
+    src = MERGED.read_bytes()
+    rooms = merged_tables(src)[3]
+    assert cells_of(rooms) == sorted(ROOMS)
+    # Below "Lobby": inside "Ground floor", which gets a row taller (its text staying in its
+    # middle); the new row has cells under "Lobby" and "40 m²".
+    result = add_row(src, 0, line_in(rooms, "Lobby").id, "Lobby", "below", ["Hall", "8 m²"])
+    after = merged_tables(result.pdf)[3]
+    assert cells_of(after) == sorted([
+        (0, 0, 4, 1, "Ground floor"), (0, 1, 1, 1, "Lobby"), (0, 2, 1, 1, "40 m²"),
+        (1, 1, 1, 1, "Hall"), (1, 2, 1, 1, "8 m²"),
+        (2, 1, 1, 1, "Office"), (2, 2, 2, 1, "25 m²"),
+        (3, 1, 1, 1, "Store"),
+        (4, 0, 1, 1, "First floor"), (4, 1, 1, 1, "Meeting room"), (4, 2, 1, 1, "30 m²"),
+    ])
+    assert centered(after, "Ground floor")
+    # Below "Office": inside both merged cells; the new row has one cell.
+    result = add_row(src, 0, line_in(rooms, "Office").id, "Office", "below", ["Kitchen"])
+    after = merged_tables(result.pdf)[3]
+    assert (0, 0, 4, 1, "Ground floor") in cells_of(after) and (1, 2, 3, 1, "25 m²") in cells_of(after)
+    assert (2, 1, 1, 1, "Kitchen") in cells_of(after)
+    assert centered(after, "Ground floor") and centered(after, "25 m²")
+    # Above "Lobby": above "Ground floor" too; the new row has a cell under each.
+    result = add_row(src, 0, line_in(rooms, "Lobby").id, "Lobby", "above", ["Basement", "Garage", "60 m²"])
+    after = merged_tables(result.pdf)[3]
+    assert cells_of(after)[:3] == [(0, 0, 1, 1, "Basement"), (0, 1, 1, 1, "Garage"), (0, 2, 1, 1, "60 m²")]
+    assert (1, 0, 3, 1, "Ground floor") in cells_of(after)
+    # Below "Ground floor": below its last row.
+    result = add_row(src, 0, line_in(rooms, "Ground floor").id, "Ground floor", "below", ["", "Stairs", ""])
+    after = merged_tables(result.pdf)[3]
+    assert [c for c in cells_of(after) if c[0] == 3] == [(3, 0, 1, 1, ""), (3, 1, 1, 1, "Stairs"), (3, 2, 1, 1, "")]
+
+
+def test_rows_beside_cells_with_text_at_their_top():
+    src = MERGED.read_bytes()
+    schedule = merged_tables(src)[0]
+    phase = next(c for c in schedule.cells if c.rowspan > 1)
+    result = add_row(src, 0, line_in(schedule, "Cabling").id, "Cabling", "below", ["Painting", "2 days"])
+    after = merged_tables(result.pdf)[0]
+    assert (0, 0, 6, 1, "Phase one") in cells_of(after) and (3, 1, 1, 1, "Painting") in cells_of(after)
+    # "Phase one" stays at its top.
+    moved = next(c for c in after.cells if c.rowspan > 1)
+    assert moved.lines[0].bbox == pytest.approx(phase.lines[0].bbox, abs=0.05)
+    # "North" and the three numbers two rows tall all get taller.
+    quarters = merged_tables(src)[1]
+    result = add_row(src, 0, line_in(quarters, "Orders").id, "Orders", "below", ["Late orders"])
+    after = cells_of(merged_tables(result.pdf)[1])
+    assert (0, 0, 4, 1, "North") in after and (0, 2, 3, 1, "120") in after and (1, 1, 1, 1, "Late orders") in after
+
+
+def test_rows_deleted_from_merged_cells():
+    src = MERGED.read_bytes()
+    rooms = merged_tables(src)[3]
+    # "Office": "Ground floor" and "25 m²" (which starts there) a row shorter.
+    after = merged_tables(delete_row(src, 0, line_in(rooms, "Office").id, "Office").pdf)[3]
+    assert cells_of(after) == sorted([
+        (0, 0, 2, 1, "Ground floor"), (0, 1, 1, 1, "Lobby"), (0, 2, 1, 1, "40 m²"),
+        (1, 1, 1, 1, "Store"), (1, 2, 1, 1, "25 m²"),
+        (2, 0, 1, 1, "First floor"), (2, 1, 1, 1, "Meeting room"), (2, 2, 1, 1, "30 m²"),
+    ])
+    assert centered(after, "Ground floor") and centered(after, "25 m²")
+    # "Store": the last row of both; their bottom border goes up with them.
+    after = merged_tables(delete_row(src, 0, line_in(rooms, "Store").id, "Store").pdf)[3]
+    assert cells_of(after) == sorted([
+        (0, 0, 2, 1, "Ground floor"), (0, 1, 1, 1, "Lobby"), (0, 2, 1, 1, "40 m²"),
+        (1, 1, 1, 1, "Office"), (1, 2, 1, 1, "25 m²"),
+        (2, 0, 1, 1, "First floor"), (2, 1, 1, 1, "Meeting room"), (2, 2, 1, 1, "30 m²"),
+    ])
+    # "Lobby": the first row of "Ground floor".
+    after = merged_tables(delete_row(src, 0, line_in(rooms, "Lobby").id, "Lobby").pdf)[3]
+    assert (0, 0, 2, 1, "Ground floor") in cells_of(after) and centered(after, "Ground floor")
+    # A cell merged over several rows: which row?
+    with pytest.raises(EditRejected, match="one row tall"):
+        delete_row(src, 0, line_in(rooms, "Ground floor").id, "Ground floor")
