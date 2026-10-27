@@ -83,6 +83,10 @@ class Shift:
     # rows on both sides of the spot. Their re instruction -> (path, its new operands, its
     # new box); their bottom moves by dy, their top stays.
     stretch: dict = field(default_factory=dict)
+    # Glyphs held still while the rest moves (a merged cell's text, put in its place after):
+    # until then lines may read otherwise (a row's borders not drawn yet), so the reading
+    # check is left to the caller, at the end.
+    held: frozenset = frozenset()
 
     @property
     def glyphs(self) -> set[int]:
@@ -653,7 +657,7 @@ def verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, shift: 
     vector = (vx, vy)
     expect = sorted(_line_key(l, vector if l.id in shift.lines else (0.0, 0.0)) for l in lines)
     got = sorted(_line_key(l, (0.0, 0.0)) for l in page_lines(new_page))
-    if len(expect) != len(got) or any(e[0] != g[0] or not _close(e[1:], g[1:], 0.3) for e, g in zip(expect, got)):
+    if not shift.held and (len(expect) != len(got) or any(e[0] != g[0] or not _close(e[1:], g[1:], 0.3) for e, g in zip(expect, got))):
         fail("the moved text would read differently")
     check_other_pages(old_bytes, new_bytes, {page_no})
     return [(page_no, *boxes[0]), (page_no, *boxes[1])]
@@ -737,6 +741,7 @@ def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, 
         # Nothing below moves (the table's last row), but the merged cell still changes.
         shift = Shift(page_no, dy, [], [], _union(rp.paths[path].bbox for _re, path, _ops, _box in stretch.values()))
     shift.stretch = {re_at: (path, ops, box) for re_at, path, ops, box in stretch.values()}
+    shift.held = frozenset(t for p in _pieces(rp) if p.start in hold for t in p.glyphs)
     apply(pdf, page_no, rp, shift)
     out = io.BytesIO()
     pdf.save(out)

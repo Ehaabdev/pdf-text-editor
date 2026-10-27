@@ -141,10 +141,13 @@ def _taller(page: pymupdf.Page, rp: Replay, cells: list[Cell], across, dy: float
         if p.kind not in ("path", "clip"):
             continue
         b = p.box
-        if not any(b[0] >= x0 - THIN and b[2] <= x1 + THIN and b[1] >= y0 - THIN and b[3] <= y1 + THIN for x0, y0, x1, y1 in boxes):
+        box = next((c for c in boxes if b[0] >= c[0] - THIN and b[2] <= c[2] + THIN and b[1] >= c[1] - THIN and b[3] <= c[3] + THIN), None)
+        if box is None:
             continue
         if b[3] - b[1] <= THIN or not across(b[1], b[3]):
             continue  # a line along a row: it moves with its row, or stays
+        if b[1] > box[1] + THIN or b[3] < box[3] - THIN:
+            continue  # not the whole cell's: a strip behind a line of its text goes with the text (_strips)
         if abs(p.ctm[1]) > 1e-9 or abs(p.ctm[2]) > 1e-9:
             raise EditRejected("A merged cell here is drawn in a way that can't be made taller yet.")
         found = _rect_of(rp, p)
@@ -163,7 +166,7 @@ def _sits(table: Table, cell: Cell) -> str | None:
         return None
     top = min(l.bbox[1] for l in cell.lines) - cell.bbox[1]
     bottom = cell.bbox[3] - max(l.bbox[3] for l in cell.lines)
-    if abs(top - bottom) <= 1.0:
+    if abs(top - bottom) <= 1.5:
         return "middle"
     gaps = sorted(min(l.bbox[1] for l in c.lines) - c.bbox[1] for c in table.cells if c.rowspan == 1 and c.lines)
     pad = gaps[len(gaps) // 2] if gaps else min(top, bottom)
@@ -176,65 +179,136 @@ def _sits(table: Table, cell: Cell) -> str | None:
     raise EditRejected("The text of a merged cell here sits neither at its top, its middle nor its bottom, so rows can't be changed beside it yet.")
 
 
-def _held(src: bytes, page_no: int, cells: list[Cell]) -> frozenset:
-    """The text objects of merged cells' lines (by their first instruction): they stay put
-    while the rows below move, then go where they sit in their cell (_keep_place)."""
-    if not any(c.lines for c in cells):
+def _inside(page: pymupdf.Page, rp: Replay, cell: Cell, grown: float = 0.0) -> tuple[list, list, tuple]:
+    """A merged cell's own pieces (paths and clips drawn inside it, as wide as it), the
+    paints of those filling all of it, and its box (PDF; `grown` points taller now)."""
+    x0, y0, x1, y1 = to_pdf(page, cell.bbox)
+    y0 -= grown
+    wide = lambda b: b[0] >= x0 - THIN and b[2] <= x1 + THIN and b[0] <= x0 + THIN and b[2] >= x1 - THIN
+    own = [p for p in moving._pieces(rp) if p.kind in ("path", "clip") and wide(p.box) and p.box[1] >= y0 - THIN and p.box[3] <= y1 + THIN and p.box[3] - p.box[1] > THIN]
+    whole = [rp.paths[p.index].fill for p in own if p.kind == "path" and rp.paths[p.index].fills and p.box[1] <= y0 + THIN and p.box[3] >= y1 - THIN]
+    return own, whole, (x0, y0, x1, y1)
+
+
+def _drawn_as_one(page: pymupdf.Page, rp: Replay, cell: Cell) -> None:
+    """Refuse a cell that only reads as merged: two cells without a border between them,
+    each with its own clipping or shading (Word clips a merged cell's text to all of it)."""
+    own, whole, (x0, y0, x1, y1) = _inside(page, rp, cell)
+    for p in own:
+        if p.box[1] <= y0 + THIN and p.box[3] >= y1 - THIN:
+            continue
+        path = rp.paths[p.index]
+        if p.kind == "clip" or (path.fills and path.fill not in whole):
+            raise EditRejected("A cell here looks merged over several rows but is drawn as separate cells without a border between them, so rows can't be added or deleted inside it yet.")
+
+
+def _strips(page: pymupdf.Page, rp: Replay, cell: Cell, lines: list, now: float = 0.0, grown: float = 0.0) -> list:
+    """What's drawn behind a merged cell's lines (as displayed, `now` points lower than in
+    `lines`): Word shades a shaded cell's paragraphs too, a strip a line tall behind each,
+    painted as the whole cell is; and the lines' underlines and highlights. They go with
+    the text. The cell is `grown` points taller now."""
+    own, whole, _box = _inside(page, rp, cell, grown)
+    around = []
+    for l in lines:
+        b = to_pdf(page, (l.bbox[0], l.bbox[1] + now, l.bbox[2], l.bbox[3] + now))
+        reach = 0.6 * l.style.size
+        around.append((b[1] - reach, b[3] + reach))
+    out = [p for p in own if p.kind == "path" and rp.paths[p.index].fills and rp.paths[p.index].fill in whole and any(p.box[1] >= lo and p.box[3] <= hi for lo, hi in around)]
+    found = page_lines(page)
+    marks = set()
+    for l in lines:
+        n = next((n for n in found if comparable(n.text) == comparable(l.text) and abs(n.bbox[0] - l.bbox[0]) < 1 and abs(n.bbox[1] - l.bbox[1] - now) < 1), None)
+        if n is not None:
+            marks |= _skipped(rp, [n])
+    out += [p for p in moving._pieces(rp) if p.kind == "path" and p.index in marks and p not in out]
+    return out
+
+
+def _held(src: bytes, page_no: int, cells: list[Cell], across, dy: float) -> frozenset:
+    """What of merged cells stays put while the rows below move (by first instruction):
+    their lines' text objects and what's drawn behind them, which then go where they sit
+    in their cell (_keep_place); and their own shading in strips (Word shades each
+    paragraph of a shaded cell, empty ones too) that `across` says runs across the spot,
+    painted as the whole cell is: unseen on it, it stays, but must stay inside the cell
+    (`dy` taller; shorter when negative)."""
+    if not cells:
         return frozenset()
     doc, page, pdf, rp = _open(src, page_no)
-    found = page_lines(page)
-    members = set()
+    starts = set()
+    pieces = moving._pieces(rp)
+    # Their text, by where its letters are (the page may read otherwise in between: a row's
+    # borders gone before the rows below close up).
+    boxes = [to_pdf(page, l.bbox) for c in cells for l in c.lines]
+    for p in pieces:
+        if p.kind != "text":
+            continue
+        letters = [moving._glyph_box(rp.glyphs[t]) for t in p.glyphs if not moving._blank(rp, rp.glyphs[t])]
+        ins = [any(b[0] - 1 <= (g[0] + g[2]) / 2 <= b[2] + 1 and b[1] - 1 <= (g[1] + g[3]) / 2 <= b[3] + 1 for b in boxes) for g in letters]
+        if any(ins) and not all(ins):
+            raise EditRejected("The text of a merged cell here is drawn together with other text, so it can't be kept in its place yet.")
+        if letters and all(ins):
+            starts.add(p.start)
     for c in cells:
-        for l in c.lines:
-            members.update(_find(found, l.text, l.bbox, 0.0).members)
-    return frozenset(p.start for p in moving._pieces(rp) if p.kind == "text" and members.intersection(p.glyphs))
+        behind = _strips(page, rp, c, c.lines) if c.lines else []
+        starts.update(p.start for p in behind)
+        x0, y0, x1, y1 = to_pdf(page, c.bbox)
+        inside = lambda b: b[0] >= x0 - THIN and b[2] <= x1 + THIN and b[1] >= y0 - THIN and b[3] <= y1 + THIN
+        whole = [rp.paths[p.index].fill for p in pieces if p.kind == "path" and rp.paths[p.index].fills and inside(p.box) and p.box[1] <= y0 + THIN and p.box[3] >= y1 - THIN]
+        for p in pieces:
+            b = p.box
+            if p.kind != "path" or p.start in starts or not inside(b) or b[3] - b[1] <= THIN or not across(b[1], b[3]):
+                continue
+            if b[1] <= y0 + THIN and b[3] >= y1 - THIN:
+                continue  # the whole cell's: it gets taller (_taller)
+            if rp.paths[p.index].fill not in whole or not rp.paths[p.index].fills or rp.paths[p.index].strokes:
+                continue  # something else across the spot: the move refuses it
+            if dy < 0 and b[1] < y0 - dy - 0.5:
+                raise EditRejected("A merged cell's shading here wouldn't fit in it with this row gone.")
+            starts.add(p.start)
+    return frozenset(starts)
 
 
 def _keep_place(src: bytes, page_no: int, table: Table, cells: list[Cell], dy: float) -> tuple[bytes, list]:
     """Each merged cell's text where it sits in the cell, now `dy` points taller (as
-    displayed; shorter when negative): its lines went dy lower with what was below the spot,
-    or stayed. Middle text goes half as far, top text stays, bottom text goes all the way.
-    Returns the file and the areas that changed."""
+    displayed; shorter when negative); held still while the rows moved, it's where it was.
+    Middle text goes half as far, top text stays, bottom text goes all the way. Returns the
+    file and the areas that changed."""
     current, areas = src, []
     for cell in cells:
         where = _sits(table, cell)
         if where is None:
             continue
-        found = page_lines(pymupdf.open("pdf", current)[page_no])
-        went = set()
-        for l in cell.lines:
-            here = [n for n in found if comparable(n.text) == comparable(l.text) and abs(n.bbox[0] - l.bbox[0]) < 1]
-            if any(abs(n.bbox[1] - l.bbox[1]) < 1 for n in here):
-                went.add(0.0)
-            elif any(abs(n.bbox[1] - l.bbox[1] - dy) < 1 for n in here):
-                went.add(dy)
-            else:
-                raise EditRejected("The table couldn't be read back after making room. Nothing was changed.")
-        if len(went) > 1:
-            raise EditRejected("The text of a merged cell here runs past the row's place, so a row can't be added or deleted there yet.")
-        now = went.pop()
         want = {"top": 0.0, "middle": dy / 2, "bottom": dy}[where]
-        if abs(want - now) < 0.01:
+        if abs(want) < 0.01:
             continue
-        current, changed = _move_text(current, page_no, cell.lines, now, want - now)
+        current, changed = _move_text(current, page_no, cell, want, dy)
         areas += changed
     return current, areas
 
 
-def _move_text(src: bytes, page_no: int, lines: list[Line], now: float, dy: float) -> tuple[bytes, list]:
-    """Some lines (as they were, now `now` points lower) moved dy points lower, whole, with
-    their links; checked as other moves are."""
+def _move_text(src: bytes, page_no: int, cell: Cell, dy: float, grown: float = 0.0) -> tuple[bytes, list]:
+    """A merged cell's lines (where they were), with what's drawn behind them, moved dy
+    points lower, whole, with their links; checked as other moves are (but for how the page
+    reads, which the row change checks at its end: _reads_same). The cell is `grown`
+    points taller now."""
     from .changes import LinkChange, page_links
 
     doc, page, pdf, rp = _open(src, page_no)
-    found = page_lines(page)
-    ids = []
-    for l in lines:
-        ids.append(_find(found, l.text, (l.bbox[0], l.bbox[1] + now, l.bbox[2], l.bbox[3] + now), 0.0).id)
-    members = {t for l in found if l.id in ids for t in l.members}
-    pieces = [p for p in moving._pieces(rp) if p.kind == "text" and members.intersection(p.glyphs)]
-    if any(t not in members and not moving._blank(rp, rp.glyphs[t]) for p in pieces for t in p.glyphs):
-        raise EditRejected("The text of a merged cell here is drawn together with other text, so it can't be kept in its place yet.")
+    # Its text, by where its letters are.
+    boxes = [to_pdf(page, l.bbox) for l in cell.lines]
+    pieces = []
+    for p in moving._pieces(rp):
+        if p.kind != "text":
+            continue
+        letters = [moving._glyph_box(rp.glyphs[t]) for t in p.glyphs if not moving._blank(rp, rp.glyphs[t])]
+        ins = [any(b[0] - 1 <= (g[0] + g[2]) / 2 <= b[2] + 1 and b[1] - 1 <= (g[1] + g[3]) / 2 <= b[3] + 1 for b in boxes) for g in letters]
+        if any(ins) and not all(ins):
+            raise EditRejected("The text of a merged cell here is drawn together with other text, so it can't be kept in its place yet.")
+        if letters and all(ins):
+            pieces.append(p)
+    if not pieces:
+        raise EditRejected("The table couldn't be read back after making room. Nothing was changed.")
+    pieces = sorted(pieces + _strips(page, rp, cell, cell.lines, 0.0, grown), key=lambda p: p.start)
     a = to_pdf(page, (0, 0, 0, 0))
     b = to_pdf(page, (0, dy, 0, dy))
     pdy = a[1] - b[1]
@@ -248,12 +322,12 @@ def _move_text(src: bytes, page_no: int, lines: list[Line], now: float, dy: floa
             x0, y0, x1, y1 = link.rect
             links.append(LinkChange(link, (x0, y0 - pdy, x1, y1 - pdy)))
     box = moving._union(p.box for p in pieces)
-    shift = moving.Shift(page_no, pdy, pieces, links, box, ids, saved=True)
+    shift = moving.Shift(page_no, pdy, pieces, links, box, [], saved=True, held=frozenset(glyphs))
     moving.apply(pdf, page_no, rp, shift)
     out = io.BytesIO()
     pdf.save(out)
     new = out.getvalue()
-    areas = moving.verify(src, new, page_no, rp, shift, found)
+    areas = moving.verify(src, new, page_no, rp, shift, page_lines(page))
     return new, areas
 
 
@@ -289,14 +363,16 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
 # Borders and shading -------------------------------------------------------------------------
 
 
-def _row_paths(rp: Replay, band: tuple[float, float, float, float], skip: set[int] = frozenset(), holes: list = ()) -> dict[int, list[int]]:
+def _row_paths(rp: Replay, band: tuple[float, float, float, float], skip: set[int] = frozenset(), holes: list = (), inner: list = ()) -> dict[int, list[int]]:
     """The row's own borders and shading, in a band (PDF: x0, y0 bottom, x1, y1 top): for
     each path, which of its subpaths. Every piece whose middle is in the row (its side
     borders, Word's corner pieces under its top line, its shading, however many strips
     it's drawn in) and the line along its bottom edge; not the line along its top edge
     (the row above's), nor pieces running into other rows, nor the paths in `skip`
-    (underlines and highlights of its text, which go with the text), nor the line along
-    its bottom edge inside `holes` (PDF x0, x1: merged cells the copy goes inside)."""
+    (underlines and highlights of its text, which go with the text), nor anything inside
+    `holes` (PDF x0, x1: merged cells the copy goes inside, which get taller instead), nor
+    shading inside `inner` (merged cells over this row and others: their shading is
+    drawn for all their rows, or behind their text)."""
     x0, y0, x1, y1 = band
     out: dict[int, list[int]] = {}
     for i, p in enumerate(rp.paths):
@@ -311,8 +387,10 @@ def _row_paths(rp: Replay, band: tuple[float, float, float, float], skip: set[in
             thin = d - b <= THIN
             if thin and abs(mid - y1) <= EDGE:
                 continue  # the line along its top edge
-            if thin and abs(mid - y0) <= EDGE and any(h0 + THIN < (a + c) / 2 < h1 - THIN for h0, h1 in holes):
-                continue  # inside a merged cell the new row goes into: no line there
+            if any(h0 + THIN < (a + c) / 2 < h1 - THIN for h0, h1 in holes):
+                continue  # inside a merged cell the new row goes into: nothing of its own there
+            if not thin and c - a > THIN and any(h0 + THIN < (a + c) / 2 < h1 - THIN for h0, h1 in inner):
+                continue  # a merged cell's shading
             if (thin and abs(mid - y0) <= EDGE) or (y0 < mid < y1 and b >= y0 - THIN and d <= y1 + THIN):
                 picked.append(k)
         if picked:
@@ -365,14 +443,14 @@ def _path_ops(rp: Replay, i: int, subs: list[int]) -> list:
     return ops + [rp.instructions[p.end]]
 
 
-def _copy_row(src: bytes, page_no: int, band: tuple, down: float, holes: list = (), edge: tuple | None = None) -> tuple[bytes, dict[int, list[int]]]:
+def _copy_row(src: bytes, page_no: int, band: tuple, down: float, holes: list = (), edge: tuple | None = None, inner: list = ()) -> tuple[bytes, dict[int, list[int]]]:
     """The row's borders and shading in `band` drawn again `down` points lower (higher
     when negative), each right after the original, in the same drawing state. With `edge`
     (PDF y, x0, x1), only the line along that edge between x0 and x1 instead."""
     doc, page, pdf, rp = _open(src, page_no)
     shown = to_display(page, band)
     in_row = [l for l in page_lines(page) if shown.y0 < (l.bbox[1] + l.bbox[3]) / 2 < shown.y1]
-    picked = _edge_paths(rp, *edge) if edge else _row_paths(rp, band, _skipped(rp, in_row), holes)
+    picked = _edge_paths(rp, *edge) if edge else _row_paths(rp, band, _skipped(rp, in_row), holes, inner)
     if not picked:
         raise EditRejected("This table's borders can't be found, so a row can't be added to it yet.")
     after = {rp.paths[i].end: [_op([], "q"), _op(_translate(rp.paths[i].ctm, down), "cm"), *_path_ops(rp, i, subs), _op([], "Q")] for i, subs in picked.items()}
@@ -623,9 +701,12 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
     # 1. Room: everything below the spot, across the page, one row lower. The border at the
     #    spot stays (a little below it is the cut: a border's own thickness stays above it).
     areas = []
-    stretch = _taller(page, rp, taller, lambda y0, y1: y0 < cut - 0.5 and y1 > cut + 0.5, height)
+    crosses = lambda y0, y1: y0 < cut - 0.5 and y1 > cut + 0.5
+    for c in taller:
+        _drawn_as_one(page, rp, c)
+    stretch = _taller(page, rp, taller, crosses, height)
     try:
-        made = moving.shift_below(src, page_no, band, size, cut, height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, taller))
+        made = moving.shift_below(src, page_no, band, size, cut, height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, taller, crosses, height))
     except moving.MoveRefused as e:
         raise _room_refused(str(e))
     if made is None:
@@ -636,9 +717,6 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
     else:
         current, moved_areas, _, _ = made
         areas += moved_areas
-        # The merged cells' text where it sits in them.
-        current, kept = _keep_place(current, page_no, table, taller, height)
-        areas += kept
 
     # 2. The row's borders and shading, copied into the room. Added below: the row stays and
     #    the copy goes one row lower. Added above: the row itself moved down, and the copy
@@ -648,7 +726,8 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
     else:
         copy_band, down = (band[0], band[1] - height, band[2], band[3] - height), -height
     holes = [(b[0], b[2]) for b in (to_pdf(page, c.bbox) for c in taller)]
-    current, _ = _copy_row(current, page_no, copy_band, down, holes)
+    inner = [(b[0], b[2]) for b in (to_pdf(page, c.bbox) for c in cells if c.rowspan > 1)]
+    current, _ = _copy_row(current, page_no, copy_band, down, holes, inner=inner)
     if where == "above":
         # Above a merged cell's first row: the new row's cell there gets a bottom border, its
         # top one drawn again (the row's own has none: it's inside the merged cell).
@@ -658,6 +737,10 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
                 current, _ = _copy_row(current, page_no, (x0, edge - THIN, x1, edge + THIN), height, edge=(edge, x0, x1))
     new_box = (tx0, new_top, tx1, new_top + height)
     areas.append((page_no, tx0 - 2, new_top - 2, tx1 + 2, new_top + height + 2))
+    # The merged cells' text where it sits in them (with the new row's borders drawn: until
+    # then, two cells' lines side by side can read as one).
+    current, kept = _keep_place(current, page_no, table, taller, height)
+    areas += kept
 
     # 3. The text of each cell.
     warnings, lookalikes = [], []
@@ -681,6 +764,8 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
         warnings += [w for w in result.warnings if w not in warnings]
         lookalikes += [l for l in result.lookalikes if l not in lookalikes]
         areas += result.areas
+    if taller:
+        _reads_same(current, page_no, lines, [t for t in texts if t])
     return EditResult(current, warnings, " | ".join(t for t in texts if t), areas, [(page_no, *new_box)], lookalikes)
 
 
@@ -711,6 +796,7 @@ def delete_row(src: bytes, page_no: int, line_id: str, old_text: str) -> EditRes
     below = sorted(c.bbox[3] - max(l.bbox[3] for l in c.lines) for c in single)
     room = (above[len(above) // 2] + below[len(below) // 2]) if single else 0.0
     for c in shorter:
+        _drawn_as_one(page, rp, c)
         if c.lines and max(l.bbox[3] for l in c.lines) - min(l.bbox[1] for l in c.lines) + room > (c.bbox[3] - c.bbox[1]) - height + 0.5:
             raise EditRejected("A merged cell's text wouldn't fit in it with this row gone.")
         x0, _, x1, _ = to_pdf(page, c.bbox)
@@ -737,7 +823,7 @@ def delete_row(src: bytes, page_no: int, line_id: str, old_text: str) -> EditRes
     over = lambda y0, y1: y0 < band[3] - 0.5 and y1 > band[1] + 0.5 and (y0 < band[1] - 0.5 or y1 > band[3] + 0.5)
     stretch = _taller(page, now, shorter, over, -height)
     try:
-        made = moving.shift_below(current, page_no, band, size, cut, -height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(current, page_no, shorter))
+        made = moving.shift_below(current, page_no, band, size, cut, -height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(current, page_no, shorter, over, -height))
     except moving.MoveRefused as e:
         raise EditRejected(f"The rows below couldn't be moved up: {e}. Nothing was changed.")
     if made is not None:
@@ -745,4 +831,23 @@ def delete_row(src: bytes, page_no: int, line_id: str, old_text: str) -> EditRes
         areas += moved_areas
         current, kept = _keep_place(current, page_no, table, shorter, -height)
         areas += kept
+    if shorter:
+        gone = {l.id for l in row_lines}
+        _reads_same(current, page_no, [l for l in lines if l.id not in gone], [])
     return EditResult(current, warnings, "", areas, [(page_no, tx0, spot.top, tx1, spot.top + 1)], [])
+
+
+def _reads_same(src: bytes, page_no: int, lines: list[Line], typed: list[str]) -> None:
+    """At the end of a row change beside merged cells (whose text was held still while rows
+    moved, when the page may read otherwise for a moment): every line reads as it did, each
+    on its own, its ends where they were along the row (each step checked exactly where
+    every glyph went), and the typed text as new lines; nothing else."""
+    found = page_lines(pymupdf.open("pdf", src)[page_no])
+    left = list(found)
+    for l in lines:
+        n = next((n for n in left if comparable(n.text) == comparable(l.text) and abs(n.bbox[0] - l.bbox[0]) < 1 and abs(n.bbox[2] - l.bbox[2]) < 1), None)
+        if n is None:
+            fail("the table's text would read differently")
+        left.remove(n)
+    if sorted(comparable(n.text) for n in left) != sorted(comparable(t) for t in typed):
+        fail("the table's text would read differently")
