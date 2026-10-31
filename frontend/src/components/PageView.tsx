@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getImages, getLines, pageImageUrl, type DocInfo, type PageImage, type PageLines, type SpotPlan, type TextLine } from "../api";
+import { getImages, getLines, getTables, pageImageUrl, type DocInfo, type PageImage, type PageLines, type PageTable, type SpotPlan, type TextLine } from "../api";
 import ImageFrame from "./ImageFrame";
 import TableEdges from "./TableEdges";
 
@@ -45,17 +45,11 @@ type Props = {
   flash?: Flash | null;
   /** A round lens follows the mouse over the page, showing the print larger. */
   magnifier?: boolean;
-  /** The picked line's table: handles on its column edges resize its columns. */
-  tableEdges?: {
-    bbox: [number, number, number, number];
-    cols: number[];
-    limits: [number, number][];
-    scale: [number, number];
-    rtl: boolean;
-    busy: boolean;
-    onResize: (edge: number, x: number) => void;
-    onScale: (width: number) => void;
-  } | null;
+  /** Tables with borders get handles: a column edge resizes its columns, the corner the
+   *  whole table. What's asked for is saved by the viewer (any line of the table says which). */
+  tableBusy?: boolean;
+  onTableResize?: (line: TextLine, edge: number, x: number) => void;
+  onTableScale?: (line: TextLine, width: number) => void;
 };
 
 /** One image of the page: which revision and version it shows, and its URLs. */
@@ -63,7 +57,7 @@ type Layer = { key: string; revision: number; src: string; srcSet: string };
 
 export default function PageView({
   doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier,
-  selectedImageId, onSelectImage, frame, tableEdges,
+  selectedImageId, onSelectImage, frame, tableBusy = false, onTableResize, onTableScale,
 }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
@@ -115,6 +109,37 @@ export default function PageView({
     };
   }, [loaded, pics, doc, index]);
   const images = pics?.revision === doc.revision ? pics.images : [];
+
+  // The tables with borders, the same way: each gets handles to resize it.
+  const [tabs, setTabs] = useState<{ revision: number; tables: PageTable[] } | null>(null);
+  useEffect(() => {
+    if (!loaded || !editable || !onTableResize || tabs?.revision === doc.revision) return;
+    let alive = true;
+    getTables(doc, index)
+      .then((tables) => alive && setTabs({ revision: doc.revision, tables }))
+      .catch(() => {
+        // Without them the tables just get no handles.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loaded, editable, onTableResize, tabs, doc, index]);
+  const tables = tabs?.revision === doc.revision && lines ? tabs.tables.filter((t) => t.cols?.length) : [];
+  // Which table the pointer is over: its column edges show (its corner handle always does).
+  const [over, setOver] = useState<number | null>(null);
+  function hover(e: React.PointerEvent<HTMLDivElement>) {
+    if (!tables.length || e.pointerType !== "mouse") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * size.width;
+    const y = ((e.clientY - r.top) / r.height) * size.height;
+    const found = tables.findIndex((t) => x >= t.bbox[0] - 8 && x <= t.bbox[2] + 8 && y >= t.bbox[1] - 8 && y <= t.bbox[3] + 8);
+    if ((found < 0 ? null : found) !== over) setOver(found < 0 ? null : found);
+  }
+  // A line of each table, to say which table to the server.
+  function lineOf(t: PageTable): TextLine | undefined {
+    const id = t.rows.flat().find((c) => c.lines.length)?.lines[0];
+    return lines?.lines.find((l) => l.id === id);
+  }
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   // While a new image loads underneath, the previous one stays on top of it.
   const swapping = shown !== null && shown.key !== wanted.key;
@@ -149,8 +174,14 @@ export default function PageView({
       <div
         className={`page page--${state}`}
         style={{ aspectRatio: `${size.width} / ${size.height}` }}
-        onPointerMove={magnifier ? moveLens : undefined}
-        onPointerLeave={() => lens.current?.classList.remove("lens--on")}
+        onPointerMove={(e) => {
+          if (magnifier) moveLens(e);
+          hover(e);
+        }}
+        onPointerLeave={() => {
+          lens.current?.classList.remove("lens--on");
+          setOver(null);
+        }}
         onClick={(e) => {
           if (!editable) return;
           if (placing) {
@@ -265,7 +296,29 @@ export default function PageView({
             })}
           </div>
         )}
-        {tableEdges && editable && !placing && !frame && <TableEdges page={size} {...tableEdges} />}
+        {editable &&
+          !placing &&
+          !frame &&
+          tables.map((t, k) => {
+            const line = lineOf(t);
+            if (!line) return null;
+            const picked = t.rows.some((r) => r.some((c) => c.lines.some((id) => selectedIds.has(id))));
+            return (
+              <TableEdges
+                key={`${doc.revision}-${k}`}
+                page={size}
+                bbox={t.bbox}
+                cols={t.cols}
+                limits={t.limits}
+                scale={t.scale}
+                rtl={t.rtl}
+                busy={tableBusy}
+                showEdges={over === k || picked}
+                onResize={(edge, x) => onTableResize?.(line, edge, x)}
+                onScale={(width) => onTableScale?.(line, width)}
+              />
+            );
+          })}
         {/* A new line goes in a band across its paragraph; text placed or joined starts at the mark. */}
         {preview && (preview.kind === "item" || preview.kind === "line") && (
           <span

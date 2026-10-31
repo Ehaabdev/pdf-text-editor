@@ -12,6 +12,9 @@ type Props = {
   scale: [number, number];
   rtl: boolean;
   busy: boolean;
+  /** The column edges show while the pointer is over the table or a line of it is picked
+   *  (and when one has the keyboard's focus); the corner handle always shows. */
+  showEdges: boolean;
   onResize: (edge: number, x: number) => void;
   onScale: (width: number) => void;
 };
@@ -21,7 +24,7 @@ type Props = {
  *  too narrow for its text (cells don't wrap), or where the page has no more room.
  *  A handle at its bottom corner makes the whole table smaller or bigger, text included,
  *  like a picture; a dotted box shows its new size. */
-export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy, onResize, onScale }: Props) {
+export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy, showEdges, onResize, onScale }: Props) {
   const [drag, setDrag] = useState<{ edge: number; x: number } | null>(null);
   const [size, setSize] = useState<number | null>(null);
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
@@ -77,7 +80,7 @@ export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy,
           <button
             key={edge}
             type="button"
-            className={`table-edge${drag?.edge === edge ? " table-edge--active" : ""}`}
+            className={`table-edge${drag?.edge === edge ? " table-edge--active" : ""}${showEdges || drag ? "" : " table-edge--quiet"}`}
             disabled={busy || fixed}
             style={{ left: pct(x, page.width), top: pct(y0, page.height), height: pct(y1 - y0, page.height) }}
             aria-label={`${outer ? "Table edge" : "Column edge"} ${edge + 1} of ${cols.length}: drag it, or press the arrow keys and then Enter`}
