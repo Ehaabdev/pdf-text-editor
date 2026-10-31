@@ -3091,3 +3091,76 @@ html.theme-switching::view-transition-new(root) {
   overflow-y: auto;
   padding-right: 2px;
 }
+
+/* A picked table's column edges: a handle on each, to drag. The handle is a thin bar with a
+   wider grab area around it; a dotted line shows where the edge goes while it moves. */
+.table-edges {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.table-edge {
+  position: absolute;
+  width: 14px;
+  margin-left: -7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.table-edge::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  bottom: -6px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #2f6bff;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 6px rgba(5, 10, 30, 0.35);
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.table-edge:hover::after,
+.table-edge:focus-visible::after,
+.table-edge--active::after {
+  opacity: 1;
+}
+
+.table-edge:focus-visible {
+  outline: none;
+}
+
+.table-edge:focus-visible::after {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+}
+
+.table-edge:disabled {
+  cursor: not-allowed;
+}
+
+.table-edge:disabled::after {
+  background: #9aa4b8;
+  opacity: 0.35;
+}
+
+.table-edge-guide {
+  position: absolute;
+  width: 0;
+  margin-left: -1px;
+  border-left: 2px dashed #2f6bff;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-edge::after {
+    transition: none;
+  }
+}

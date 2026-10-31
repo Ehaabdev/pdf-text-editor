@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getImages, getLines, pageImageUrl, type DocInfo, type PageImage, type PageLines, type SpotPlan, type TextLine } from "../api";
 import ImageFrame from "./ImageFrame";
+import TableEdges from "./TableEdges";
 
 // Rendered widths the server is asked for. A fixed set keeps browser caching effective.
 const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400, 3200];
@@ -44,6 +45,14 @@ type Props = {
   flash?: Flash | null;
   /** A round lens follows the mouse over the page, showing the print larger. */
   magnifier?: boolean;
+  /** The picked line's table: handles on its column edges resize its columns. */
+  tableEdges?: {
+    bbox: [number, number, number, number];
+    cols: number[];
+    limits: [number, number][];
+    busy: boolean;
+    onResize: (edge: number, x: number) => void;
+  } | null;
 };
 
 /** One image of the page: which revision and version it shows, and its URLs. */
@@ -51,7 +60,7 @@ type Layer = { key: string; revision: number; src: string; srcSet: string };
 
 export default function PageView({
   doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier,
-  selectedImageId, onSelectImage, frame,
+  selectedImageId, onSelectImage, frame, tableEdges,
 }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
@@ -253,6 +262,7 @@ export default function PageView({
             })}
           </div>
         )}
+        {tableEdges && editable && !placing && !frame && <TableEdges page={size} {...tableEdges} />}
         {/* A new line goes in a band across its paragraph; text placed or joined starts at the mark. */}
         {preview && (preview.kind === "item" || preview.kind === "line") && (
           <span
