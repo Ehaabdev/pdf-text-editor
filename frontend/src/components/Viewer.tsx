@@ -12,6 +12,7 @@ import {
   previewMove,
   redoEdit,
   resizeColumn,
+  resizeRow,
   scaleTable,
   undoEdit,
   type DocInfo,
@@ -177,6 +178,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               ? "Column added. The other columns made room for it."
             : change === "column resized"
               ? "Column resized. Its text stayed where it sits in each cell."
+            : change === "row resized"
+              ? "Row resized. What was below it moved to make room."
             : change === "table resized"
               ? "Table resized. Everything in it, text included, kept its look."
           : change === "deleted"
@@ -312,6 +315,20 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
       edited(await scaleTable(doc, page, line, width), "table resized");
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the table. Try again.", tone: "error" });
+    } finally {
+      setResizing(false);
+      setWorking(false);
+    }
+  }
+
+  async function resizeRowEdge(page: number, line: TextLine, edge: number, y: number) {
+    if (resizing) return;
+    setResizing(true);
+    setWorking(true);
+    try {
+      edited(await resizeRow(doc, page, line, edge, y), "row resized");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the row. Try again.", tone: "error" });
     } finally {
       setResizing(false);
       setWorking(false);
@@ -1040,6 +1057,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     }
                     tableBusy={resizing}
                     onTableResize={(line, edge, x) => void resizeEdge(i, line, edge, x)}
+                    onTableRowResize={(line, edge, y) => void resizeRowEdge(i, line, edge, y)}
                     onTableScale={(line, width) => void resizeTable(i, line, width)}
                     version={shownVersion}
                     outlines={outlines(i)}

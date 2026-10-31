@@ -3235,3 +3235,32 @@ html.theme-switching::view-transition-new(root) {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* A row edge: the same handle, lying across the table. */
+.table-edge--row {
+  width: auto;
+  height: 14px;
+  margin-left: 0;
+  margin-top: -7px;
+  cursor: row-resize;
+}
+
+.table-edge--row::after {
+  left: -6px;
+  right: -6px;
+  top: 50%;
+  bottom: auto;
+  width: auto;
+  height: 4px;
+  margin-left: 0;
+  margin-top: -2px;
+}
+
+.table-edge-guide--row {
+  width: auto;
+  height: 0;
+  margin-left: 0;
+  margin-top: -1px;
+  border-left: 0;
+  border-top: 2px dashed #2f6bff;
+}

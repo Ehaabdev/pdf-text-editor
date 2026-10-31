@@ -49,6 +49,7 @@ type Props = {
    *  whole table. What's asked for is saved by the viewer (any line of the table says which). */
   tableBusy?: boolean;
   onTableResize?: (line: TextLine, edge: number, x: number) => void;
+  onTableRowResize?: (line: TextLine, edge: number, y: number) => void;
   onTableScale?: (line: TextLine, width: number) => void;
 };
 
@@ -57,7 +58,7 @@ type Layer = { key: string; revision: number; src: string; srcSet: string };
 
 export default function PageView({
   doc, index, width, selectedIds, onSelect, placing, spot, preview, onPlace, version, outlines = [], flash, magnifier,
-  selectedImageId, onSelectImage, frame, tableBusy = false, onTableResize, onTableScale,
+  selectedImageId, onSelectImage, frame, tableBusy = false, onTableResize, onTableRowResize, onTableScale,
 }: Props) {
   const editable = version === undefined;
   const size = doc.pages[index];
@@ -310,11 +311,14 @@ export default function PageView({
                 bbox={t.bbox}
                 cols={t.cols}
                 limits={t.limits}
+                rowEdges={t.rowEdges ?? []}
+                rowLimits={t.rowLimits ?? []}
                 scale={t.scale}
                 rtl={t.rtl}
                 busy={tableBusy}
                 showEdges={over === k || picked}
                 onResize={(edge, x) => onTableResize?.(line, edge, x)}
+                onResizeRow={(edge, y) => onTableRowResize?.(line, edge, y)}
                 onScale={(width) => onTableScale?.(line, width)}
               />
             );

@@ -7,6 +7,9 @@ type Props = {
   /** The table's column edges, left to right, and how far each can go: [lowest, highest]. */
   cols: number[];
   limits: [number, number][];
+  /** Its row edges, top to bottom, and how far each can go: [highest, lowest]. */
+  rowEdges: number[];
+  rowLimits: [number, number][];
   /** The whole table: how much smaller and bigger it can get, and its direction (an Arabic
    *  table grows from its top right corner). */
   scale: [number, number];
@@ -16,6 +19,7 @@ type Props = {
    *  (and when one has the keyboard's focus); the corner handle always shows. */
   showEdges: boolean;
   onResize: (edge: number, x: number) => void;
+  onResizeRow: (edge: number, y: number) => void;
   onScale: (width: number) => void;
 };
 
@@ -24,8 +28,9 @@ type Props = {
  *  too narrow for its text (cells don't wrap), or where the page has no more room.
  *  A handle at its bottom corner makes the whole table smaller or bigger, text included,
  *  like a picture; a dotted box shows its new size. */
-export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy, showEdges, onResize, onScale }: Props) {
+export default function TableEdges({ page, bbox, cols, limits, rowEdges, rowLimits, scale, rtl, busy, showEdges, onResize, onResizeRow, onScale }: Props) {
   const [drag, setDrag] = useState<{ edge: number; x: number } | null>(null);
+  const [rowDrag, setRowDrag] = useState<{ edge: number; y: number } | null>(null);
   const [size, setSize] = useState<number | null>(null);
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   const [x0, y0, x1, y1] = bbox;
@@ -70,6 +75,23 @@ export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy,
     if (Math.abs(x - cols[edge]) >= 1) onResize(edge, x);
   }
 
+  // A row edge: whole points from where it is, within its limits.
+  function clampRow(edge: number, y: number) {
+    const [lo, hi] = rowLimits[edge];
+    return Math.min(hi, Math.max(lo, rowEdges[edge] + Math.round(y - rowEdges[edge])));
+  }
+
+  function atRow(e: React.PointerEvent<HTMLElement>, edge: number) {
+    const area = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+    return clampRow(edge, ((e.clientY - area.top) / area.height) * page.height);
+  }
+
+  function finishRow(edge: number, y: number) {
+    setRowDrag(null);
+    if (Math.abs(y - rowEdges[edge]) >= 1) onResizeRow(edge, y);
+  }
+  const quiet = showEdges || drag || rowDrag ? "" : " table-edge--quiet";
+
   return (
     <div className="table-edges">
       {cols.map((x, edge) => {
@@ -80,7 +102,7 @@ export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy,
           <button
             key={edge}
             type="button"
-            className={`table-edge${drag?.edge === edge ? " table-edge--active" : ""}${showEdges || drag ? "" : " table-edge--quiet"}`}
+            className={`table-edge${drag?.edge === edge ? " table-edge--active" : ""}${quiet}`}
             disabled={busy || fixed}
             style={{ left: pct(x, page.width), top: pct(y0, page.height), height: pct(y1 - y0, page.height) }}
             aria-label={`${outer ? "Table edge" : "Column edge"} ${edge + 1} of ${cols.length}: drag it, or press the arrow keys and then Enter`}
@@ -123,6 +145,60 @@ export default function TableEdges({ page, bbox, cols, limits, scale, rtl, busy,
         <span
           className="table-edge-guide"
           style={{ left: pct(drag.x, page.width), top: pct(y0, page.height), height: pct(y1 - y0, page.height) }}
+          aria-hidden="true"
+        />
+      )}
+      {rowEdges.map((y, edge) => {
+        if (edge === 0) return null; // the table's top stays: rows grow and shrink downward
+        const [lo, hi] = rowLimits[edge] ?? [y, y];
+        const fixed = hi - lo < 1;
+        return (
+          <button
+            key={`row-${edge}`}
+            type="button"
+            className={`table-edge table-edge--row${rowDrag?.edge === edge ? " table-edge--active" : ""}${quiet}`}
+            disabled={busy || fixed}
+            style={{ top: pct(y, page.height), left: pct(x0, page.width), width: pct(w, page.width) }}
+            aria-label={`Row edge ${edge} of ${rowEdges.length - 1}: drag it, or press the arrow keys and then Enter, to make the row above it taller or lower`}
+            title={fixed ? "This row can't change height here: its text fills it and the page has no room below." : "Drag to make the row taller or lower"}
+            onPointerDown={(e) => {
+              if (busy) return;
+              e.preventDefault();
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setRowDrag({ edge, y: atRow(e, edge) });
+            }}
+            onPointerMove={(e) => {
+              if (rowDrag?.edge === edge) setRowDrag({ edge, y: atRow(e, edge) });
+            }}
+            onPointerUp={(e) => {
+              if (rowDrag?.edge === edge) finishRow(edge, atRow(e, edge));
+            }}
+            onPointerCancel={() => setRowDrag(null)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={() => rowDrag?.edge === edge && setRowDrag(null)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+                e.stopPropagation();
+                const now = rowDrag?.edge === edge ? rowDrag.y : y;
+                const step = (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? -1 : 1);
+                setRowDrag({ edge, y: clampRow(edge, now + step) });
+              } else if (e.key === "Enter" && rowDrag?.edge === edge) {
+                e.preventDefault();
+                finishRow(edge, rowDrag.y);
+              } else if (e.key === "Escape" && rowDrag) {
+                e.stopPropagation();
+                setRowDrag(null);
+              }
+            }}
+          />
+        );
+      })}
+      {rowDrag && (
+        <span
+          className="table-edge-guide table-edge-guide--row"
+          style={{ top: pct(rowDrag.y, page.height), left: pct(x0, page.width), width: pct(w, page.width) }}
           aria-hidden="true"
         />
       )}
