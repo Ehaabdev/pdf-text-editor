@@ -976,9 +976,12 @@ def row_limits(page: pymupdf.Page, table: Table, lines: list[Line], crop: tuple 
             floor = min(floor, l.bbox[1] - 0.3 * l.style.size)
         elif l.id not in own and l.bbox[1] >= t1 - 0.5:
             lowest = max(lowest, l.bbox[3])
+    # A picture at a footer line's height (a logo in the footer) stays with the footer.
+    bands = [(l.bbox[1], l.bbox[3]) for l in lines if l.id in footer]
     for im in page.get_image_info():
-        if im["bbox"][1] >= t1 - 0.5:
-            lowest = max(lowest, im["bbox"][3])
+        b0, b1 = im["bbox"][1], im["bbox"][3]
+        if b0 >= t1 - 0.5 and not any(min(b1, f1) > max(b0, f0) for f0, f1 in bands) and b0 < floor:
+            lowest = max(lowest, b1)
     grow = max(0.0, floor - lowest)
     out = [(table.rows[0], table.rows[0])]
     for j in range(1, len(table.rows)):
@@ -1024,7 +1027,12 @@ def resize_row(src: bytes, page_no: int, line_id: str, old_text: str, edge: int,
     try:
         made = moving.shift_below(src, page_no, band, size, cut, d, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, cells, reach, d))
     except moving.MoveRefused as e:
-        raise _room_refused(str(e))
+        why = str(e)
+        if "drawn across" in why:
+            raise EditRejected("Something is drawn down through this table's rows (a box or a line), so its rows can't be resized yet.")
+        if "bottom of the page" in why or "footer" in why or "border below" in why:
+            raise EditRejected("There's no room on this page for the row to get that tall: nothing moves onto the next page yet.")
+        raise EditRejected(f"This row can't be resized: {why}.")
     if made is None:
         raise EditRejected("This row's borders can't be found, so it can't be resized yet.")
     current, areas, _, _ = made
