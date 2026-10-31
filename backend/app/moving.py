@@ -51,6 +51,18 @@ class MoveRefused(Exception):
     """The text can't be moved exactly. The message says why, to follow "because" or ":"."""
 
 
+class Overflow(MoveRefused):
+    """The text below would run past the page's end (its bottom margin, or its footer): the
+    pieces that wouldn't fit (whole lines, below everything that would stay), for the next
+    page to take (overflow.py). Asked for with plan(split=True)."""
+
+    def __init__(self, why: str, over: list, stay: list, floor: float):
+        super().__init__(why)
+        self.over = over  # pieces (text, shapes, pictures) that go
+        self.stay = stay  # those that would still fit, moved
+        self.floor = floor  # PDF y: how low what moves may go
+
+
 _DIGITS = re.compile(r"[0-9٠-٩۰-۹]+")
 Box = tuple[float, float, float, float]  # PDF space: x0, y0 (bottom), x1, y1 (top)
 
@@ -271,7 +283,7 @@ def bottom_limit(doc: pymupdf.Document, page_no: int, lines: list[Line], crop: B
     return limit, footers
 
 
-def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: frozenset = frozenset()) -> Shift | None:
+def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: frozenset = frozenset(), split: bool = False) -> Shift | None:
     """What moves, and whether it can: everything in the anchor's column below `cut` (PDF
     y), down by dy (up when negative). None when nothing is below. `column` (PDF x) says
     which column instead: a whole table's width, for a new or deleted row. The pieces
@@ -422,6 +434,10 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
             else:
                 what = "the text below would run into a line or border below it"
         if box[1] - dy < floor - 0.01:
+            blocker = max(stoppers, key=lambda p: p.box[3]) if stoppers else None
+            page_end = blocker is None or floor <= limit + 0.01 or blocker.kind == "text"
+            if split and not cell and page_end:
+                raise _overflow(rp, lines, drawn, dy, floor, what)
             raise MoveRefused(what)
     else:
         visible = {t for l in lines for t in l.members}
@@ -475,6 +491,26 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     if not moved_lines and not any(p.kind in ("path", "image") for p in moving):
         return None  # only invisible marks (Word's empty paragraphs): nothing to make room for
     return Shift(page_no, dy, moving, links, box, moved_lines)
+
+
+def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str) -> MoveRefused:
+    """What would run past the page's end, split off as whole lines (with what's drawn with
+    them), all below what stays: an Overflow, or the refusal when it can't be split so."""
+    line_of = {t: l.id for l in lines for t in l.members}
+    over = {p.start for p in drawn if p.box[1] - dy < floor - 0.01}
+    while True:
+        gone = {line_of[t] for p in drawn if p.start in over for t in p.glyphs if t in line_of}
+        more = {p.start for p in drawn if p.start not in over and any(line_of.get(t) in gone for t in p.glyphs)}
+        if not more:
+            break
+        over |= more
+    stay = [p for p in drawn if p.start not in over]
+    out = [p for p in drawn if p.start in over]
+    if not out or (stay and max(p.box[3] for p in out) > min(p.box[1] for p in stay) + 0.5):
+        return MoveRefused(what)  # text side by side, or drawn together: no clean line between
+    if any(p.box[1] - dy < floor - 0.01 for p in stay):
+        return MoveRefused(what)
+    return Overflow(what, out, stay, floor)
 
 
 def _cm(p: Piece, dy: float, dx: float = 0.0) -> tuple[list, list]:
@@ -713,7 +749,7 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
     return int(changed.sum()) > allow
 
 
-def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: dict | None = None, hold: frozenset = frozenset()) -> tuple[bytes, list, int, Shift] | None:
+def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: dict | None = None, hold: frozenset = frozenset(), split: bool = False) -> tuple[bytes, list, int, Shift] | None:
     """Move everything in the anchor's column below `cut` (PDF y) down by dy (up when
     negative). Returns (the new file, the areas that changed, how many lines moved, the
     shift), or None when there's nothing below. Raises MoveRefused.
@@ -734,7 +770,7 @@ def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, 
         raise MoveRefused("the page is built in a way that can't be moved safely yet")
     lines = page_lines(page)
     stretch = stretch or {}
-    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column, frozenset(stretch) | hold)
+    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column, frozenset(stretch) | hold, split)
     if shift is None:
         if not stretch:
             return None

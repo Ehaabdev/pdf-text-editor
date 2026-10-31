@@ -29,7 +29,7 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
-from . import decorations, moving
+from . import decorations, moving, overflow
 from . import fonts as fontlib
 from .changes import (
     EditRejected,
@@ -330,7 +330,8 @@ def add_line(
         line_base = _baseline(ref, rp)
         cut = line_base - 0.3 * spacing if where == "below" else line_base + 0.7 * spacing
         try:
-            made = moving.shift_below(src, page_no, tuple(_pdf_rect(ref.bbox, page)), ref.style.size, cut, spacing)
+            # What no longer fits on the page flows onto the next one (overflow.py).
+            made = overflow.make_room(src, page_no, tuple(_pdf_rect(ref.bbox, page)), ref.style.size, cut, spacing)
         except moving.MoveRefused as e:
             made, refusal = None, str(e)
         if made is not None:
@@ -338,6 +339,7 @@ def add_line(
             result = add_line(moved_src, page_no, text, _moved_line_id(moved_src, page_no, ref, shift, page), ref_text, where, make_room=False)
             result.areas = areas + result.areas
             result.moved = count
+            result.warnings = [n for n in getattr(shift, "notes", []) if n not in result.warnings] + result.warnings
             return result
     baseline = base - spacing if where == "below" else base + spacing
     column = _column(ref, old, page)
