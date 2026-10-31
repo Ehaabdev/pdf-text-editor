@@ -3146,6 +3146,12 @@ html.theme-switching::view-transition-new(root) {
   cursor: not-allowed;
 }
 
+/* Away from the table: its column edges hide (but one with the keyboard's focus shows). */
+.table-edge--quiet:not(:focus-visible) {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .table-edge:disabled::after {
   background: #9aa4b8;
   opacity: 0.35;
@@ -3160,7 +3166,8 @@ html.theme-switching::view-transition-new(root) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .table-edge::after {
+  .table-edge::after,
+  .table-corner {
     transition: none;
   }
 }
@@ -3180,6 +3187,12 @@ html.theme-switching::view-transition-new(root) {
   cursor: nwse-resize;
   touch-action: none;
   pointer-events: auto;
+  transition: transform 120ms ease;
+}
+
+.table-corner:hover:not(:disabled),
+.table-corner.table-edge--active {
+  transform: scale(1.2);
 }
 
 .table-corner--rtl {
@@ -3221,4 +3234,33 @@ html.theme-switching::view-transition-new(root) {
   color: #ffffff;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* A row edge: the same handle, lying across the table. */
+.table-edge--row {
+  width: auto;
+  height: 14px;
+  margin-left: 0;
+  margin-top: -7px;
+  cursor: row-resize;
+}
+
+.table-edge--row::after {
+  left: -6px;
+  right: -6px;
+  top: 50%;
+  bottom: auto;
+  width: auto;
+  height: 4px;
+  margin-left: 0;
+  margin-top: -2px;
+}
+
+.table-edge-guide--row {
+  width: auto;
+  height: 0;
+  margin-left: 0;
+  margin-top: -1px;
+  border-left: 0;
+  border-top: 2px dashed #2f6bff;
 }

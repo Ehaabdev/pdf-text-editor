@@ -293,6 +293,10 @@ export type PageTable = {
   limits: [number, number][];
   /** How much smaller and bigger the whole table can get: [lowest, highest] scale. */
   scale: [number, number];
+  /** Its row edges, top to bottom, and how far each can be dragged: [highest, lowest]
+   *  (the top one stays). */
+  rowEdges: number[];
+  rowLimits: [number, number][];
 };
 
 const tablesCache = new Map<string, Promise<PageTable[]>>();
@@ -331,6 +335,12 @@ export function addColumn(doc: DocInfo, page: number, line: TextLine, where: "le
 /** A column edge of the table a line is in (0: its left edge) moved to `x` (points, as displayed). */
 export function resizeColumn(doc: DocInfo, page: number, line: TextLine, edge: number, x: number): Promise<EditOutcome> {
   return postJson(`/api/documents/${doc.id}/columns/resize`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, edge, x });
+}
+
+/** A row edge of the table a line is in (1: the first row's bottom edge) moved to `y`
+ *  (points, as displayed): that row taller or lower, what's below moving with it. */
+export function resizeRow(doc: DocInfo, page: number, line: TextLine, edge: number, y: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/rows/resize`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, edge, y });
 }
 
 /** The table a line is in made `width` points wide (as displayed), all of it scaled like a picture. */

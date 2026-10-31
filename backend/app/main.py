@@ -285,6 +285,15 @@ class ResizeRequest(BaseModel):
     x: float = Field(ge=-10000, le=10000)  # where it goes, as displayed
 
 
+class RowResizeRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)  # a line in the table
+    oldText: str = Field(max_length=5000)
+    edge: int = Field(ge=1, le=500)  # which row edge, top to bottom (1: the first row's bottom edge)
+    y: float = Field(ge=-10000, le=10000)  # where it goes, as displayed
+
+
 class ScaleRequest(BaseModel):
     revision: int
     page: int
@@ -532,6 +541,25 @@ async def resize_table_column(doc_id: str, body: ResizeRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("move", "Resized a table column", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/rows/resize")
+async def resize_table_row(doc_id: str, body: RowResizeRequest):
+    """A row edge of the table a line is in dragged up or down: that row lower or taller."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(rows.resize_row, src, body.page, body.lineId, body.oldText, body.edge, body.y)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("move", "Resized a table row", result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:

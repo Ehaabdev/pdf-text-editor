@@ -5,7 +5,6 @@ import {
   deleteImage,
   deleteLines,
   getLines,
-  getTables,
   goToVersion,
   moveImage,
   moveLines,
@@ -13,12 +12,12 @@ import {
   previewMove,
   redoEdit,
   resizeColumn,
+  resizeRow,
   scaleTable,
   undoEdit,
   type DocInfo,
   type EditOutcome,
   type PageImage,
-  type PageTable,
   type PickedLine,
   type SpotPlan,
   type TextLine,
@@ -179,6 +178,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               ? "Column added. The other columns made room for it."
             : change === "column resized"
               ? "Column resized. Its text stayed where it sits in each cell."
+            : change === "row resized"
+              ? "Row resized. What was below it moved to make room."
             : change === "table resized"
               ? "Table resized. Everything in it, text included, kept its look."
           : change === "deleted"
@@ -303,33 +304,15 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     setImagePick(null);
   }
 
-  // The table the one picked line is in: its column edges get handles on the page.
-  const one = picked.length === 1 && !adding ? picked[0] : null;
-  const [pickedTable, setPickedTable] = useState<{ page: number; lineId: string; table: PageTable } | null>(null);
-  useEffect(() => {
-    if (!one) return;
-    let alive = true;
-    getTables(doc, one.page)
-      .then((tables) => {
-        const table = tables.find((t) => t.rows.some((r) => r.some((c) => c.lines.includes(one.line.id))));
-        if (alive && table?.cols) setPickedTable({ page: one.page, lineId: one.line.id, table });
-      })
-      .catch(() => {
-        // Without the table, its edges just get no handles.
-      });
-    return () => {
-      alive = false;
-    };
-  }, [doc, one?.page, one?.line.id]);
-  const edgesTable = one && pickedTable && pickedTable.page === one.page && pickedTable.lineId === one.line.id ? pickedTable : null;
+  // A table's handles on the page (any line of it says which table): resizing it.
   const [resizing, setResizing] = useState(false);
 
-  async function resizeTable(width: number) {
-    if (!one || resizing) return;
+  async function resizeTable(page: number, line: TextLine, width: number) {
+    if (resizing) return;
     setResizing(true);
     setWorking(true);
     try {
-      edited(await scaleTable(doc, one.page, one.line, width), "table resized");
+      edited(await scaleTable(doc, page, line, width), "table resized");
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the table. Try again.", tone: "error" });
     } finally {
@@ -338,12 +321,26 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     }
   }
 
-  async function resizeEdge(edge: number, x: number) {
-    if (!one || resizing) return;
+  async function resizeRowEdge(page: number, line: TextLine, edge: number, y: number) {
+    if (resizing) return;
     setResizing(true);
     setWorking(true);
     try {
-      edited(await resizeColumn(doc, one.page, one.line, edge, x), "column resized");
+      edited(await resizeRow(doc, page, line, edge, y), "row resized");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the row. Try again.", tone: "error" });
+    } finally {
+      setResizing(false);
+      setWorking(false);
+    }
+  }
+
+  async function resizeEdge(page: number, line: TextLine, edge: number, x: number) {
+    if (resizing) return;
+    setResizing(true);
+    setWorking(true);
+    try {
+      edited(await resizeColumn(doc, page, line, edge, x), "column resized");
     } catch (e) {
       setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the column. Try again.", tone: "error" });
     } finally {
@@ -1058,20 +1055,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                           }
                         : null
                     }
-                    tableEdges={
-                      edgesTable?.page === i
-                        ? {
-                            bbox: edgesTable.table.bbox,
-                            cols: edgesTable.table.cols,
-                            limits: edgesTable.table.limits,
-                            scale: edgesTable.table.scale,
-                            rtl: edgesTable.table.rtl,
-                            busy: resizing,
-                            onResize: (edge, x) => void resizeEdge(edge, x),
-                            onScale: (width) => void resizeTable(width),
-                          }
-                        : null
-                    }
+                    tableBusy={resizing}
+                    onTableResize={(line, edge, x) => void resizeEdge(i, line, edge, x)}
+                    onTableRowResize={(line, edge, y) => void resizeRowEdge(i, line, edge, y)}
+                    onTableScale={(line, width) => void resizeTable(i, line, width)}
                     version={shownVersion}
                     outlines={outlines(i)}
                     magnifier={magnifier}
