@@ -146,8 +146,11 @@ def _taller(page: pymupdf.Page, rp: Replay, cells: list[Cell], across, dy: float
             continue
         if b[3] - b[1] <= THIN or not across(b[1], b[3]):
             continue  # a line along a row: it moves with its row, or stays
-        if b[1] > box[1] + THIN or b[3] < box[3] - THIN:
+        side = b[2] - b[0] <= THIN and (abs(b[0] - box[0]) <= THIN or abs(b[2] - box[2]) <= THIN)
+        if (b[1] > box[1] + THIN or b[3] < box[3] - THIN) and not side:
             continue  # not the whole cell's: a strip behind a line of its text goes with the text (_strips)
+        # (A side border drawn in parts, as Word does: a short piece under the top border,
+        # then the bar: the bar gets taller like the cell.)
         if abs(p.ctm[1]) > 1e-9 or abs(p.ctm[2]) > 1e-9:
             raise EditRejected("A merged cell here is drawn in a way that can't be made taller yet.")
         found = _rect_of(rp, p)
@@ -160,16 +163,17 @@ def _taller(page: pymupdf.Page, rp: Replay, cells: list[Cell], across, dy: float
 
 
 def _sits(table: Table, cell: Cell) -> str | None:
-    """Where a merged cell's text sits in it: "top", "middle" or "bottom"; None without text.
-    The table's other cells say how far from the top text usually starts."""
+    """Where a cell's text sits in it: "top", "middle" or "bottom"; None without text. The
+    table's other cells say how far from the top text usually starts: text that fills its
+    cell, that far from its top, stays at its top (Word's way, when nothing says otherwise)."""
     if not cell.lines:
         return None
     top = min(l.bbox[1] for l in cell.lines) - cell.bbox[1]
     bottom = cell.bbox[3] - max(l.bbox[3] for l in cell.lines)
-    if abs(top - bottom) <= 1.5:
-        return "middle"
     gaps = sorted(min(l.bbox[1] for l in c.lines) - c.bbox[1] for c in table.cells if c.rowspan == 1 and c.lines)
     pad = gaps[len(gaps) // 2] if gaps else min(top, bottom)
+    if abs(top - bottom) <= 1.5 and top > pad + 1.5:
+        return "middle"
     if top <= pad + 1.5:
         return "top"
     if bottom <= pad + 1.5:
@@ -363,6 +367,7 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
 
         limits = border_limits(page, table, lines)
         scale = scale_limits(page, table, lines)
+        heights = row_limits(page, table, lines)
         out.append({
             "bbox": [round(v, 2) for v in table.bbox],
             "rtl": table.rtl,
@@ -370,6 +375,9 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
             "cols": [round(v, 2) for v in table.cols],
             "limits": [[round(a, 2), round(b, 2)] for a, b in limits],
             "scale": [round(scale[0], 4), round(scale[1], 4)],
+            # Its row edges (top to bottom) and how far each can be dragged (the top one stays).
+            "rowEdges": [round(v, 2) for v in table.rows],
+            "rowLimits": [[round(a, 2), round(b, 2)] for a, b in heights],
         })
     return out
 
@@ -899,3 +907,135 @@ def _reads_same(src: bytes, page_no: int, lines: list[Line], typed: list[str]) -
         left.remove(n)
     if sorted(comparable(n.text) for n in left) != sorted(comparable(t) for t in typed):
         fail("the table's text would read differently")
+
+
+
+# Resizing a row ------------------------------------------------------------------------------
+#
+# A row's bottom edge dragged down or up: the row gets taller or shorter, as a merged cell
+# does when a row is added or deleted inside it. Its cells' rectangles that reach down to
+# the edge stretch (their top staying), the line along the edge and everything below it
+# move (moving.py, across the page), and each cell's text keeps its place: at its top it
+# stays, in its middle it goes half as far, at its bottom all the way. A cell merged over
+# the rows on both sides of the edge gets taller or shorter with it.
+
+MIN_ROW = 6.0  # points: an empty row can't get lower than this
+
+
+MIN_PAD = 1.5  # points: a row gets lower until its text is this close to its borders
+
+
+def _pads(table: Table) -> tuple[float, float]:
+    """How close to a cell's top and bottom borders its text may come when its row gets
+    lower: a point and a half, or as close as text already is in this table."""
+    single = [c for c in table.cells if c.rowspan == 1 and c.lines]
+    above = [min(l.bbox[1] for l in c.lines) - c.bbox[1] for c in single]
+    below = [c.bbox[3] - max(l.bbox[3] for l in c.lines) for c in single]
+    if not single:
+        return (MIN_PAD, MIN_PAD)
+    return (max(0.0, min(MIN_PAD, min(above))), max(0.0, min(MIN_PAD, min(below))))
+
+
+def _row_room(table: Table, cell: Cell, pads: tuple[float, float], pictures) -> float:
+    """How much lower a cell can get, its text keeping its place and (at least) its room
+    above and below, its pictures (which stay where they are) still fitting."""
+    x0, y0, x1, y1 = cell.bbox
+    room = [y1 - y0 - MIN_ROW]
+    for b in pictures:
+        if x0 <= (b[0] + b[2]) / 2 <= x1 and y0 <= (b[1] + b[3]) / 2 <= y1:
+            room.append(y1 - b[3] - 1.0)
+    if cell.lines:
+        top = min(l.bbox[1] for l in cell.lines) - y0
+        bottom = y1 - max(l.bbox[3] for l in cell.lines)
+        spare_top, spare_bottom = top - min(pads[0], top), bottom - min(pads[1], bottom)
+        try:
+            where = _sits(table, cell)
+        except EditRejected:
+            where = "top"
+        room.append(spare_bottom if where == "top" else spare_top if where == "bottom" else 2 * min(spare_top, spare_bottom))
+    return max(0.0, min(room))
+
+
+def row_limits(page: pymupdf.Page, table: Table, lines: list[Line], crop: tuple | None = None) -> list[tuple[float, float]]:
+    """How far each row edge (as displayed, top to bottom) can go: (highest, lowest), whole
+    points from where it is. The top edge stays; a row gets lower only as far as its cells'
+    text allows, taller only as far as the page has room below (nothing goes onto the next page)."""
+    t0, t1 = table.bbox[1], table.bbox[3]
+    pictures = [tuple(im["bbox"]) for im in page.get_image_info() if t0 <= (im["bbox"][1] + im["bbox"][3]) / 2 <= t1]
+    pads = _pads(table)
+    # Room below: from the lowest thing below the table to the page's bottom margin (above
+    # its footer, which stays).
+    doc = page.parent
+    crop = crop or (0.0, 0.0, page.rect.width, page.rect.height)  # the page's PDF box (a crop box offset aside)
+    limit, footer = moving.bottom_limit(doc, page.number, lines, crop)
+    floor = to_display(page, (0, limit, 1, limit)).y0
+    own = {l.id for l in table.lines}
+    lowest = t1
+    for l in lines:
+        if l.id in footer:
+            floor = min(floor, l.bbox[1] - 0.3 * l.style.size)
+        elif l.id not in own and l.bbox[1] >= t1 - 0.5:
+            lowest = max(lowest, l.bbox[3])
+    for im in page.get_image_info():
+        if im["bbox"][1] >= t1 - 0.5:
+            lowest = max(lowest, im["bbox"][3])
+    grow = max(0.0, floor - lowest)
+    out = [(table.rows[0], table.rows[0])]
+    for j in range(1, len(table.rows)):
+        y = table.rows[j]
+        cells = [c for c in table.cells if c.row + c.rowspan == j] + _merged_across(table, j)
+        shrink = min((_row_room(table, c, pads, pictures) for c in cells), default=0.0)
+        # (Half a point of give: rows are often a hair under the table's usual room.)
+        out.append((y - math.floor(shrink + 0.5), y + math.floor(grow)))
+    return out
+
+
+def resize_row(src: bytes, page_no: int, line_id: str, old_text: str, edge: int, y: float) -> EditResult:
+    """A row edge of the table a line is in (1: the first row's bottom edge) moved to `y` (as
+    displayed), by whole points: that row taller or shorter, what's below moving with it."""
+    doc, page, pdf, rp = _open(src, page_no)
+    lines = page_lines(page)
+    table = locate(page, lines, line_id, old_text).table
+    n = len(table.rows) - 1
+    if not 1 <= edge <= n:
+        raise EditRejected("That row edge isn't in this table.")
+    d = round(y - table.rows[edge])
+    if not d:
+        raise EditRejected("It's still in the same place.")
+    crop = moving._crop(pdf, page_no)
+    lo, hi = row_limits(page, table, lines, crop)[edge]
+    if table.rows[edge] + d < lo - 0.01:
+        raise EditRejected("A row can't get lower than its text: cells don't shrink their text.")
+    if table.rows[edge] + d > hi + 0.01:
+        raise EditRejected("There's no room on this page for the row to get that tall: nothing moves onto the next page yet.")
+    # The cells that reach down to the edge, and those merged across it: they change.
+    cells = [c for c in table.cells if c.row + c.rowspan == edge] + _merged_across(table, edge)
+    for c in cells:
+        if c.rowspan > 1:
+            _drawn_as_one(page, rp, c)
+    tx0, tx1 = table.cols[0], table.cols[-1]
+    edge_y = to_pdf(page, (0, table.rows[edge], 1, table.rows[edge]))[1]
+    cut = edge_y + 1.0  # the line along the edge moves with what's below; the row's text stays
+    band = to_pdf(page, (tx0, table.rows[edge - 1], tx1, table.rows[edge]))
+    sizes = sorted(l.style.size for c in cells for l in c.lines) or [10.0]
+    size = sizes[len(sizes) // 2]
+    reach = lambda y0, y1: abs(y0 - edge_y) <= THIN or (y0 < edge_y - 0.5 and y1 > edge_y + 0.5)
+    stretch = _taller(page, rp, cells, reach, d)
+    try:
+        made = moving.shift_below(src, page_no, band, size, cut, d, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, cells, reach, d))
+    except moving.MoveRefused as e:
+        raise _room_refused(str(e))
+    if made is None:
+        raise EditRejected("This row's borders can't be found, so it can't be resized yet.")
+    current, areas, _, _ = made
+    current, kept = _keep_place(current, page_no, table, cells, d)
+    areas += kept
+    _reads_same(current, page_no, lines, [])
+    # The same table: that row edge and those below it moved, the same cells.
+    after_page = pymupdf.open("pdf", current)[page_no]
+    after = [t for t in find_tables(after_page, page_lines(after_page)) if t.ruled and abs(t.bbox[1] - table.bbox[1]) < 1 and abs(t.bbox[0] - table.bbox[0]) < 1]
+    want = [y if j < edge else y + d for j, y in enumerate(table.rows)]
+    cells_of = lambda t: sorted((c.row, c.col, c.rowspan, c.colspan, comparable(" ".join(l.text for l in c.lines))) for c in t.cells)
+    if len(after) != 1 or len(after[0].rows) != len(want) or not moving._close(after[0].rows, want, 0.6) or not moving._close(after[0].cols, table.cols, 0.6) or cells_of(after[0]) != cells_of(table):
+        fail("the page wouldn't read as the same table, that row taller or lower")
+    return EditResult(current, [], "", areas, [(page_no, tx0, table.rows[edge - 1], tx1, table.rows[edge] + d)], [])

@@ -274,3 +274,62 @@ def test_rows_deleted_from_merged_cells():
     # A cell merged over several rows: which row?
     with pytest.raises(EditRejected, match="one row tall"):
         delete_row(src, 0, line_in(rooms, "Ground floor").id, "Ground floor")
+
+
+# Resizing a row ---------------------------------------------------------------------------------
+
+
+def test_a_row_made_taller_then_lower_again():
+    from app.rows import resize_row, row_limits
+
+    src = FRENCH
+    page = pymupdf.open("pdf", src)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    line = table.cells[0].lines[0]
+    before = grid(src)
+    taller = resize_row(src, 0, line.id, line.text, 1, table.rows[1] + 15).pdf
+    page2 = pymupdf.open("pdf", taller)[0]
+    (after,) = [t for t in find_tables(page2, page_lines(page2)) if t.ruled]
+    # That row is 15 points taller, the rows below it 15 points lower; the text reads the same.
+    assert after.rows == pytest.approx([table.rows[0]] + [y + 15 for y in table.rows[1:]], abs=0.6)
+    assert grid(taller) == before
+    # Its text stays at its top.
+    header = lambda t: next(c for c in t.cells if c.row == 0 and c.col == 0).lines[0].bbox[1]
+    assert header(after) == pytest.approx(header(table), abs=0.05)
+    # And back down, as low as its text allows.
+    line = after.cells[0].lines[0]
+    lo = row_limits(page2, after, page_lines(page2))[1][0]
+    lower = resize_row(taller, 0, line.id, line.text, 1, lo).pdf
+    page3 = pymupdf.open("pdf", lower)[0]
+    (last,) = [t for t in find_tables(page3, page_lines(page3)) if t.ruled]
+    assert last.rows[1] == pytest.approx(lo, abs=0.6) and lo < table.rows[1] + 0.6
+    assert grid(lower) == before
+
+
+def test_a_row_cant_get_lower_than_its_text_or_off_the_page():
+    from app.rows import resize_row, row_limits
+
+    page = pymupdf.open("pdf", FRENCH)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    limits = row_limits(page, table, page_lines(page))
+    line = table.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="lower than its text"):
+        resize_row(FRENCH, 0, line.id, line.text, 2, limits[2][0] - 4)
+    with pytest.raises(EditRejected, match="no room on this page"):
+        resize_row(FRENCH, 0, line.id, line.text, 2, limits[2][1] + 4)
+
+
+def test_a_row_in_merged_cells_resized(client):
+    src = MERGED.read_bytes()
+    doc = upload(client, src, "tables.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    rooms = client.get(f"{base}/pages/0/tables").json()["tables"][3]
+    assert len(rooms["rowEdges"]) == len(rooms["rowLimits"]) == 5
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["text"] == "Lobby")
+    # The first row's bottom edge: inside "Ground floor", which gets taller with it.
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "edge": 1, "y": rooms["rowEdges"][1] + 12}
+    done = client.post(f"{base}/rows/resize", json=body)
+    assert done.status_code == 200, done.text
+    assert done.json()["document"]["history"][-1]["summary"] == "Resized a table row"
+    assert limits.kind_of("POST", "/api/documents/abc/rows/resize") == "change"
