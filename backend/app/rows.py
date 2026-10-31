@@ -356,7 +356,17 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
                 }
                 for c in spot.cells
             ])
-        out.append({"bbox": [round(v, 2) for v in table.bbox], "rtl": table.rtl, "rows": rows})
+        # Its column edges (left to right) and how far each can be dragged (columns.py).
+        from .columns import border_limits
+
+        limits = border_limits(page, table, lines)
+        out.append({
+            "bbox": [round(v, 2) for v in table.bbox],
+            "rtl": table.rtl,
+            "rows": rows,
+            "cols": [round(v, 2) for v in table.cols],
+            "limits": [[round(a, 2), round(b, 2)] for a, b in limits],
+        })
     return out
 
 

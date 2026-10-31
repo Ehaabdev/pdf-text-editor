@@ -276,6 +276,15 @@ class ColumnRequest(BaseModel):
     cells: list[str] = Field(default_factory=list, max_length=200)  # the new column's text, top to bottom
 
 
+class ResizeRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)  # a line in the table
+    oldText: str = Field(max_length=5000)
+    edge: int = Field(ge=0, le=200)  # which column edge, left to right (0: the table's left edge)
+    x: float = Field(ge=-10000, le=10000)  # where it goes, as displayed
+
+
 class MovedLine(BaseModel):
     lineId: str = Field(max_length=32)
     oldText: str = Field(max_length=5000)
@@ -496,6 +505,25 @@ async def delete_table_column(doc_id: str, body: RowRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("delete", "Deleted a table column", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/columns/resize")
+async def resize_table_column(doc_id: str, body: ResizeRequest):
+    """A column edge of the table a line is in dragged to a new place."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(columns.resize_column, src, body.page, body.lineId, body.oldText, body.edge, body.x)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("move", "Resized a table column", result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:

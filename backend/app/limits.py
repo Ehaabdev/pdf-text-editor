@@ -18,7 +18,7 @@ _DOC = r"/api/documents/[^/]+"
 # (kind, method, path pattern): which requests count against which limit.
 _KINDS = [
     ("upload", "POST", re.compile(r"^/api/documents/?$")),
-    ("change", "POST", re.compile(rf"^{_DOC}/(edits|additions|deletions|undo|redo|versions/\d+|images/(delete|replace|add|move)|rows/(add|delete)|columns/(add|delete)|moves)$")),
+    ("change", "POST", re.compile(rf"^{_DOC}/(edits|additions|deletions|undo|redo|versions/\d+|images/(delete|replace|add|move)|rows/(add|delete)|columns/(add|delete|resize)|moves)$")),
     ("read", "POST", re.compile(rf"^{_DOC}/moves/preview$")),  # a page drawn: as often as pages are looked at
     ("export", "GET", re.compile(rf"^{_DOC}/export$")),
     ("read", "GET", re.compile(rf"^{_DOC}(/.*)?$")),

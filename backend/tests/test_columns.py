@@ -222,3 +222,70 @@ def test_adding_through_the_website(client):
     assert done.status_code == 200, done.text
     assert done.json()["document"]["history"][-1]["summary"] == "Added a table column"
     assert limits.kind_of("POST", "/api/documents/abc/columns/add") == "change"
+
+
+# Resizing a column ------------------------------------------------------------------------------
+
+
+def test_a_border_dragged_between_two_columns():
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    before = grid(table)
+    page = pymupdf.open("pdf", src)[0]
+    lo, hi = columns.border_limits(page, table, page_lines(page))[1]
+    line = table.cells[0].lines[0]
+    for x in (lo, hi):
+        after = table_of(columns.resize_column(src, 0, line.id, line.text, 1, x).pdf)
+        # The two columns beside it trade width; the table keeps its width and its text.
+        assert after.cols == pytest.approx([table.cols[0], x, *table.cols[2:]], abs=0.6)
+        assert grid(after) == before
+
+
+def test_the_table_edge_dragged_and_merged_cells():
+    src = MERGED.read_bytes()
+    for n, table in enumerate(tables_of(src)):
+        page = pymupdf.open("pdf", src)[0]
+        limits = columns.border_limits(page, table, page_lines(page))
+        line = next(l for c in table.cells for l in c.lines)
+        for j, (lo, hi) in enumerate(limits):
+            for x in (lo, hi):
+                if abs(x - table.cols[j]) < 1:
+                    continue
+                after = tables_of(columns.resize_column(src, 0, line.id, line.text, j, x).pdf)[n]
+                want = list(table.cols)
+                want[j] = x
+                assert after.cols == pytest.approx(want, abs=0.6)
+                assert cells_of(after) == cells_of(table)
+
+
+def test_a_column_cant_get_narrower_than_its_text():
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    page = pymupdf.open("pdf", src)[0]
+    limits = columns.border_limits(page, table, page_lines(page))
+    line = table.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="narrower than its text"):
+        columns.resize_column(src, 0, line.id, line.text, 1, limits[1][0] - 5)
+    # Chrome's table is as wide as the page's text: it can't grow.
+    merged = MERGED.read_bytes()
+    first = tables_of(merged)[0]
+    line = first.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="no room on the page"):
+        columns.resize_column(merged, 0, line.id, line.text, len(first.cols) - 1, first.cols[-1] + 20)
+
+
+def test_resizing_through_the_website(client):
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    doc = upload(client, src, "devis.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    tables = client.get(f"{base}/pages/0/tables").json()["tables"]
+    table = next(t for t in tables if len(t["cols"]) > 2)
+    assert len(table["limits"]) == len(table["cols"])
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["text"] == "Quantité")
+    lo, hi = table["limits"][1]
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "edge": 1, "x": hi}
+    done = client.post(f"{base}/columns/resize", json=body)
+    assert done.status_code == 200, done.text
+    assert done.json()["document"]["history"][-1]["summary"] == "Resized a table column"
+    assert limits.kind_of("POST", "/api/documents/abc/columns/resize") == "change"
