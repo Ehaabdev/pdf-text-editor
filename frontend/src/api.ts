@@ -284,7 +284,16 @@ export type TableCell = {
   lines: string[];
   merged: boolean;
 };
-export type PageTable = { bbox: [number, number, number, number]; rtl: boolean; rows: TableCell[][] };
+export type PageTable = {
+  bbox: [number, number, number, number];
+  rtl: boolean;
+  rows: TableCell[][];
+  /** Its column edges, left to right, and how far each can be dragged: [lowest, highest]. */
+  cols: number[];
+  limits: [number, number][];
+  /** How much smaller and bigger the whole table can get: [lowest, highest] scale. */
+  scale: [number, number];
+};
 
 const tablesCache = new Map<string, Promise<PageTable[]>>();
 
@@ -317,6 +326,16 @@ export function deleteRow(doc: DocInfo, page: number, line: TextLine): Promise<E
  *  `cells`: its text, top to bottom. */
 export function addColumn(doc: DocInfo, page: number, line: TextLine, where: "left" | "right", cells: string[]): Promise<EditOutcome> {
   return postJson(`/api/documents/${doc.id}/columns/add`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, where, cells });
+}
+
+/** A column edge of the table a line is in (0: its left edge) moved to `x` (points, as displayed). */
+export function resizeColumn(doc: DocInfo, page: number, line: TextLine, edge: number, x: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/columns/resize`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, edge, x });
+}
+
+/** The table a line is in made `width` points wide (as displayed), all of it scaled like a picture. */
+export function scaleTable(doc: DocInfo, page: number, line: TextLine, width: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/tables/scale`, { revision: doc.revision, page, lineId: line.id, oldText: line.text, width });
 }
 
 /** The column a line is in, taken out of its table; the table gets narrower. */

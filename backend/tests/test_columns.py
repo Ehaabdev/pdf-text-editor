@@ -222,3 +222,124 @@ def test_adding_through_the_website(client):
     assert done.status_code == 200, done.text
     assert done.json()["document"]["history"][-1]["summary"] == "Added a table column"
     assert limits.kind_of("POST", "/api/documents/abc/columns/add") == "change"
+
+
+# Resizing a column ------------------------------------------------------------------------------
+
+
+def test_a_border_dragged_between_two_columns():
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    before = grid(table)
+    page = pymupdf.open("pdf", src)[0]
+    lo, hi = columns.border_limits(page, table, page_lines(page))[1]
+    line = table.cells[0].lines[0]
+    for x in (lo, hi):
+        after = table_of(columns.resize_column(src, 0, line.id, line.text, 1, x).pdf)
+        # The two columns beside it trade width; the table keeps its width and its text.
+        assert after.cols == pytest.approx([table.cols[0], x, *table.cols[2:]], abs=0.6)
+        assert grid(after) == before
+
+
+def test_the_table_edge_dragged_and_merged_cells():
+    src = MERGED.read_bytes()
+    for n, table in enumerate(tables_of(src)):
+        page = pymupdf.open("pdf", src)[0]
+        limits = columns.border_limits(page, table, page_lines(page))
+        line = next(l for c in table.cells for l in c.lines)
+        for j, (lo, hi) in enumerate(limits):
+            for x in (lo, hi):
+                if abs(x - table.cols[j]) < 1:
+                    continue
+                after = tables_of(columns.resize_column(src, 0, line.id, line.text, j, x).pdf)[n]
+                want = list(table.cols)
+                want[j] = x
+                assert after.cols == pytest.approx(want, abs=0.6)
+                assert cells_of(after) == cells_of(table)
+
+
+def test_a_column_cant_get_narrower_than_its_text():
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    page = pymupdf.open("pdf", src)[0]
+    limits = columns.border_limits(page, table, page_lines(page))
+    line = table.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="narrower than its text"):
+        columns.resize_column(src, 0, line.id, line.text, 1, limits[1][0] - 5)
+    # Chrome's table is as wide as the page's text: it can't grow.
+    merged = MERGED.read_bytes()
+    first = tables_of(merged)[0]
+    line = first.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="no room on the page"):
+        columns.resize_column(merged, 0, line.id, line.text, len(first.cols) - 1, first.cols[-1] + 20)
+
+
+def test_resizing_through_the_website(client):
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    doc = upload(client, src, "devis.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    tables = client.get(f"{base}/pages/0/tables").json()["tables"]
+    table = next(t for t in tables if len(t["cols"]) > 2)
+    assert len(table["limits"]) == len(table["cols"])
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["text"] == "Quantité")
+    lo, hi = table["limits"][1]
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "edge": 1, "x": hi}
+    done = client.post(f"{base}/columns/resize", json=body)
+    assert done.status_code == 200, done.text
+    assert done.json()["document"]["history"][-1]["summary"] == "Resized a table column"
+    assert limits.kind_of("POST", "/api/documents/abc/columns/resize") == "change"
+
+
+# Making a whole table bigger or smaller ---------------------------------------------------------
+
+
+def test_a_table_made_smaller_like_a_picture():
+    from app import scaling
+
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    before = grid(table)
+    w = table.bbox[2] - table.bbox[0]
+    line = table.cells[0].lines[0]
+    result = scaling.scale_table(src, 0, line.id, line.text, round(0.8 * w))
+    after = table_of(result.pdf)
+    s = round(0.8 * w) / w
+    # Its top-left corner stays; everything else is 80% as big, text included.
+    assert after.bbox[0] == pytest.approx(table.bbox[0], abs=0.6) and after.bbox[1] == pytest.approx(table.bbox[1], abs=0.6)
+    assert after.bbox[2] - after.bbox[0] == pytest.approx(w * s, abs=0.6)
+    assert grid(after) == before
+    sizes = lambda t: sorted(l.style.size for c in t.cells for l in c.lines)
+    assert sizes(after) == pytest.approx([v * s for v in sizes(table)], abs=0.05)
+
+
+def test_a_table_cant_get_too_small_or_too_big():
+    from app import scaling
+
+    src = (FIXTURES / "word" / "french-quote-word.pdf").read_bytes()
+    table = table_of(src)
+    page = pymupdf.open("pdf", src)[0]
+    low, high = scaling.scale_limits(page, table, page_lines(page))
+    w = table.bbox[2] - table.bbox[0]
+    line = table.cells[0].lines[0]
+    with pytest.raises(EditRejected, match="too small to read"):
+        scaling.scale_table(src, 0, line.id, line.text, w * low - 5)
+    with pytest.raises(EditRejected, match="no room on the page"):
+        scaling.scale_table(src, 0, line.id, line.text, w * high + 5)
+
+
+def test_merged_tables_scale_too(client):
+    src = MERGED.read_bytes()
+    doc = upload(client, src, "tables.pdf").json()
+    base = f"/api/documents/{doc['id']}"
+    tables = client.get(f"{base}/pages/0/tables").json()["tables"]
+    low, high = tables[3]["scale"]
+    assert low < 0.7 and high < 1.01  # as wide as the page's text: it can't grow
+    lines = client.get(f"{base}/pages/0/lines").json()["lines"]
+    line = next(l for l in lines if l["text"] == "Ground floor")
+    width = tables[3]["bbox"][2] - tables[3]["bbox"][0]
+    body = {"revision": doc["revision"], "page": 0, "lineId": line["id"], "oldText": line["text"], "width": round(width * 0.7)}
+    done = client.post(f"{base}/tables/scale", json=body)
+    assert done.status_code == 200, done.text
+    assert done.json()["document"]["history"][-1]["summary"] == "Resized a table"
+    assert limits.kind_of("POST", "/api/documents/abc/tables/scale") == "change"

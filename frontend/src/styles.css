@@ -3091,3 +3091,134 @@ html.theme-switching::view-transition-new(root) {
   overflow-y: auto;
   padding-right: 2px;
 }
+
+/* A picked table's column edges: a handle on each, to drag. The handle is a thin bar with a
+   wider grab area around it; a dotted line shows where the edge goes while it moves. */
+.table-edges {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.table-edge {
+  position: absolute;
+  width: 14px;
+  margin-left: -7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.table-edge::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  bottom: -6px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #2f6bff;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 6px rgba(5, 10, 30, 0.35);
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.table-edge:hover::after,
+.table-edge:focus-visible::after,
+.table-edge--active::after {
+  opacity: 1;
+}
+
+.table-edge:focus-visible {
+  outline: none;
+}
+
+.table-edge:focus-visible::after {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+}
+
+.table-edge:disabled {
+  cursor: not-allowed;
+}
+
+.table-edge:disabled::after {
+  background: #9aa4b8;
+  opacity: 0.35;
+}
+
+.table-edge-guide {
+  position: absolute;
+  width: 0;
+  margin-left: -1px;
+  border-left: 2px dashed #2f6bff;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-edge::after {
+    transition: none;
+  }
+}
+
+/* The whole table's size: a round handle at its bottom corner, like a picture's; a dotted
+   box shows its new size, with how big it is now. */
+.table-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px;
+  padding: 0;
+  border: 2px solid #2f6bff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(5, 10, 30, 0.35);
+  cursor: nwse-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.table-corner--rtl {
+  cursor: nesw-resize;
+}
+
+.table-corner::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+}
+
+.table-corner:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+}
+
+.table-corner:disabled {
+  border-color: #9aa4b8;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.table-size-guide {
+  position: absolute;
+  border: 2px dashed #2f6bff;
+  background: rgba(47, 107, 255, 0.06);
+  pointer-events: none;
+}
+
+.table-size-label {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #2f6bff;
+  color: #ffffff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

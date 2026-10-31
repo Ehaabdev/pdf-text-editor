@@ -508,7 +508,9 @@ def _merge_small_pieces(pieces: list[list[Glyph]]) -> list[list[Glyph]]:
 
     def info(p):
         proj = _frame(p[0].direction)
-        extents = [_extent(g, proj) for g in p]
+        # How far apart pieces are, by their visible glyphs: Word draws a cell's last spaces
+        # (and its end mark) across the cell's border, up to the next cell's text.
+        extents = [_extent(g, proj) for g in (p if all(g.is_space or g.is_mark for g in p) else [g for g in p if not (g.is_space or g.is_mark)])]
         return (
             p[0].direction,
             max(g.style.size for g in p),

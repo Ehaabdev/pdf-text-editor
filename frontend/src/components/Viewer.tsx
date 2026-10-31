@@ -5,16 +5,20 @@ import {
   deleteImage,
   deleteLines,
   getLines,
+  getTables,
   goToVersion,
   moveImage,
   moveLines,
   pictureUrl,
   previewMove,
   redoEdit,
+  resizeColumn,
+  scaleTable,
   undoEdit,
   type DocInfo,
   type EditOutcome,
   type PageImage,
+  type PageTable,
   type PickedLine,
   type SpotPlan,
   type TextLine,
@@ -173,6 +177,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             ? "Column deleted. The table is narrower now."
             : change === "column added"
               ? "Column added. The other columns made room for it."
+            : change === "column resized"
+              ? "Column resized. Its text stayed where it sits in each cell."
+            : change === "table resized"
+              ? "Table resized. Everything in it, text included, kept its look."
           : change === "deleted"
             ? moved ? "Line deleted. The text below moved up." : "Line deleted."
             : change === "added"
@@ -293,6 +301,55 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     setPicked([]);
     setAdding(false);
     setImagePick(null);
+  }
+
+  // The table the one picked line is in: its column edges get handles on the page.
+  const one = picked.length === 1 && !adding ? picked[0] : null;
+  const [pickedTable, setPickedTable] = useState<{ page: number; lineId: string; table: PageTable } | null>(null);
+  useEffect(() => {
+    if (!one) return;
+    let alive = true;
+    getTables(doc, one.page)
+      .then((tables) => {
+        const table = tables.find((t) => t.rows.some((r) => r.some((c) => c.lines.includes(one.line.id))));
+        if (alive && table?.cols) setPickedTable({ page: one.page, lineId: one.line.id, table });
+      })
+      .catch(() => {
+        // Without the table, its edges just get no handles.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [doc, one?.page, one?.line.id]);
+  const edgesTable = one && pickedTable && pickedTable.page === one.page && pickedTable.lineId === one.line.id ? pickedTable : null;
+  const [resizing, setResizing] = useState(false);
+
+  async function resizeTable(width: number) {
+    if (!one || resizing) return;
+    setResizing(true);
+    setWorking(true);
+    try {
+      edited(await scaleTable(doc, one.page, one.line, width), "table resized");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the table. Try again.", tone: "error" });
+    } finally {
+      setResizing(false);
+      setWorking(false);
+    }
+  }
+
+  async function resizeEdge(edge: number, x: number) {
+    if (!one || resizing) return;
+    setResizing(true);
+    setWorking(true);
+    try {
+      edited(await resizeColumn(doc, one.page, one.line, edge, x), "column resized");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the column. Try again.", tone: "error" });
+    } finally {
+      setResizing(false);
+      setWorking(false);
+    }
   }
 
   function cancelFrame() {
@@ -998,6 +1055,20 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                             from: frame.from,
                             resizable: frame.mode !== "text",
                             onChange: (box) => setFrame((now) => now && { ...now, box }),
+                          }
+                        : null
+                    }
+                    tableEdges={
+                      edgesTable?.page === i
+                        ? {
+                            bbox: edgesTable.table.bbox,
+                            cols: edgesTable.table.cols,
+                            limits: edgesTable.table.limits,
+                            scale: edgesTable.table.scale,
+                            rtl: edgesTable.table.rtl,
+                            busy: resizing,
+                            onResize: (edge, x) => void resizeEdge(edge, x),
+                            onScale: (width) => void resizeTable(width),
                           }
                         : null
                     }

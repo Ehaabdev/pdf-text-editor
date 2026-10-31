@@ -1139,3 +1139,108 @@ def add_column(src: bytes, page_no: int, line_id: str, old_text: str, where: str
         lookalikes += [l for l in result.lookalikes if l not in lookalikes]
         areas += result.areas
     return EditResult(current, warnings, " | ".join(t for t in texts if t), areas, [(page_no, *plan.new_box)], lookalikes)
+
+
+# Resizing a column ------------------------------------------------------------------------------
+#
+# A column edge dragged left or right: the cells on its two sides get wider and narrower by
+# as much (the table keeps its width), or, for the table's outer edge, its end column does
+# (the table grows or shrinks). Cells don't wrap their text: a cell can get narrower only by
+# its empty space, its text keeping the side it keeps to (or its middle) and the table's own
+# margin, its pictures still fitting; and the table grows only into empty room on the page.
+# Moving the edges is what adding a column does (_plan_reshape), without the new column.
+
+MIN_COLUMN = 12.0  # points: an empty cell can't get narrower than this
+
+
+def _cell_room(cell, margin: float, pictures) -> float:
+    """How much narrower a cell can get, its text keeping its side and margin, its pictures
+    (which keep their left side) still fitting."""
+    x0, y0, x1, y1 = cell.bbox
+    room = [x1 - x0 - MIN_COLUMN] + _room(cell, margin)
+    for b in pictures:
+        if x0 <= (b[0] + b[2]) / 2 <= x1 and y0 <= (b[1] + b[3]) / 2 <= y1:
+            room.append(x1 - b[2] - margin)
+    return max(0.0, min(room))
+
+
+def _beside_table(page: pymupdf.Page, table: Table, lines: list[Line]) -> tuple[float, float]:
+    """How far the table could grow on each side (as displayed): to the page's text area,
+    or to the nearest thing beside it (text, a picture, a line or a shape)."""
+    columns = [l.column for l in lines if l.column]
+    x0, y0, x1, y1 = table.bbox
+    lo, hi = (min(c[0] for c in columns), max(c[1] for c in columns)) if columns else (x0, x1)
+    lo, hi = min(lo, x0), max(hi, x1)
+    own = {l.id for l in table.lines}
+    things = [l.bbox for l in lines if l.id not in own]
+    things += [tuple(im["bbox"]) for im in page.get_image_info()]
+    area = (x1 - x0) * (y1 - y0)
+    for d in page.get_drawings():
+        r = pymupdf.Rect(d["rect"]) * page.rotation_matrix
+        r.normalize()
+        if r.width * r.height > 4 * area:
+            continue  # a background behind the page
+        things.append(tuple(r))
+    for b in things:
+        if b[3] <= y0 + 0.5 or b[1] >= y1 - 0.5:
+            continue  # above or below the table
+        if b[0] >= x0 - PAD and b[2] <= x1 + PAD:
+            continue  # the table's own
+        if b[0] >= x1 - 0.5:
+            hi = min(hi, b[0])
+        elif b[2] <= x0 + 0.5:
+            lo = max(lo, b[2])
+    return lo, hi
+
+
+def border_limits(page: pymupdf.Page, table: Table, lines: list[Line]) -> list[tuple[float, float]]:
+    """How far each column edge (as displayed, left to right) can go: (lowest, highest),
+    whole points from where it is."""
+    n = len(table.cols) - 1
+    margin = _margin(table)
+    t0, t1 = table.bbox[1], table.bbox[3]
+    pictures = [tuple(im["bbox"]) for im in page.get_image_info() if t0 <= (im["bbox"][1] + im["bbox"][3]) / 2 <= t1]
+    lo_page, hi_page = _beside_table(page, table, lines)
+    out = []
+    for j in range(n + 1):
+        x = table.cols[j]
+        ending = [c for c in table.cells if c.col + c.colspan == j]  # left of the edge
+        starting = [c for c in table.cells if c.col == j]  # right of it
+        left = min((_cell_room(c, margin, pictures) for c in ending), default=None)
+        right = min((_cell_room(c, margin, pictures) for c in starting), default=None)
+        if left is None:
+            left = x - lo_page  # the table's left edge: as far as the page has room
+        if right is None:
+            right = hi_page - x  # its right edge
+        out.append((x - math.floor(max(0.0, left)), x + math.floor(max(0.0, right))))
+    return out
+
+
+def resize_column(src: bytes, page_no: int, line_id: str, old_text: str, edge: int, x: float) -> EditResult:
+    """A column edge of the table a line is in (0: the table's left edge) moved to `x` (as
+    displayed), by whole points."""
+    doc, page, pdf, rp = _open(src, page_no)
+    lines = page_lines(page)
+    table = locate(page, lines, line_id, old_text).table
+    n = len(table.cols) - 1
+    if not 0 <= edge <= n:
+        raise EditRejected("That column edge isn't in this table.")
+    d = round(x - table.cols[edge])
+    if not d:
+        raise EditRejected("It's still in the same place.")
+    lo, hi = border_limits(page, table, lines)[edge]
+    new_x = table.cols[edge] + d
+    if new_x < lo - 0.01 or new_x > hi + 0.01:
+        if (edge == 0 and d < 0) or (edge == n and d > 0):
+            raise EditRejected("There's no room on the page for the table to get wider there.")
+        raise EditRejected("A column can't get narrower than its text: cells don't wrap their text onto another line.")
+    new = list(table.cols)
+    new[edge] = new_x
+    shape = Reshape(list(table.cols), new, list(range(n)), list(range(n + 1)))
+    plan = _plan_reshape(page, rp, table, shape)
+    _apply_reshape(pdf, page_no, plan)
+    out = io.BytesIO()
+    pdf.save(out)
+    result = out.getvalue()
+    area = _verify_reshape(src, result, page_no, plan, table, shape, lines)
+    return EditResult(result, [], "", [(page_no, *area)], [(page_no, *plan.new_box)])
