@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import columns, config, dragging, exporting, images, limits, rows
+from . import columns, config, dragging, exporting, images, limits, rows, scaling
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -285,6 +285,14 @@ class ResizeRequest(BaseModel):
     x: float = Field(ge=-10000, le=10000)  # where it goes, as displayed
 
 
+class ScaleRequest(BaseModel):
+    revision: int
+    page: int
+    lineId: str = Field(max_length=32)  # a line in the table
+    oldText: str = Field(max_length=5000)
+    width: float = Field(gt=0, le=10000)  # the table's new width, as displayed
+
+
 class MovedLine(BaseModel):
     lineId: str = Field(max_length=32)
     oldText: str = Field(max_length=5000)
@@ -524,6 +532,25 @@ async def resize_table_column(doc_id: str, body: ResizeRequest):
     except EditRejected as e:
         raise HTTPException(422, str(e))
     entry = _entry("move", "Resized a table column", result)
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/tables/scale")
+async def scale_table(doc_id: str, body: ScaleRequest):
+    """The table a line is in made bigger or smaller as a whole, like a picture."""
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(scaling.scale_table, src, body.page, body.lineId, body.oldText, body.width)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    entry = _entry("move", "Resized a table", result)
     try:
         meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, entry)
     except StaleRevision:

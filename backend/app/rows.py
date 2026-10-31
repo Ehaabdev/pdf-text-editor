@@ -356,16 +356,20 @@ def table_json(page: pymupdf.Page, lines: list[Line]) -> list[dict]:
                 }
                 for c in spot.cells
             ])
-        # Its column edges (left to right) and how far each can be dragged (columns.py).
+        # Its column edges (left to right) and how far each can be dragged (columns.py); how
+        # much smaller or bigger the whole table can get (scaling.py).
         from .columns import border_limits
+        from .scaling import scale_limits
 
         limits = border_limits(page, table, lines)
+        scale = scale_limits(page, table, lines)
         out.append({
             "bbox": [round(v, 2) for v in table.bbox],
             "rtl": table.rtl,
             "rows": rows,
             "cols": [round(v, 2) for v in table.cols],
             "limits": [[round(a, 2), round(b, 2)] for a, b in limits],
+            "scale": [round(scale[0], 4), round(scale[1], 4)],
         })
     return out
 
