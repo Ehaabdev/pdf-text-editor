@@ -3164,3 +3164,61 @@ html.theme-switching::view-transition-new(root) {
     transition: none;
   }
 }
+
+/* The whole table's size: a round handle at its bottom corner, like a picture's; a dotted
+   box shows its new size, with how big it is now. */
+.table-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px;
+  padding: 0;
+  border: 2px solid #2f6bff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(5, 10, 30, 0.35);
+  cursor: nwse-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.table-corner--rtl {
+  cursor: nesw-resize;
+}
+
+.table-corner::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+}
+
+.table-corner:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
+}
+
+.table-corner:disabled {
+  border-color: #9aa4b8;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.table-size-guide {
+  position: absolute;
+  border: 2px dashed #2f6bff;
+  background: rgba(47, 107, 255, 0.06);
+  pointer-events: none;
+}
+
+.table-size-label {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #2f6bff;
+  color: #ffffff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

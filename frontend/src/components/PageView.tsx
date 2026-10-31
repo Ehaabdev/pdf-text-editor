@@ -50,8 +50,11 @@ type Props = {
     bbox: [number, number, number, number];
     cols: number[];
     limits: [number, number][];
+    scale: [number, number];
+    rtl: boolean;
     busy: boolean;
     onResize: (edge: number, x: number) => void;
+    onScale: (width: number) => void;
   } | null;
 };
 

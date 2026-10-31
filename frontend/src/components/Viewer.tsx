@@ -13,6 +13,7 @@ import {
   previewMove,
   redoEdit,
   resizeColumn,
+  scaleTable,
   undoEdit,
   type DocInfo,
   type EditOutcome,
@@ -178,6 +179,8 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               ? "Column added. The other columns made room for it."
             : change === "column resized"
               ? "Column resized. Its text stayed where it sits in each cell."
+            : change === "table resized"
+              ? "Table resized. Everything in it, text included, kept its look."
           : change === "deleted"
             ? moved ? "Line deleted. The text below moved up." : "Line deleted."
             : change === "added"
@@ -320,6 +323,20 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }, [doc, one?.page, one?.line.id]);
   const edgesTable = one && pickedTable && pickedTable.page === one.page && pickedTable.lineId === one.line.id ? pickedTable : null;
   const [resizing, setResizing] = useState(false);
+
+  async function resizeTable(width: number) {
+    if (!one || resizing) return;
+    setResizing(true);
+    setWorking(true);
+    try {
+      edited(await scaleTable(doc, one.page, one.line, width), "table resized");
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : "Couldn't resize the table. Try again.", tone: "error" });
+    } finally {
+      setResizing(false);
+      setWorking(false);
+    }
+  }
 
   async function resizeEdge(edge: number, x: number) {
     if (!one || resizing) return;
@@ -1043,7 +1060,16 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
                     }
                     tableEdges={
                       edgesTable?.page === i
-                        ? { bbox: edgesTable.table.bbox, cols: edgesTable.table.cols, limits: edgesTable.table.limits, busy: resizing, onResize: (edge, x) => void resizeEdge(edge, x) }
+                        ? {
+                            bbox: edgesTable.table.bbox,
+                            cols: edgesTable.table.cols,
+                            limits: edgesTable.table.limits,
+                            scale: edgesTable.table.scale,
+                            rtl: edgesTable.table.rtl,
+                            busy: resizing,
+                            onResize: (edge, x) => void resizeEdge(edge, x),
+                            onScale: (width) => void resizeTable(width),
+                          }
                         : null
                     }
                     version={shownVersion}
