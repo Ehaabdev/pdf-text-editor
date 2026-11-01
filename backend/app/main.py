@@ -131,9 +131,18 @@ def _document_json(meta: DocumentMeta, info) -> dict:
         # be redone until the next change).
         "history": [{**entry, "applied": k < meta.version} for k, entry in enumerate(meta.history)],
         "pageCount": info.page_count,
+        # Pages flow onto new ones: compared with the original, those weren't there.
+        "originalPageCount": _pages_in(str(store.version_path(meta, 0))),
         "pages": [{"width": p.width, "height": p.height} for p in info.pages],
         "isSigned": info.is_signed,
     }
+
+
+@lru_cache(maxsize=256)
+def _pages_in(path: str) -> int:
+    """How many pages a stored version has (a stored version never changes)."""
+    with pymupdf.open(path) as doc:
+        return doc.page_count
 
 
 @app.get("/api/health")

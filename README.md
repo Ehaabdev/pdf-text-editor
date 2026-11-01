@@ -144,6 +144,7 @@ Deleting every line of every test document and private sample (656 lines), one a
 
 **Below or above a line** (the line panel's "Add line below" and "Add line above"):
 - **Making room:** first the text below (adding above: the line itself and the text below it) moves down one line spacing, as in a word processor (see [Moving text](#moving-text)); then the new line goes into the room made. Where the text can't move, the line still goes in if there's room for it at full line spacing; squeezed in, it's refused with the reason.
+- **A full page:** the lines that no longer fit flow onto the next page, and the new line itself goes to the top of the next page when it's the one that doesn't fit (see [When a page is full](#when-a-page-is-full)).
 - **Spacing:** one line spacing away. It's measured in the line's paragraph; failing that, it's the page's most common spacing for that font; failing that, the font's own line height, which Word uses for single spacing.
 - **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
 - **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Where English and Arabic items take turns (1., ١., 2., ٢.), each list counts on past the other language's lines. Unticked, text under an item lines up with the item's text.
@@ -192,7 +193,7 @@ What moves is everything drawn in the spot's column below it: text, underlines a
 - a table border between rows;
 - anything only partly in the column.
 
-Nothing goes onto another page or into the bottom margin. The margin is taken from the evidence, the lowest body text on the pages around; failing that, it's as wide as the narrower side margin. A picture or color behind the whole page stays behind it, and Chrome's page-sized clips that cut the gaps in an underline move with it.
+Nothing goes into the bottom margin: what would, flows onto the next page when a line is added (see [When a page is full](#when-a-page-is-full)). The margin is taken from the evidence, the lowest body text on the pages around; failing that, it's as wide as the narrower side margin. A picture or color behind the whole page stays behind it, and Chrome's page-sized clips that cut the gaps in an underline move with it.
 
 Each moved text object, shape and picture keeps its own instructions: a translation is put just before it and undone just after it. Drawing order, clipping, and later edits of the moved lines are as before.
 
@@ -204,6 +205,26 @@ Before it is accepted:
 - drawn on its own, the block looks the same at its new place, pixel for pixel. It's rendered at a zoom that moves it by a whole number of pixels, so every glyph lands on the same fraction of a pixel. PDFium, which rounds glyph positions to whole pixels, gets one pixel of slack;
 - every line on the page reads the same, the moved ones at their new place;
 - no other page changes.
+
+### When a page is full
+
+`backend/app/overflow.py` handles adding a line to a full page: the lines that no longer fit go to the top of the next page, under its header, as in a word processor. That page's own text moves down to make room, and so on, page after page. Past the last page, a new page is added with the same size, header and footer. If the header or footer has a number in it, the website says to check the page number and the page count ("Page 1 of 1" is copied as it is). When the new line is the one that doesn't fit (added under the last line), it goes to the top of the next page. When there's already room for it at full line spacing, nothing moves to another page.
+
+What goes on is whole lines, with what's drawn with them (underlines, links, highlights), all below what stays. `backend/app/pagecopy.py` draws them again on the other page:
+- each in its own `q ... Q`, after the page's own drawing (wrapped in `q ... Q` too);
+- with the state it was drawn in: every transformation, color, line style, graphics state and text state in effect where it was, and the clipping (Chrome cuts the gaps in an underline with clips);
+- with its fonts, pictures, color spaces and patterns brought into that page's resources: under the same name when that's free, else under a new one;
+- without Word's tags (marked content), which would say the same text is in two places.
+
+Each step is checked before the next:
+- **drawn there:** every glyph of that page as it was, then the new ones, each where it was and as far up as the move, in the same font and size; drawn alone, pixel for pixel what they were (MuPDF and PDFium, at a zoom where the move is whole pixels); nothing else on that page changes;
+- **taken off:** the page is pixel for pixel what it would be drawn without them, and their links go with them;
+- **the room made** on each page is checked as any move ([Moving text](#moving-text));
+- every other page is unchanged.
+
+It's refused, with the reason: text side by side in columns (it flows down its own column, not onto the next page); a table cell, or a table row the page's end cuts through (tables don't flow yet); a next page of another size or turned; more text than one page holds; more than 20 pages to flow over.
+
+Compared with the original, a page that was added shows as "This page wasn't in the original". Undo takes it away again.
 
 ## Pictures
 
@@ -386,6 +407,8 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 `backend/tests/fixtures/additions/` has lists (numbered and bulleted, English and Arabic), a centered title, a justified paragraph, a right-aligned line and a table with an empty cell, with free space after each, for adding text. It is saved by Word and printed by Chrome.
 
 `backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
+
+`backend/tests/fixtures/flow/` and `backend/tests/fixtures/flow-full/` are terms of delivery printed by Chrome with a header and a "Page X of Y" footer: one with a full first page and a short second page, one with a single full page whose last line has a link.
 
 `backend/tests/fixtures/images/` has a report with pictures: a logo (in Word's version, in the header of every page), a photo, an icon inside a line, a see-through signature and stamp in a table, Arabic text, and the same signature on page 2. Chrome's version also has a logo drawn as shapes. `make_images.py` draws the pictures; `images.js` (Word) and `images.html` (Chrome) build the document.
 

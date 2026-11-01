@@ -166,6 +166,14 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     onChange(outcome.document);
     lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
+    // The page was full and the new line went to the next page: show it there.
+    const mark = outcome.document.history.at(-1)?.marks?.[0];
+    const from = picked[0]?.page;
+    if (mark && from !== undefined && mark[0] !== from) {
+      const [page, x0, y0, x1, y1] = mark;
+      const size = outcome.document.pages[page];
+      setTimeout(() => scrollTo(page, (x0 + x1) / 2, (y0 + y1) / 2, size), 60);
+    }
     const moved = (outcome.moved ?? 0) > 0;
     report(
       change === "row added"
@@ -581,12 +589,11 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }
 
   /** Scroll so a spot on a page (points, as displayed) is in the middle of the view. */
-  function scrollTo(page: number, x: number, y: number) {
+  function scrollTo(page: number, x: number, y: number, size = doc.pages[page]) {
     const el = scroller.current;
     const figure = document.getElementById(`page-${page}`);
-    if (!el || !figure) return;
+    if (!el || !figure || !size) return;
     const box = (figure.querySelector(".page") as HTMLElement | null) ?? figure;
-    const size = doc.pages[page];
     // Measured on screen: the page's place within the scrolled pages, whatever its parents.
     const area = el.getBoundingClientRect();
     const r = box.getBoundingClientRect();

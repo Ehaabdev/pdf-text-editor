@@ -37,14 +37,20 @@ export default function Thumbnails({ doc, version, current, onJump, className = 
             aria-label={`Go to page ${i + 1}`}
             onClick={() => onJump(i)}
           >
-            <img
-              src={pageImageUrl(doc, i, 240, version)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              style={{ aspectRatio: `${p.width} / ${p.height}` }}
-            />
+            {version === 0 && i >= doc.originalPageCount ? (
+              <span className="thumb-added" style={{ aspectRatio: `${p.width} / ${p.height}` }}>
+                Added
+              </span>
+            ) : (
+              <img
+                src={pageImageUrl(doc, i, 240, version)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                style={{ aspectRatio: `${p.width} / ${p.height}` }}
+              />
+            )}
             <span className="thumb-no">{i + 1}</span>
           </button>
         </li>

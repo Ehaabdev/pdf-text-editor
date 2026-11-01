@@ -144,7 +144,9 @@ export default function PageView({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   // While a new image loads underneath, the previous one stays on top of it.
   const swapping = shown !== null && shown.key !== wanted.key;
-  const layers = swapping ? [wanted, shown] : [wanted];
+  // Compared with the original, a page added since (text flowed onto it) has no picture.
+  const added = version === 0 && index >= doc.originalPageCount;
+  const layers = added ? [] : swapping ? [wanted, shown] : [wanted];
 
   // The lens moves by direct style changes, not React state: the page has hundreds of line
   // boxes that shouldn't re-render on every mouse move.
@@ -339,7 +341,12 @@ export default function PageView({
         {spot && !(preview && (preview.kind === "item" || preview.kind === "line")) && (
           <span className="spot" style={{ left: pct(spot.x, size.width), top: pct(spot.y, size.height) }} aria-hidden="true" />
         )}
-        {state === "failed" && (
+        {added && (
+          <div className="page-failed">
+            <p>This page wasn't in the original. It was added when text flowed onto a new page.</p>
+          </div>
+        )}
+        {state === "failed" && !added && (
           <div className="page-failed">
             <p>This page didn't load.</p>
             <button

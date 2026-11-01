@@ -501,6 +501,9 @@ def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floo
     while True:
         gone = {line_of[t] for p in drawn if p.start in over for t in p.glyphs if t in line_of}
         more = {p.start for p in drawn if p.start not in over and any(line_of.get(t) in gone for t in p.glyphs)}
+        # Lines, boxes and pictures drawn at the height of what goes (an underline) go too.
+        top = max((p.box[3] for p in drawn if p.start in over | more), default=None)
+        more |= {p.start for p in drawn if p.start not in over and p.kind != "text" and top is not None and (p.box[1] + p.box[3]) / 2 < top}
         if not more:
             break
         over |= more

@@ -29,6 +29,8 @@ export type DocInfo = {
   version: number;
   history: Change[];
   pageCount: number;
+  /** Pages in the original: text that flows on can add pages after them. */
+  originalPageCount: number;
   pages: PageSize[];
   isSigned: boolean;
 };
