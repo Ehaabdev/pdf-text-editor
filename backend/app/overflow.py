@@ -222,10 +222,20 @@ def copy_onto(src: bytes, src_no: int, dst_no: int, starts: set[int], dy: float)
     # The new pieces: drawn after the page's own (wrapped in q ... Q, its open states closed).
     boundary = len(dst_rp.instructions) + dst_rp.open_states + 2
     keep_new = {k for k, p in enumerate(moving._pieces(new_rp)) if p.start >= boundary}
-    old_mu, old_pf = render(moving._only(src, src_no, keep_old), src_no, zoom)
-    new_mu, new_pf = render(moving._only(new, dst_no, keep_new), dst_no, zoom)
-    sy = round(down * zoom)
-    if moving._differs_after_shift(old_mu, new_mu, area, zoom, 0, sy, 0) or moving._differs_after_shift(old_pf, new_pf, area, zoom, 0, sy, 1):
+    alone_old, alone_new = moving._only(src, src_no, keep_old), moving._only(new, dst_no, keep_new)
+
+    def differs(z: float, allow: int = 0) -> list[bool]:
+        old_mu, old_pf = render(alone_old, src_no, z)
+        new_mu, new_pf = render(alone_new, dst_no, z)
+        sy = round(down * z)
+        # PDFium rounds glyph positions to whole pixels: a pixel of slack, as in moving.py.
+        return [moving._differs_after_shift(old_mu, new_mu, area, z, 0, sy, 0), moving._differs_after_shift(old_pf, new_pf, area, z, 0, sy, 1, allow)]
+
+    first = differs(zoom)
+    # A glyph exactly between two pixels can round either way; at twice the size it's on
+    # a pixel. Each engine must match at one size: MuPDF exactly, PDFium within a few
+    # pixels once MuPDF has matched exactly (as columns.py).
+    if any(first) and any(a and b for a, b in zip(first, differs(2 * zoom, allow=4 if not first[0] else 0))):
         fail("the text moved to the next page wouldn't look exactly the same")
 
     # Nothing else on that page changed.
@@ -266,9 +276,10 @@ def take_off(src: bytes, page_no: int, starts: set[int]) -> bytes:
     return new
 
 
-def new_page_after(src: bytes, page_no: int) -> tuple[bytes, list[str]]:
+def new_page_after(src: bytes, page_no: int, leaving: set[int] = frozenset()) -> tuple[bytes, list[str]]:
     """A new last page like page `page_no` (the last): its size, its header and footer
-    drawn again; nothing else. Notes for the user (printed page numbers)."""
+    drawn again; nothing else (not the pieces `leaving` for it, by their first instruction,
+    even in the footer's band). Notes for the user (printed page numbers)."""
     doc, pdf, rp = _open(src, page_no)
     page = pdf.pages[page_no]
     new = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=page.mediabox, Resources=pikepdf.Dictionary(), Contents=pdf.make_stream(b""))
@@ -278,6 +289,7 @@ def new_page_after(src: bytes, page_no: int) -> tuple[bytes, list[str]]:
     pdf.pages.append(pikepdf.Page(new))
     with_page = _save(pdf)
     _, edges, _ = _body(doc, page_no, rp)
+    edges = [p for p in edges if p.start not in leaving]
     notes = []
     lines = page_lines(doc[page_no])
     _, footer = moving.bottom_limit(doc, page_no, lines, (0.0, 0.0, doc[page_no].rect.width, doc[page_no].rect.height))
@@ -364,7 +376,7 @@ def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: floa
                 areas += moved_areas
                 notes += getattr(shift, "notes", [])
     else:
-        current, added = new_page_after(current, page_no)
+        current, added = new_page_after(current, page_no, starts)
         notes += added
         _, _, top = _body(doc, page_no, rp)
     if top is None:

@@ -160,6 +160,19 @@ def test_nothing_runs_into_the_bottom_margin(name, start):
                 assert l.bbox[3] <= lowest + 0.5, (n, l.text)  # a line's box may reach a little past its letters
 
 
+@needs_fonts
+def test_a_line_under_a_footnote_goes_to_a_new_page_once():
+    """Drawn first under the footnote, in the footer's band: the new page's footer isn't
+    copied with it."""
+    src = (FIXTURES / "decorations" / "decorations-word.pdf").read_bytes()
+    ref = line(src, 0, "1A footnote under the separator")
+    result = add_line(src, 0, NEW, ref.id, ref.text)
+    doc = pymupdf.open("pdf", result.pdf)
+    assert doc.page_count == 2
+    found = [(n, l.bbox[1]) for n in range(2) for l in page_lines(doc[n]) if comparable(l.text) == comparable(NEW)]
+    assert len(found) == 1 and found[0][0] == 1 and found[0][1] < 120
+
+
 # Through the website's API -------------------------------------------------------------------
 
 
