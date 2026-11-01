@@ -400,7 +400,7 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         # Running past the page's end: what's anchored at its bottom stays, and the text
         # above moves into the space over it.
         floor = limit if stop is None else max(limit, stop + 0.3 * size)
-        if min(p.box[1] for p in moving) - dy < floor - 0.01:
+        if any(_past(rp, p, dy, floor, crop) for p in moving):
             kept = _anchored(rp, moving, dy, size, cx0, cx1, crop)
             if kept:
                 stoppers += [p for p in moving if p.start in kept]
@@ -445,11 +445,11 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
                 what = "the text below would run into the page's footer"
             else:
                 what = "the text below would run into a line or border below it"
-        if box[1] - dy < floor - 0.01:
+        if any(_past(rp, p, dy, floor, crop) for p in drawn):
             blocker = max(stoppers, key=lambda p: p.box[3]) if stoppers else None
             page_end = blocker is None or floor <= limit + 0.01 or blocker.kind == "text"
             if split and not cell and page_end:
-                raise _overflow(rp, lines, drawn, dy, floor, what, page)
+                raise _overflow(rp, lines, drawn, dy, floor, what, page, crop)
             raise MoveRefused(what)
     else:
         visible = {t for l in lines for t in l.members}
@@ -536,7 +536,19 @@ def _anchored(rp: Replay, pieces: list[Piece], dy: float, size: float, cx0: floa
     return set()
 
 
-def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str, page: pymupdf.Page | None = None) -> MoveRefused:
+def _inked(rp: Replay, p: Piece) -> bool:
+    """Whether a piece leaves ink: not text whose every letter is blank (Word's empty
+    paragraphs, a space)."""
+    return p.kind != "text" or any(not _blank(rp, rp.glyphs[t]) for t in p.glyphs)
+
+
+def _past(rp: Replay, p: Piece, dy: float, floor: float, crop: Box) -> bool:
+    """Whether a piece moved dy down would run past the page's end: what leaves ink, past
+    `floor`; a mark that leaves none, off the paper."""
+    return p.box[1] - dy < (floor if _inked(rp, p) else crop[1]) - 0.01
+
+
+def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str, page: pymupdf.Page | None = None, crop: Box | None = None) -> MoveRefused:
     """What would run past the page's end, split off as whole lines (with what's drawn with
     them), all below what stays: an Overflow, or the refusal when it can't be split so.
 
@@ -556,14 +568,16 @@ def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floo
 
     where = {p.start: table_of(p) for p in drawn}
     mid = lambda p: (p.box[1] + p.box[3]) / 2
-    over = {p.start for p in drawn if p.box[1] - dy < floor - 0.01}
+    crop = crop or (0.0, -1e9, 0.0, 0.0)
+    over = {p.start for p in drawn if _past(rp, p, dy, floor, crop)}
     both: set[int] = set()
     while True:
         gone = {line_of[t] for p in drawn if p.start in over for t in p.glyphs if t in line_of}
         more = {p.start for p in drawn if p.start not in over and any(line_of.get(t) in gone for t in p.glyphs)}
-        # Lines, boxes and pictures drawn at the height of what goes (an underline) go too.
-        top = max((p.box[3] for p in drawn if p.start in over | more), default=None)
-        more |= {p.start for p in drawn if p.start not in over and p.kind != "text" and where[p.start] is None and top is not None and mid(p) < top}
+        # Lines, boxes and pictures drawn at the height of what goes (an underline) go too,
+        # and marks that leave no ink under its top.
+        top = max((p.box[3] for p in drawn if p.start in over | more and _inked(rp, p)), default=None)
+        more |= {p.start for p in drawn if p.start not in over and (p.kind != "text" or not _inked(rp, p)) and where[p.start] is None and top is not None and mid(p) < top}
         for k, (t, _, edges) in enumerate(tables):
             inside = [p for p in drawn if where[p.start] == k]
             going = [p for p in inside if p.start in over | more and p.start not in both]
@@ -595,7 +609,7 @@ def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floo
     ends = [p for p in stay if p.start not in both]
     if not out or (ends and max(p.box[3] for p in out) > min(p.box[1] for p in ends) + 0.5):
         return MoveRefused(what)  # text side by side, or drawn together: no clean line between
-    if any(p.box[1] - dy < floor - 0.01 for p in stay):
+    if not any(_inked(rp, p) for p in out) or any(_past(rp, p, dy, floor, crop) for p in stay):
         return MoveRefused(what)
     # A box drawn in strips, a line each (Word's shading and borders of a paragraph or a
     # text box): a strip that goes, touching one that stays, would cut the box in two.

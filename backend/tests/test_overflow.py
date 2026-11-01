@@ -251,6 +251,20 @@ def test_a_row_added_under_a_full_tables_last_row_goes_to_the_next_page():
         add_row(TABLE, 0, ref.id, ref.text, "above", ["NEW-1", "", ""])
 
 
+@needs_fonts
+def test_rows_join_the_same_table_on_the_next_page_under_its_repeated_heading():
+    long = (FIXTURES / "flow-table-long" / "flow-table-long-chrome.pdf").read_bytes()
+    ref = line(long, 0, "Prices are given in euros")
+    result = add_line(long, 0, NEW, ref.id, ref.text)
+    assert table_rows(result.pdf, 0)[-1] == "LC-809"
+    assert table_rows(result.pdf, 1)[:3] == ["Code", "LC-810", "LX-901"]
+    # Joined: no room between the row and the rows that were there.
+    page = pymupdf.open("pdf", result.pdf)[1]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    heights = [b - a for a, b in zip(table.rows, table.rows[1:])]
+    assert max(heights[1:]) - min(heights[1:]) < 1
+
+
 # Through the website's API -------------------------------------------------------------------
 
 

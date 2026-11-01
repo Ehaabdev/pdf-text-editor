@@ -210,7 +210,7 @@ Before it is accepted:
 
 `backend/app/overflow.py` handles adding a line to a full page: the lines that no longer fit go to the top of the next page, under its header, as in a word processor. That page's own text moves down to make room, and so on, page after page. Past the last page, a new page is added with the same size, header and footer. If the header or footer has a number in it, the website says to check the page number and the page count ("Page 1 of 1" is copied as it is). When the new line is the one that doesn't fit (added under the last line), it goes to the top of the next page. When there's already room for it at full line spacing, nothing moves to another page.
 
-What goes on is whole lines, with what's drawn with them (underlines, links, highlights), all below what stays. `backend/app/pagecopy.py` draws them again on the other page:
+What goes on is whole lines, with what's drawn with them (underlines, links, highlights), all below what stays. A table with borders goes by whole rows: from the first row anything of it would go from, all its cells, borders and shading. The border between the rows that stay and those that go stays, and is drawn on the next page too, as the top of the rows there; under them, a little room before the next page's own text. The table's heading row isn't repeated on the next page (Word repeats it only when asked to). `backend/app/pagecopy.py` draws them again on the other page:
 - each in its own `q ... Q`, after the page's own drawing (wrapped in `q ... Q` too);
 - with the state it was drawn in: every transformation, color, line style, graphics state and text state in effect where it was, and the clipping (Chrome cuts the gaps in an underline with clips);
 - with its fonts, pictures, color spaces and patterns brought into that page's resources: under the same name when that's free, else under a new one;
@@ -222,7 +222,9 @@ Each step is checked before the next:
 - **the room made** on each page is checked as any move ([Moving text](#moving-text));
 - every other page is unchanged.
 
-It's refused, with the reason: text side by side in columns (it flows down its own column, not onto the next page); a table cell, or a table row the page's end cuts through (tables don't flow yet); a next page of another size or turned; more text than one page holds; more than 20 pages to flow over.
+What sits at the page's bottom on its own stays put, and the text above moves into the space over it: a footnote (Word's short separator line and what's under it), or anything far below the rest (a box placed at the bottom of the page, under an empty gap of four letters' height or more).
+
+It's refused, with the reason: text side by side in columns (it flows down its own column, not onto the next page); a table cell (cells don't grow); a merged table cell, or a table border or shading drawn across the rows on both sides of the page's end; a box drawn in strips, a line each (Word's shaded or bordered paragraph, a text box), that the page's end would cut in two; a next page of another size or turned; more text than one page holds; more than 20 pages to flow over.
 
 Compared with the original, a page that was added shows as "This page wasn't in the original". Undo takes it away again.
 
@@ -259,7 +261,8 @@ Click a line in a table with borders: the panel adds a row below or above its ro
   - The new row copies the row's own borders and shading, not a merged cell's: its shading is drawn once for all its rows (Word also shades each paragraph in it, a strip behind each: those strips go with the text, or stay where they're unseen on the cell's own shading).
   - Refused, with the reason: a cell that only looks merged (two cells without a border between them, each with its own clipping or shading, as Word draws them); a merged cell whose text would read as one line with the next cell's once the rows move (the editor couldn't tell them apart after; smaller text beside a line used to be read as part of it across a cell's border when Word's spaces ran across the border: no more). While rows move, a merged cell's text is held still, and the page can read oddly for a moment; at the end every line must read as before, on its own, its ends in place.
   - On the test tables, every row change from every cell: 110 done; 7 refused (deleting, clicked on a tall cell). On the samples' merged tables: 57 of 66 done; refused: 5 a tall cell clicked to delete, 4 cells that only look merged.
-- It's refused, with the reason, where it can't be done exactly: no room left at the bottom of the page (nothing goes onto the next page), a cell's text too long for its cell (cells don't wrap), a table without borders, lines drawn through all the rows, or a table's only row.
+- **A full page:** the rows that no longer fit go to the top of the next page, whole, as text does ([When a page is full](#when-a-page-is-full)); then the new row goes in. Under the last row of a table that fills its page, the new row goes to the top of the next page: the last row is drawn again there (and stays where it is), a new row is added above that copy, and the copy is deleted, each step checked as on its own. Above a last row that would itself have to go, it's refused: add the row below the row above instead.
+- It's refused, with the reason, where it can't be done exactly: a cell's text too long for its cell (cells don't wrap), a table without borders, lines drawn through all the rows, a merged cell at the page's end, or a table's only row.
 - Each step is checked as other changes are: what moves is exactly where it was, one row lower or higher; the copied borders and shading, drawn alone, look exactly like the row's own, pixel for pixel; nothing outside the row's place changes. The steps make one change: one Undo takes it all back.
 - Totals aren't recalculated: a "Total" row stays as it was, and can be edited like any line.
 

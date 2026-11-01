@@ -30,6 +30,7 @@ from . import moving, pagecopy
 from .changes import EditRejected, contents, fail, outside, page_links, render, to_display, to_pdf
 from .moving import MoveRefused, Overflow, Piece
 from .pdfcontent import Replay, Unsupported, matches_trace, replay
+from .tables import find_tables
 from .textlayout import Line, page_lines
 
 MAX_PAGES = 20  # pages text may flow over, one after another
@@ -360,6 +361,7 @@ def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: floa
     # gap: its rows touch), a little room, about as under a line of text.
     lowest = min((p for p in over if _ink(rp, p)), key=lambda p: _ink(rp, p)[1])
     height = block_top - block_bottom + (gap if lowest.kind == "text" or gap > 0.5 else 0.4 * size)
+    under = None
     notes = []
     areas = []
     current = src
@@ -370,6 +372,11 @@ def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: floa
             raise MoveRefused("the next page has another size, so the text can't flow onto it")
         _, _, trp = _open(current, target)
         body, _, top = _body(doc, target, trp)
+        under = _continued(doc, page_no, target, over, lowest, top)
+        if under is not None:
+            # The same table goes on there: the rows join it, under its heading row if
+            # that's repeated, with no room between.
+            top, height = under, block_top - block_bottom
         if top is None:
             _, _, top = _body(doc, page_no, rp)
         else:
@@ -395,6 +402,29 @@ def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: floa
     if take:
         current = take_off(current, page_no, starts)
     return current, areas, notes, target, block_top - top
+
+
+def _continued(doc: pymupdf.Document, page_no: int, target: int, over: list[Piece], lowest: Piece, top: float | None) -> float | None:
+    """Where a table's rows that go join the same table on the next page (PDF y): when what
+    goes ends inside a table with borders, and that page's body starts with a table with the
+    same columns: at its top, or under its first row when that's this table's heading row,
+    repeated. None otherwise."""
+    if top is None:
+        return None
+    page, there = doc[page_no], doc[target]
+    inside = lambda p, t: (lambda r: t.bbox[0] - 2 <= r.x0 and r.x1 <= t.bbox[2] + 2 and t.bbox[1] - 2 <= r.y0 and r.y1 <= t.bbox[3] + 2)(to_display(page, p.box))
+    mine = next((t for t in find_tables(page, page_lines(page)) if t.ruled and inside(lowest, t)), None)
+    if mine is None:
+        return None
+    body_top = to_display(there, (0, top, 1, top)).y0
+    tables = [t for t in find_tables(there, page_lines(there)) if t.ruled]
+    first = min(tables, key=lambda t: t.bbox[1], default=None)
+    if first is None or abs(first.bbox[1] - body_top) > 4 or len(first.cols) != len(mine.cols) or any(abs(a - b) > 1.5 for a, b in zip(first.cols, mine.cols)):
+        return None
+    heading = lambda t: [" ".join(l.text for l in c.lines) for c in sorted((c for c in t.cells if c.row == 0), key=lambda c: c.col)]
+    if len(first.rows) > 2 and heading(first) == heading(mine) and any(heading(mine)):
+        return to_pdf(there, (0, first.rows[1], 1, first.rows[1]))[1]
+    return to_pdf(there, (0, first.bbox[1], 1, first.bbox[1]))[1]
 
 
 def flow(src: bytes, page_no: int, o: Overflow, anchor, size: float, cut: float, dy: float, column=None, depth: int = 0):
