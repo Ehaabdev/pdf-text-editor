@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A table that fills page 1 to its bottom margin, for rows flowing onto the next page: a
+     header and a footer with the page number on every page (made up). print_chrome.py flow-table -->
+<style>
+  @page { size: A4; margin: 2.5cm 2.5cm 2.5cm 2.5cm;
+    @top-center { content: "Harbor Supplies - Price list PL-2026-11"; font: 9pt Calibri, sans-serif; color: #595959; }
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 9pt Calibri, sans-serif; color: #595959; } }
+  body { font-family: Calibri, sans-serif; font-size: 11pt; line-height: 1.35; }
+  h1 { font-size: 18pt; color: #1f4e79; margin: 0 0 10pt; }
+  p { margin: 0 0 6pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 0; }
+  th, td { border: 0.75pt solid #000; padding: 2pt 5pt; vertical-align: top; text-align: left; }
+  th { background: #deeaf6; }
+  td.n { text-align: right; }
+  .next { break-before: page; }
+</style>
+</head>
+<body>
+<h1>Lighting price list</h1>
+<p>Prices are given in euros, without tax, and stay valid for thirty days from this date.</p>
+<table>
+  <colgroup><col style="width:16%"><col style="width:56%"><col style="width:28%"></colgroup>
+  <tr><th>Code</th><th>Item</th><th>Price per unit</th></tr>
+  <tr><td>LP-101</td><td>Ceiling panel, 60 by 60, warm white</td><td class="n">42.00</td></tr>
+  <tr><td>LP-102</td><td>Ceiling panel, 60 by 60, cool white</td><td class="n">42.00</td></tr>
+  <tr><td>LP-103</td><td>Ceiling panel, 120 by 30, warm white</td><td class="n">48.50</td></tr>
+  <tr><td>LP-104</td><td>Ceiling panel, 120 by 30, cool white</td><td class="n">48.50</td></tr>
+  <tr><td>LD-201</td><td>Downlight, 8 watt, round</td><td class="n">14.20</td></tr>
+  <tr><td>LD-202</td><td>Downlight, 12 watt, round</td><td class="n">17.80</td></tr>
+  <tr><td>LD-203</td><td>Downlight, 18 watt, square</td><td class="n">21.40</td></tr>
+  <tr><td>LT-301</td><td>Track light, single head, black</td><td class="n">33.00</td></tr>
+  <tr><td>LT-302</td><td>Track light, single head, white</td><td class="n">33.00</td></tr>
+  <tr><td>LT-303</td><td>Track rail, two metres</td><td class="n">27.60</td></tr>
+  <tr><td>LS-401</td><td>Strip light, five metres, warm white</td><td class="n">39.90</td></tr>
+  <tr><td>LS-402</td><td>Strip light, five metres, colour</td><td class="n">54.90</td></tr>
+  <tr><td>LS-403</td><td>Strip light driver, 60 watt</td><td class="n">24.30</td></tr>
+  <tr><td>LW-501</td><td>Wall light, outdoor, grey</td><td class="n">36.70</td></tr>
+  <tr><td>LW-502</td><td>Wall light, outdoor, black</td><td class="n">36.70</td></tr>
+  <tr><td>LW-503</td><td>Wall light, indoor, brass</td><td class="n">58.00</td></tr>
+  <tr><td>LF-601</td><td>Floodlight, 30 watt, with sensor</td><td class="n">45.10</td></tr>
+  <tr><td>LF-602</td><td>Floodlight, 50 watt</td><td class="n">49.80</td></tr>
+  <tr><td>LF-603</td><td>Floodlight, 100 watt</td><td class="n">79.40</td></tr>
+  <tr><td>LE-701</td><td>Emergency light, three hours</td><td class="n">62.00</td></tr>
+  <tr><td>LE-702</td><td>Exit sign, both sides</td><td class="n">68.50</td></tr>
+  <tr><td>LC-801</td><td>Cable, three core, per metre</td><td class="n">1.90</td></tr>
+  <tr><td>LC-802</td><td>Junction box, sealed</td><td class="n">4.60</td></tr>
+  <tr><td>LC-803</td><td>Switch, single, white</td><td class="n">6.30</td></tr>
+  <tr><td>LC-804</td><td>Dimmer switch, white</td><td class="n">18.90</td></tr>
+  <tr><td>LC-805</td><td>Motion sensor, ceiling</td><td class="n">22.40</td></tr>
+  <tr><td>LC-806</td><td>Timer, daily, wall mounted</td><td class="n">19.70</td></tr>
+  <tr><td>LC-807</td><td>Fitting labour, per hour</td><td class="n">45.00</td></tr>
+  <tr><td>LC-808</td><td>Site survey, per visit</td><td class="n">90.00</td></tr>
+  <tr><td>LC-809</td><td>Lighting design, per room</td><td class="n">120.00</td></tr>
+  <tr><td>LC-810</td><td>Yearly maintenance visit</td><td class="n">150.00</td></tr>
+</table>
+<div class="next">
+<p>Orders above five thousand euros are delivered free of charge to any site in the region.</p>
+<p>Smaller orders carry a flat delivery charge, shown on each invoice as a separate line.</p>
+<p>Questions about this price list go to <a href="mailto:sales@example.com">sales@example.com</a>.</p>
+</div>
+</body>
+</html>

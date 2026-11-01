@@ -173,6 +173,16 @@ def test_a_line_under_a_footnote_goes_to_a_new_page_once():
     assert len(found) == 1 and found[0][0] == 1 and found[0][1] < 120
 
 
+@needs_fonts
+def test_a_footnote_stays_at_the_bottom_while_the_text_above_moves_down():
+    src = (FIXTURES / "decorations" / "decorations-word.pdf").read_bytes()
+    ref = line(src, 0, "Plain line with an underlined")
+    result = add_line(src, 0, NEW, ref.id, ref.text)
+    assert pymupdf.open("pdf", result.pdf).page_count == 1
+    assert at_place(result.pdf, 0, "1A footnote under the separator") == at_place(src, 0, "1A footnote under the separator")
+    assert line(result.pdf, 0, "This line has a").bbox[1] > line(src, 0, "This line has a").bbox[1] + 10
+
+
 # Through the website's API -------------------------------------------------------------------
 
 

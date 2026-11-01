@@ -394,6 +394,16 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         if across:
             raise MoveRefused("text below runs into a line or border that has to stay")
         moving = [p for p in moving if p.box[1] >= stop - 0.01]
+    if dy > 0 and moving and not cell:
+        # Running past the page's end: what's anchored at its bottom stays, and the text
+        # above moves into the space over it.
+        floor = limit if stop is None else max(limit, stop + 0.3 * size)
+        if min(p.box[1] for p in moving) - dy < floor - 0.01:
+            kept = _anchored(rp, moving, dy, size, cx0, cx1, crop)
+            if kept:
+                stoppers += [p for p in moving if p.start in kept]
+                moving = [p for p in moving if p.start not in kept]
+                stop = max(p.box[3] for p in stoppers)
     if not moving:
         # Nothing to move in a table cell: the new line itself must still fit above its border.
         if cell and cell_floor is not None and dy > 0 and anchor[1] - dy < cell_floor + 0.3 * size:
@@ -493,6 +503,37 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     return Shift(page_no, dy, moving, links, box, moved_lines)
 
 
+def _anchored(rp: Replay, pieces: list[Piece], dy: float, size: float, cx0: float, cx1: float, crop: Box) -> set[int]:
+    """What sits at the page's bottom on its own, to stay put when the text above moves down
+    (their first instructions; none when there's no such thing):
+    - a footnote: Word's separator (a short rule at the column's edge, with no text right
+      over it as over an underline) and everything under it;
+    - whatever sits far below the rest (a box placed at the bottom): under an empty gap
+      of four letters' height at least, with room left in it for the move.
+    Letters count where they leave ink; text that leaves none (Word's empty paragraphs)
+    goes with the side it's on."""
+    width = cx1 - cx0
+    inked = [p for p in pieces if p.kind != "text" or any(not _blank(rp, rp.glyphs[t]) for t in p.glyphs)]
+    for rule in inked:
+        x0, y0, x1, y1 = rule.box
+        if rule.kind != "path" or y1 - y0 > 1.5 or not 0.15 * width <= x1 - x0 <= 0.5 * width:
+            continue
+        if not (abs(x0 - cx0) <= 3 or abs(x1 - cx1) <= 3) or y1 > crop[1] + 0.5 * (crop[3] - crop[1]):
+            continue
+        over = [p for p in inked if p.kind == "text" and y1 - 0.5 <= p.box[1] <= y1 + 4 and min(p.box[2], x1) > max(p.box[0], x0)]
+        under = [p for p in inked if p is not rule and p.box[3] <= y1 + 0.5]
+        if not over and any(p.kind == "text" for p in under):
+            return {p.start for p in pieces if (p.box[1] + p.box[3]) / 2 <= y1 + 0.5}
+    need = max(dy + 0.3 * size, 4 * size)
+    ordered = sorted(inked, key=lambda p: p.box[1])
+    top = None
+    for p in ordered:
+        if top is not None and p.box[1] - top >= need:
+            return {q.start for q in pieces if (q.box[1] + q.box[3]) / 2 < top + need / 2}
+        top = p.box[3] if top is None else max(top, p.box[3])
+    return set()
+
+
 def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str) -> MoveRefused:
     """What would run past the page's end, split off as whole lines (with what's drawn with
     them), all below what stays: an Overflow, or the refusal when it can't be split so."""
@@ -513,6 +554,12 @@ def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floo
         return MoveRefused(what)  # text side by side, or drawn together: no clean line between
     if any(p.box[1] - dy < floor - 0.01 for p in stay):
         return MoveRefused(what)
+    # A box drawn in strips, a line each (Word's shading and borders of a paragraph or a
+    # text box): a strip that goes, touching one that stays, would cut the box in two.
+    for p in out:
+        for q in stay:
+            if p.kind != "text" and q.kind != "text" and min(p.box[2], q.box[2]) - max(p.box[0], q.box[0]) > 0.5 and p.box[3] >= q.box[1] - 1.0:
+                return MoveRefused("a box below would be cut in two by the end of the page")
     return Overflow(what, out, stay, floor)
 
 
