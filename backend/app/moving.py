@@ -28,6 +28,7 @@ import pikepdf
 import pymupdf
 
 from . import decorations
+from .tables import find_tables
 from .changes import (
     EditRejected,
     LinkChange,
@@ -56,11 +57,12 @@ class Overflow(MoveRefused):
     pieces that wouldn't fit (whole lines, below everything that would stay), for the next
     page to take (overflow.py). Asked for with plan(split=True)."""
 
-    def __init__(self, why: str, over: list, stay: list, floor: float):
+    def __init__(self, why: str, over: list, stay: list, floor: float, both: list | None = None):
         super().__init__(why)
         self.over = over  # pieces (text, shapes, pictures) that go
         self.stay = stay  # those that would still fit, moved
         self.floor = floor  # PDF y: how low what moves may go
+        self.both = both or []  # of those that stay, the ones drawn on the next page too (a table's border)
 
 
 _DIGITS = re.compile(r"[0-9٠-٩۰-۹]+")
@@ -447,7 +449,7 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
             blocker = max(stoppers, key=lambda p: p.box[3]) if stoppers else None
             page_end = blocker is None or floor <= limit + 0.01 or blocker.kind == "text"
             if split and not cell and page_end:
-                raise _overflow(rp, lines, drawn, dy, floor, what)
+                raise _overflow(rp, lines, drawn, dy, floor, what, page)
             raise MoveRefused(what)
     else:
         visible = {t for l in lines for t in l.members}
@@ -534,23 +536,64 @@ def _anchored(rp: Replay, pieces: list[Piece], dy: float, size: float, cx0: floa
     return set()
 
 
-def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str) -> MoveRefused:
+def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str, page: pymupdf.Page | None = None) -> MoveRefused:
     """What would run past the page's end, split off as whole lines (with what's drawn with
-    them), all below what stays: an Overflow, or the refusal when it can't be split so."""
+    them), all below what stays: an Overflow, or the refusal when it can't be split so.
+
+    A table with borders goes by whole rows, from the first row anything of it goes from.
+    The border between that row and the one above stays, and is drawn again on the next
+    page too (`both`): the bottom of the rows that stay, the top of those that go. Refused:
+    a merged cell, or a border or shading drawn across the rows on both sides."""
     line_of = {t: l.id for l in lines for t in l.members}
+    tables = []
+    if page is not None:
+        for t in find_tables(page, lines):
+            if t.ruled:
+                tables.append((t, _pdf(page, t.bbox), [_pdf(page, (0, y, 1, y))[1] for y in t.rows]))
+
+    def table_of(p: Piece):
+        return next((k for k, (_, b, _) in enumerate(tables) if b[0] - 2 <= p.box[0] and p.box[2] <= b[2] + 2 and b[1] - 2 <= p.box[1] and p.box[3] <= b[3] + 2), None)
+
+    where = {p.start: table_of(p) for p in drawn}
+    mid = lambda p: (p.box[1] + p.box[3]) / 2
     over = {p.start for p in drawn if p.box[1] - dy < floor - 0.01}
+    both: set[int] = set()
     while True:
         gone = {line_of[t] for p in drawn if p.start in over for t in p.glyphs if t in line_of}
         more = {p.start for p in drawn if p.start not in over and any(line_of.get(t) in gone for t in p.glyphs)}
         # Lines, boxes and pictures drawn at the height of what goes (an underline) go too.
         top = max((p.box[3] for p in drawn if p.start in over | more), default=None)
-        more |= {p.start for p in drawn if p.start not in over and p.kind != "text" and top is not None and (p.box[1] + p.box[3]) / 2 < top}
+        more |= {p.start for p in drawn if p.start not in over and p.kind != "text" and where[p.start] is None and top is not None and mid(p) < top}
+        for k, (t, _, edges) in enumerate(tables):
+            inside = [p for p in drawn if where[p.start] == k]
+            going = [p for p in inside if p.start in over | more and p.start not in both]
+            if not going:
+                continue
+            # Each piece's row by its middle (edges: PDF y, top to bottom).
+            row_of = lambda y: min(max([i for i, e in enumerate(edges) if e >= y - 1.5], default=0), len(edges) - 2)
+            r = min(row_of(mid(p)) for p in going)
+            if any(c.row < r < c.row + c.rowspan for c in t.cells):
+                return MoveRefused("a merged table cell would be cut by the end of the page")
+            if r == 0:
+                more |= {p.start for p in inside}  # the whole table goes
+                continue
+            edge = edges[r]
+            for p in inside:
+                if abs(mid(p) - edge) <= 1.5 and p.box[3] - p.box[1] <= 3:
+                    both.add(p.start)  # the border between the rows: on both pages
+                elif mid(p) < edge:
+                    more.add(p.start)
+                elif p.box[1] < edge - 0.5:
+                    return MoveRefused("a table's border or shading reaches across the end of the page")
+        more -= over | both
         if not more:
             break
         over |= more
+    over -= both
     stay = [p for p in drawn if p.start not in over]
     out = [p for p in drawn if p.start in over]
-    if not out or (stay and max(p.box[3] for p in out) > min(p.box[1] for p in stay) + 0.5):
+    ends = [p for p in stay if p.start not in both]
+    if not out or (ends and max(p.box[3] for p in out) > min(p.box[1] for p in ends) + 0.5):
         return MoveRefused(what)  # text side by side, or drawn together: no clean line between
     if any(p.box[1] - dy < floor - 0.01 for p in stay):
         return MoveRefused(what)
@@ -558,9 +601,11 @@ def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floo
     # text box): a strip that goes, touching one that stays, would cut the box in two.
     for p in out:
         for q in stay:
+            if where[p.start] is not None and where[p.start] == where[q.start]:
+                continue  # a table's rows: split above
             if p.kind != "text" and q.kind != "text" and min(p.box[2], q.box[2]) - max(p.box[0], q.box[0]) > 0.5 and p.box[3] >= q.box[1] - 1.0:
                 return MoveRefused("a box below would be cut in two by the end of the page")
-    return Overflow(what, out, stay, floor)
+    return Overflow(what, out, stay, floor, [p for p in drawn if p.start in both])
 
 
 def _cm(p: Piece, dy: float, dx: float = 0.0) -> tuple[list, list]:

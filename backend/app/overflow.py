@@ -30,7 +30,6 @@ from . import moving, pagecopy
 from .changes import EditRejected, contents, fail, outside, page_links, render, to_display, to_pdf
 from .moving import MoveRefused, Overflow, Piece
 from .pdfcontent import Replay, Unsupported, matches_trace, replay
-from .tables import find_tables
 from .textlayout import Line, page_lines
 
 MAX_PAGES = 20  # pages text may flow over, one after another
@@ -340,21 +339,27 @@ def may_flow(src: bytes, page_no: int, anchor) -> None:
         raise MoveRefused("this text is in a column beside other text, so it can't flow onto the next page")
 
 
-def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: float, depth: int = 0) -> tuple[bytes, list, list[str], int, float]:
+def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: float, depth: int = 0, also: set[int] = frozenset(), take: bool = True) -> tuple[bytes, list, list[str], int, float]:
     """Pieces of a page (by their first instruction), whole lines at its end, moved to the
     top of the next page, under its header, as far below it as they were below `above` (PDF
     y: the text that stays): that page's own text moves down to make room (and flows on), or
-    a new last page. Returns the file, the areas that changed, notes, the page, and how far
-    down they were drawn there (PDF; up when negative)."""
+    a new last page. `also`: pieces drawn there too that stay here as well (the border
+    between a table's rows that stay and those that go). With `take` false, they're only
+    drawn there, and stay here too. Returns the file, the areas that
+    changed, notes, the page, and how far down they were drawn there (PDF; up when
+    negative)."""
     if depth >= MAX_PAGES:
         raise MoveRefused(f"the text would flow over more than {MAX_PAGES} pages")
     doc, pdf, rp = _open(src, page_no)
-    over = [p for p in moving._pieces(rp) if p.start in starts]
+    over = [p for p in moving._pieces(rp) if p.start in starts | also]
     inks = [_ink(rp, p) for p in over if _ink(rp, p)]
     block_top = max(b[3] for b in inks)
     block_bottom = min(b[1] for b in inks)
     gap = max(0.0, above - block_top)
-    height = block_top - block_bottom + gap
+    # What comes after keeps the gap that was over the block; under a table's last row (no
+    # gap: its rows touch), a little room, about as under a line of text.
+    lowest = min((p for p in over if _ink(rp, p)), key=lambda p: _ink(rp, p)[1])
+    height = block_top - block_bottom + (gap if lowest.kind == "text" or gap > 0.5 else 0.4 * size)
     notes = []
     areas = []
     current = src
@@ -385,9 +390,10 @@ def send_on(src: bytes, page_no: int, starts: set[int], above: float, size: floa
     if top - (block_top - block_bottom) < floor - 0.01:
         raise MoveRefused("more text would flow on than one page holds")
     # The lines drawn there, at its body's top; then taken off this page.
-    current, copied = copy_onto(current, page_no, target, starts, block_top - top)
+    current, copied = copy_onto(current, page_no, target, starts | also, block_top - top)
     areas += copied
-    current = take_off(current, page_no, starts)
+    if take:
+        current = take_off(current, page_no, starts)
     return current, areas, notes, target, block_top - top
 
 
@@ -395,15 +401,10 @@ def flow(src: bytes, page_no: int, o: Overflow, anchor, size: float, cut: float,
     """make_room, once moving.shift_below found what would run past the page's end (`o`)."""
     if column is None:
         may_flow(src, page_no, anchor)
-    doc, _, rp = _open(src, page_no)
-    page = doc[page_no]
-    block = to_display(page, moving._union([p.box for p in o.over]))
-    for t in find_tables(page, page_lines(page)):
-        x0, y0, x1, y1 = t.bbox
-        if t.ruled and min(block.y1, y1) > max(block.y0, y0) and min(block.x1, x1) > max(block.x0, x0):
-            raise MoveRefused("a table would go past the page's end (tables don't flow onto the next page yet)")
-    above = min((b[1] for b in (_ink(rp, p) for p in o.stay) if b), default=cut)
-    current, areas, notes, target, _ = send_on(src, page_no, {p.start for p in o.over}, above, size, depth)
+    rp = _open(src, page_no)[2]
+    both = {p.start for p in o.both}
+    above = min((b[1] for b in (_ink(rp, p) for p in o.stay if p.start not in both) if b), default=cut)
+    current, areas, notes, target, _ = send_on(src, page_no, {p.start for p in o.over}, above, size, depth, both)
     # Now the room here fits (nothing left to move when all that was below went on).
     made = moving.shift_below(current, page_no, anchor, size, cut, dy, column)
     if made is None:

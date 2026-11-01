@@ -12,8 +12,10 @@ import pytest
 
 from app import moving, overflow, pagecopy
 from app.adding import add_line
+from app.rows import add_row
+from app.tables import find_tables
 from app.changes import render
-from app.editing import comparable
+from app.editing import EditRejected, comparable
 from app.fonts import library
 from app.pdfcontent import replay
 from app.textlayout import page_lines
@@ -181,6 +183,72 @@ def test_a_footnote_stays_at_the_bottom_while_the_text_above_moves_down():
     assert pymupdf.open("pdf", result.pdf).page_count == 1
     assert at_place(result.pdf, 0, "1A footnote under the separator") == at_place(src, 0, "1A footnote under the separator")
     assert line(result.pdf, 0, "This line has a").bbox[1] > line(src, 0, "This line has a").bbox[1] + 10
+
+
+# Tables -------------------------------------------------------------------------------------
+
+
+TABLE = (FIXTURES / "flow-table" / "flow-table-chrome.pdf").read_bytes()  # a table filling page 1
+
+
+def table_rows(src: bytes, page_no: int) -> list[str]:
+    """The first cell's text of each row of the page's table, top to bottom."""
+    page = pymupdf.open("pdf", src)[page_no]
+    tables = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    if not tables:
+        return []
+    (table,) = tables
+    first = sorted((c for c in table.cells if c.col == 0), key=lambda c: c.row)
+    return [" ".join(l.text for l in c.lines) for c in first]
+
+
+def borders_at(src: bytes, page_no: int, y: float) -> int:
+    """How many horizontal border pieces cross the table's width near a height (as shown)."""
+    page = pymupdf.open("pdf", src)[page_no]
+    return sum(1 for d in page.get_drawings() for r in [d["rect"]] if r.height <= 2 and abs((r.y0 + r.y1) / 2 - y) <= 2)
+
+
+@needs_fonts
+def test_a_tables_last_row_flows_whole_with_a_border_on_both_pages():
+    ref = line(TABLE, 0, "Prices are given in euros")
+    result = add_line(TABLE, 0, NEW, ref.id, ref.text)
+    assert table_rows(result.pdf, 0)[-1] == "LC-809"
+    assert table_rows(result.pdf, 1) == ["LC-810"]
+    page2 = pymupdf.open("pdf", result.pdf)[1]
+    (table,) = [t for t in find_tables(page2, page_lines(page2)) if t.ruled]
+    assert borders_at(result.pdf, 1, table.bbox[1]) >= 3 and borders_at(result.pdf, 1, table.bbox[3]) >= 3
+    # The text after it on page 2 keeps clear of the table.
+    after = line(result.pdf, 1, "Orders above five thousand")
+    assert after.bbox[1] > table.bbox[3] + 2
+
+
+@needs_fonts
+def test_a_row_added_in_a_full_table_pushes_its_last_row_onto_the_next_page():
+    page = pymupdf.open("pdf", TABLE)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    ref = next(l for c in table.cells if c.row == 5 for l in c.lines)
+    result = add_row(TABLE, 0, ref.id, ref.text, "below", ["NEW-1", "A new row added here", "9.99"])
+    rows = table_rows(result.pdf, 0)
+    assert rows[5:7] == [table_rows(TABLE, 0)[5], "NEW-1"] and rows[-1] == "LC-809"
+    assert table_rows(result.pdf, 1) == ["LC-810"]
+    assert any("moved to page 2" in w for w in result.warnings)
+
+
+@needs_fonts
+def test_a_row_added_under_a_full_tables_last_row_goes_to_the_next_page():
+    page = pymupdf.open("pdf", TABLE)[0]
+    (table,) = [t for t in find_tables(page, page_lines(page)) if t.ruled]
+    last = max(c.row for c in table.cells)
+    ref = next(l for c in table.cells if c.row == last for l in c.lines)
+    result = add_row(TABLE, 0, ref.id, ref.text, "below", ["NEW-1", "A new row added here", "9.99"])
+    before_mu, before_pf = render(TABLE, 0)
+    after_mu, after_pf = render(result.pdf, 0)
+    assert np.array_equal(before_mu, after_mu) and np.array_equal(before_pf, after_pf)
+    assert table_rows(result.pdf, 1) == ["NEW-1"]
+    assert result.marks[0][0] == 1
+    assert any("new row went to the top of page 2" in w for w in result.warnings)
+    with pytest.raises(EditRejected, match="add it below the row above"):
+        add_row(TABLE, 0, ref.id, ref.text, "above", ["NEW-1", "", ""])
 
 
 # Through the website's API -------------------------------------------------------------------

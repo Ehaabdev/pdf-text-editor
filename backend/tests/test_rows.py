@@ -126,11 +126,7 @@ def test_refused_with_a_reason():
     line = line_in_row(FRENCH, 1)
     with pytest.raises(EditRejected, match="doesn't fit in its cell"):
         add_row(FRENCH, 0, line.id, line.text, "below", ["", "A quantity far too long for this narrow column of the table", "", ""])
-    # A table that fills its page: nothing goes onto the next one (yet).
-    full = (FIXTURES / "flow-table" / "flow-table-chrome.pdf").read_bytes()
-    line = line_in_row(full, 30)
-    with pytest.raises(EditRejected, match="no room on this page"):
-        add_row(full, 0, line.id, line.text, "below", ["x", "", ""])
+    # (A table that fills its page: rows flow onto the next one, see test_overflow.py.)
 
 
 def test_a_box_at_the_bottom_of_the_page_stays_while_the_rows_move():
