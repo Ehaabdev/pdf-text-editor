@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import columns, config, dragging, exporting, images, limits, rows, scaling
+from . import columns, config, dragging, exporting, images, limits, pages, rows, scaling
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
 from .adding import add_line
 from .deleting import delete_lines
@@ -274,6 +274,12 @@ class AdditionRequest(BaseModel):
     item: bool = False
 
 
+class PageRequest(BaseModel):
+    revision: int
+    page: int  # the page deleted or moved; for a new page, the page it goes after
+    to: int | None = None  # moving: where the page ends up
+
+
 class RowRequest(BaseModel):
     revision: int
     page: int
@@ -503,6 +509,42 @@ async def delete_table_row(doc_id: str, body: RowRequest):
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return _outcome(meta, result)
+
+
+async def _page_change(doc_id: str, body: PageRequest, kind: str, summary: str, do) -> dict:
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(do, src)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, _entry(kind, summary, result))
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/pages/delete")
+async def delete_whole_page(doc_id: str, body: PageRequest):
+    """A page taken out of the document."""
+    return await _page_change(doc_id, body, "delete", f"Deleted page {body.page + 1}", lambda src: pages.delete_page(src, body.page))
+
+
+@app.post("/api/documents/{doc_id}/pages/add")
+async def add_whole_page(doc_id: str, body: PageRequest):
+    """A new page after a page, like it: its size, header and footer."""
+    return await _page_change(doc_id, body, "add", f"Added a page after page {body.page + 1}", lambda src: pages.add_page(src, body.page))
+
+
+@app.post("/api/documents/{doc_id}/pages/move")
+async def move_whole_page(doc_id: str, body: PageRequest):
+    """A page taken to another place in the document."""
+    if body.to is None:
+        raise HTTPException(422, "Say where the page goes.")
+    return await _page_change(doc_id, body, "move", f"Moved page {body.page + 1} to page {body.to + 1}", lambda src: pages.move_page(src, body.page, body.to))
 
 
 @app.post("/api/documents/{doc_id}/columns/add")
