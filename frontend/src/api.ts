@@ -29,6 +29,8 @@ export type DocInfo = {
   version: number;
   history: Change[];
   pageCount: number;
+  /** Pages in the original: text that flows on can add pages after them. */
+  originalPageCount: number;
   pages: PageSize[];
   isSigned: boolean;
 };
@@ -379,7 +381,9 @@ export async function spotPlan(doc: DocInfo, page: number, x: number, y: number)
 }
 
 /** Add text at a point on the page (in points, as displayed), in the style of a line. */
-export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: string, at: [number, number]): Promise<EditOutcome> {
+/** Text at a point, in the style of `styleOf`: a line on this page, or on page
+ *  `stylePage` (a page with no text of its own, like a new one). */
+export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: string, at: [number, number], stylePage = page): Promise<EditOutcome> {
   return postJson(`/api/documents/${doc.id}/additions`, {
     revision: doc.revision,
     page,
@@ -387,6 +391,7 @@ export function addTextAt(doc: DocInfo, page: number, styleOf: TextLine, text: s
     oldText: styleOf.text,
     text,
     at,
+    ...(stylePage !== page ? { stylePage } : {}),
   });
 }
 
@@ -416,6 +421,21 @@ export function deleteLines(doc: DocInfo, lines: PickedLine[]): Promise<EditOutc
     revision: doc.revision,
     lines: lines.map(({ page, line }) => ({ page, lineId: line.id, oldText: line.text })),
   });
+}
+
+/** A page taken out of the document (what points at it goes too). */
+export function deletePage(doc: DocInfo, page: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/pages/delete`, { revision: doc.revision, page });
+}
+
+/** A new page after page `after`, like it: its size, header and footer. */
+export function addPage(doc: DocInfo, after: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/pages/add`, { revision: doc.revision, page: after });
+}
+
+/** Page `page` taken to place `to` (where it ends up). */
+export function movePage(doc: DocInfo, page: number, to: number): Promise<EditOutcome> {
+  return postJson(`/api/documents/${doc.id}/pages/move`, { revision: doc.revision, page, to });
 }
 
 export function undoEdit(doc: DocInfo): Promise<DocInfo> {

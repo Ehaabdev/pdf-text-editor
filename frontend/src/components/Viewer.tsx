@@ -2,12 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import {
   ApiError,
   addImage,
+  addPage,
   deleteImage,
   deleteLines,
+  deletePage,
   getLines,
   goToVersion,
   moveImage,
   moveLines,
+  movePage,
   pictureUrl,
   previewMove,
   redoEdit,
@@ -36,7 +39,7 @@ import PageView, { type Flash } from "./PageView";
 import SelectionPanel from "./SelectionPanel";
 import PagesPanel from "./PagesPanel";
 import ThemeSwitch from "./ThemeSwitch";
-import Thumbnails from "./Thumbnails";
+import Thumbnails, { type PageEdits } from "./Thumbnails";
 import Tour, { editorSteps, type Step } from "./Tour";
 
 // On wide screens an A4 page (595pt) shows about 860px wide at 100%.
@@ -166,6 +169,14 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
     onChange(outcome.document);
     lightUp(outcome.document, outcome.document.history.at(-1));
     offerCheck(outcome);
+    // The page was full and the new line went to the next page: show it there.
+    const mark = outcome.document.history.at(-1)?.marks?.[0];
+    const from = picked[0]?.page;
+    if (mark && from !== undefined && mark[0] !== from) {
+      const [page, x0, y0, x1, y1] = mark;
+      const size = outcome.document.pages[page];
+      setTimeout(() => scrollTo(page, (x0 + x1) / 2, (y0 + y1) / 2, size), 60);
+    }
     const moved = (outcome.moved ?? 0) > 0;
     report(
       change === "row added"
@@ -182,6 +193,12 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
               ? "Row resized. What was below it moved to make room."
             : change === "table resized"
               ? "Table resized. Everything in it, text included, kept its look."
+            : change === "page deleted"
+              ? "Page deleted. Undo brings it back."
+            : change === "page added"
+              ? "Page added."
+            : change === "page moved"
+              ? "Page moved."
           : change === "deleted"
             ? moved ? "Line deleted. The text below moved up." : "Line deleted."
             : change === "added"
@@ -306,6 +323,37 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
 
   // A table's handles on the page (any line of it says which table): resizing it.
   const [resizing, setResizing] = useState(false);
+
+  // Whole pages, from the pages list: one change each, undone as any.
+  const [pageBusy, setPageBusy] = useState(false);
+  async function pageChange(call: () => Promise<EditOutcome>, change: Change, failed: string, then?: (o: EditOutcome) => void) {
+    if (pageBusy) return;
+    setPageBusy(true);
+    setWorking(true);
+    try {
+      const outcome = await call();
+      edited(outcome, change);
+      then?.(outcome);
+    } catch (e) {
+      setNotice({ text: e instanceof ApiError ? e.message : failed, tone: "error" });
+    } finally {
+      setPageBusy(false);
+      setWorking(false);
+    }
+  }
+  const pageEdits: PageEdits | undefined =
+    compare || frame
+      ? undefined
+      : {
+          busy: pageBusy,
+          onDelete: (page) => void pageChange(() => deletePage(doc, page), "page deleted", "Couldn't delete the page. Try again."),
+          onAdd: () =>
+            void pageChange(() => addPage(doc, doc.pageCount - 1), "page added", "Couldn't add a page. Try again.", (o) =>
+              setTimeout(() => jumpTo(o.document.pageCount - 1), 60),
+            ),
+          onMove: (page, to) =>
+            void pageChange(() => movePage(doc, page, to), "page moved", "Couldn't move the page. Try again.", () => setTimeout(() => jumpTo(to), 60)),
+        };
 
   async function resizeTable(page: number, line: TextLine, width: number) {
     if (resizing) return;
@@ -581,12 +629,11 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
   }
 
   /** Scroll so a spot on a page (points, as displayed) is in the middle of the view. */
-  function scrollTo(page: number, x: number, y: number) {
+  function scrollTo(page: number, x: number, y: number, size = doc.pages[page]) {
     const el = scroller.current;
     const figure = document.getElementById(`page-${page}`);
-    if (!el || !figure) return;
+    if (!el || !figure || !size) return;
     const box = (figure.querySelector(".page") as HTMLElement | null) ?? figure;
-    const size = doc.pages[page];
     // Measured on screen: the page's place within the scrolled pages, whatever its parents.
     const area = el.getBoundingClientRect();
     const r = box.getBoundingClientRect();
@@ -827,6 +874,7 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         version={shownVersion}
         current={current}
         onClose={() => setShowPages(false)}
+        edit={pageEdits}
         onJump={(page) => {
           jumpTo(page);
           // On phones the panel covers the pages: close it to show the page.
@@ -998,12 +1046,10 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
         </div>
       </header>
 
-      <div className={`workspace${doc.pageCount > 1 ? " workspace--rail" : ""}`}>
-        {doc.pageCount > 1 && (
-          <nav className="page-rail" aria-label="Pages">
-            <Thumbnails doc={doc} version={shownVersion} current={current} onJump={jumpTo} />
-          </nav>
-        )}
+      <div className="workspace workspace--rail">
+        <nav className="page-rail" aria-label="Pages">
+          <Thumbnails doc={doc} version={shownVersion} current={current} onJump={jumpTo} edit={pageEdits} />
+        </nav>
         <section className="canvas" aria-label="Pages">
           {doc.isSigned && (
             <p className="banner" role="status">
@@ -1068,20 +1114,18 @@ export default function Viewer({ doc, onClose, onChange }: { doc: DocInfo; onClo
             </div>
           </main>
 
-          {doc.pageCount > 1 && (
-            <button
-              className="page-chip"
-              aria-pressed={showPages}
-              onClick={() => {
-                setShowChanges(false);
-                setShowPages((v) => !v);
-              }}
-              aria-label={`Pages: page ${current + 1} of ${doc.pageCount}`}
-            >
-              <Icon d={PAGES} size={16} />
-              {current + 1} / {doc.pageCount}
-            </button>
-          )}
+          <button
+            className="page-chip"
+            aria-pressed={showPages}
+            onClick={() => {
+              setShowChanges(false);
+              setShowPages((v) => !v);
+            }}
+            aria-label={`Pages: page ${current + 1} of ${doc.pageCount}`}
+          >
+            <Icon d={PAGES} size={16} />
+            {current + 1} / {doc.pageCount}
+          </button>
 
           <div className="canvas-zoom">{zoomControls}</div>
         </section>

@@ -16,7 +16,8 @@ type Props = {
   onPlan?: (plan: SpotPlan | null) => void;
 };
 
-type Style = { key: string; line: TextLine; distance: number };
+/** A style, shown by a line in it: on the spot's page, or (a page with no text) another. */
+type Style = { key: string; line: TextLine; distance: number; page: number };
 
 function distance(line: TextLine, x: number, y: number) {
   const [x0, y0, x1, y1] = line.bbox;
@@ -25,18 +26,22 @@ function distance(line: TextLine, x: number, y: number) {
   return Math.hypot(dx, dy);
 }
 
-/** The text styles on the page, nearest to the spot first, each shown by its nearest line. */
-function stylesNear(lines: TextLine[], spot: Spot): Style[] {
+/** The text styles on a page, nearest to the spot first, each shown by its nearest line. */
+function stylesNear(lines: TextLine[], spot: Spot, page = spot.page): Style[] {
   const best = new Map<string, Style>();
   for (const line of lines) {
     if (!line.text.trim()) continue;
     const key = [line.font, Math.round(line.size * 2) / 2, line.color, line.bold, line.italic].join("|");
     const d = distance(line, spot.x, spot.y);
     const seen = best.get(key);
-    if (!seen || d < seen.distance) best.set(key, { key, line, distance: d });
+    if (!seen || d < seen.distance) best.set(key, { key, line, distance: d, page });
   }
   return [...best.values()].sort((a, b) => a.distance - b.distance);
 }
+
+/** A page with no text of its own (a new one): the styles of the pages nearest to it,
+ *  each style once, from the nearest page that has it. */
+const BORROW_FROM = 4;
 
 const SHOWN = 4;
 
@@ -71,7 +76,31 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking, o
     };
   }, [doc, spot.page]);
 
-  const styles = useMemo(() => (lines ? stylesNear(lines, spot) : []), [lines, spot]);
+  const own = useMemo(() => (lines ? stylesNear(lines, spot) : []), [lines, spot]);
+  // No text in the page's body yet (a new page: at most its header and footer).
+  const height = doc.pages[spot.page]?.height ?? 842;
+  const bodyless = lines !== null && !lines.some((l) => l.text.trim() && (l.bbox[1] + l.bbox[3]) / 2 > 0.12 * height && (l.bbox[1] + l.bbox[3]) / 2 < 0.88 * height);
+  const [borrowed, setBorrowed] = useState<Style[] | null>(null);
+  useEffect(() => {
+    setBorrowed(null);
+    if (lines === null || !bodyless) return;
+    let alive = true;
+    const near: number[] = [];
+    for (let d = 1; near.length < BORROW_FROM && d < doc.pageCount; d++) {
+      if (spot.page - d >= 0) near.push(spot.page - d);
+      if (spot.page + d < doc.pageCount && near.length < BORROW_FROM) near.push(spot.page + d);
+    }
+    Promise.all(near.map((p) => getLines(doc, p).then((r) => stylesNear(r.lines, spot, p)).catch(() => [] as Style[]))).then((found) => {
+      if (!alive) return;
+      const seen = new Set<string>();
+      setBorrowed(found.flat().filter((s) => !seen.has(s.key) && seen.add(s.key)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [doc, lines, bodyless, spot]);
+  // Borrowed first (body text, most likely what's wanted), then the page's own.
+  const styles = bodyless ? [...(borrowed ?? []).filter((b) => !own.some((o) => o.key === b.key)), ...own] : own;
   // A new spot: the nearest style again, and what adding there will do.
   useEffect(() => {
     setChoice(null);
@@ -113,7 +142,7 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking, o
       if (ref && !atSpot) {
         onAdded(await addLine(doc, spot.page, ref, draft, plan.where, plan.kind === "item" && asItem));
       } else if (chosen) {
-        onAdded(await addTextAt(doc, spot.page, ref ?? chosen.line, draft, [spot.x, spot.y]));
+        onAdded(await addTextAt(doc, spot.page, ref ?? chosen.line, draft, [spot.x, spot.y], ref ? spot.page : chosen.page));
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Try again.");
@@ -185,9 +214,11 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking, o
         <fieldset className="style-choice" disabled={saving}>
           <legend>In the style of</legend>
           {lines === null && !error && <p className="edit-note">Reading the page…</p>}
-          {lines !== null && styles.length === 0 && (
-            <p className="line-warning">This page has no text to take a style from.</p>
+          {bodyless && borrowed === null && <p className="edit-note">Looking for styles on the pages nearby…</p>}
+          {bodyless && borrowed !== null && styles.length === 0 && (
+            <p className="line-warning">There's no text on this page or the pages nearby to take a style from.</p>
           )}
+          {bodyless && borrowed !== null && borrowed.length > 0 && <p className="edit-note">This page has no text yet: you can use the styles of the pages nearby.</p>}
           {shown.map((s) => (
             <label key={s.key} className={`style-option${chosen?.key === s.key ? " style-option--on" : ""}`}>
               <input
@@ -204,6 +235,7 @@ export default function AddTextPanel({ doc, spot, onClose, onAdded, onWorking, o
                   {fontLabel(s.line.font)}, {pointSize(s.line.size)}
                   {s.line.bold || s.line.italic ? `, ${styleLabel(s.line.bold, s.line.italic).toLowerCase()}` : ""}{" "}
                   <span className="swatch" style={{ background: `#${s.line.color}` }} aria-hidden="true" />
+                  {s.page !== spot.page && <span className="style-option-page"> from page {s.page + 1}</span>}
                 </span>
                 <span className="style-option-sample" dir="auto">
                   like “{s.line.display.length > 32 ? `${s.line.display.slice(0, 32)}…` : s.line.display}”

@@ -144,6 +144,7 @@ Deleting every line of every test document and private sample (656 lines), one a
 
 **Below or above a line** (the line panel's "Add line below" and "Add line above"):
 - **Making room:** first the text below (adding above: the line itself and the text below it) moves down one line spacing, as in a word processor (see [Moving text](#moving-text)); then the new line goes into the room made. Where the text can't move, the line still goes in if there's room for it at full line spacing; squeezed in, it's refused with the reason.
+- **A full page:** the lines that no longer fit flow onto the next page, and the new line itself goes to the top of the next page when it's the one that doesn't fit (see [When a page is full](#when-a-page-is-full)).
 - **Spacing:** one line spacing away. It's measured in the line's paragraph; failing that, it's the page's most common spacing for that font; failing that, the font's own line height, which Word uses for single spacing.
 - **Alignment:** as its paragraph is: start-aligned, centered, or flush right. Arabic under an English line starts at the column's right edge.
 - **Lists** (`backend/app/lists.py`): below a list item's last line, or above its first, the new line becomes the list's next item ("Make it item 4.", ticked unless you untick it). Its number goes where the numbers are, in the list's own number font, with its text at the item's tab; a bullet is copied as drawn. The items after it are renumbered in the same change, each an ordinary checked edit of its number; if one can't be made exactly, nothing changes. Numbers, letters, Roman numerals and Arabic-Indic digits are counted on. Where English and Arabic items take turns (1., ١., 2., ٢.), each list counts on past the other language's lines. Unticked, text under an item lines up with the item's text.
@@ -192,7 +193,7 @@ What moves is everything drawn in the spot's column below it: text, underlines a
 - a table border between rows;
 - anything only partly in the column.
 
-Nothing goes onto another page or into the bottom margin. The margin is taken from the evidence, the lowest body text on the pages around; failing that, it's as wide as the narrower side margin. A picture or color behind the whole page stays behind it, and Chrome's page-sized clips that cut the gaps in an underline move with it.
+Nothing goes into the bottom margin: what would, flows onto the next page when a line is added (see [When a page is full](#when-a-page-is-full)). The margin is taken from the evidence, the lowest body text on the pages around; failing that, it's as wide as the narrower side margin. A picture or color behind the whole page stays behind it, and Chrome's page-sized clips that cut the gaps in an underline move with it.
 
 Each moved text object, shape and picture keeps its own instructions: a translation is put just before it and undone just after it. Drawing order, clipping, and later edits of the moved lines are as before.
 
@@ -204,6 +205,43 @@ Before it is accepted:
 - drawn on its own, the block looks the same at its new place, pixel for pixel. It's rendered at a zoom that moves it by a whole number of pixels, so every glyph lands on the same fraction of a pixel. PDFium, which rounds glyph positions to whole pixels, gets one pixel of slack;
 - every line on the page reads the same, the moved ones at their new place;
 - no other page changes.
+
+### When a page is full
+
+`backend/app/overflow.py` handles adding a line to a full page: the lines that no longer fit go to the top of the next page, under its header, as in a word processor. That page's own text moves down to make room, and so on, page after page. Past the last page, a new page is added with the same size, header and footer. If the header or footer has a number in it, the website says to check the page number and the page count ("Page 1 of 1" is copied as it is). When the new line is the one that doesn't fit (added under the last line), it goes to the top of the next page. When there's already room for it at full line spacing, nothing moves to another page.
+
+What goes on is whole lines, with what's drawn with them (underlines, links, highlights), all below what stays. A table with borders goes by whole rows: from the first row anything of it would go from, all its cells, borders and shading. The border between the rows that stay and those that go stays, and is drawn on the next page too, as the top of the rows there; under them, a little room before the next page's own text. The table's heading row isn't repeated on the next page (Word repeats it only when asked to). `backend/app/pagecopy.py` draws them again on the other page:
+- each in its own `q ... Q`, after the page's own drawing (wrapped in `q ... Q` too);
+- with the state it was drawn in: every transformation, color, line style, graphics state and text state in effect where it was, and the clipping (Chrome cuts the gaps in an underline with clips);
+- with its fonts, pictures, color spaces and patterns brought into that page's resources: under the same name when that's free, else under a new one;
+- without Word's tags (marked content), which would say the same text is in two places.
+
+Each step is checked before the next:
+- **drawn there:** every glyph of that page as it was, then the new ones, each where it was and as far up as the move, in the same font and size; drawn alone, pixel for pixel what they were (MuPDF and PDFium, at a zoom where the move is whole pixels); nothing else on that page changes;
+- **taken off:** the page is pixel for pixel what it would be drawn without them, and their links go with them;
+- **the room made** on each page is checked as any move ([Moving text](#moving-text));
+- every other page is unchanged.
+
+What sits at the page's bottom on its own stays put, and the text above moves into the space over it: a footnote (Word's short separator line and what's under it), or anything far below the rest (a box placed at the bottom of the page, under an empty gap of four letters' height or more).
+
+It's refused, with the reason: text side by side in columns (it flows down its own column, not onto the next page); a table cell (cells don't grow); a merged table cell, or a table border or shading drawn across the rows on both sides of the page's end; a box drawn in strips, a line each (Word's shaded or bordered paragraph, a text box), that the page's end would cut in two; a next page of another size or turned; more text than one page holds; more than 20 pages to flow over.
+
+Compared with the original, a page that was added shows as "This page wasn't in the original". Undo takes it away again.
+
+Adding a line under every line of the test documents (743 lines), compared with before: 163 lines refused for a full page are now added, the text that no longer fits going onto the next page; 7 lines under a full page's last line now go to the top of the next page instead of into the bottom margin; nothing that worked before is refused, and nothing else changes. After each, the whole document's text reads as before, with the new line once, right after its line. Pushing the Word test documents' tables down a line at a time: their rows go onto the next page one by one, then the whole table, which then splits again over the next two pages, its text in order at every step.
+
+Known limits: after many lines pushed in on a page with a box at its bottom, the page-sized clipping Word draws with can make a pixel row of the box's edge come out differently, and the change is refused; tables without borders flow as lines of text.
+
+## Pages
+
+In the list of pages (`backend/app/pages.py`), each page has an X to delete it, the list ends with a + to add a page, and a page is moved by dragging it (on a touch screen, hold it first). From the keyboard: Alt+arrows move the page in focus, Delete deletes it. Each is one change, undone as any.
+
+- **Deleting** takes the page out with what points at it: links on other pages that open it, its bookmarks (their sub-bookmarks that open other pages move up a level), and form fields only on it. The only page can't be deleted.
+- **Adding** puts a new page after the last one, like it: its size and turn, its header and footer drawn again (as when text flows onto a new page). Where those can't be drawn again, it's blank.
+- **Moving** takes the page itself, so links to it still go to it.
+- **Text on a page with no text yet** (a new one): "Add text" offers the styles of the pages nearby ("from page 2"). The text goes in from steps each checked as on their own: a line in that style drawn on the page for a moment, out of the way (its font comes with it), the text added at the spot in its style, then that line deleted.
+- Checked: every other page is the same page as before, drawn and reading the same, in the order asked for.
+- Printed page numbers ("Page 2 of 5") don't change by themselves: the website says to check them. Page labels and a tagged PDF's structure aren't changed either.
 
 ## Pictures
 
@@ -238,11 +276,12 @@ Click a line in a table with borders: the panel adds a row below or above its ro
   - The new row copies the row's own borders and shading, not a merged cell's: its shading is drawn once for all its rows (Word also shades each paragraph in it, a strip behind each: those strips go with the text, or stay where they're unseen on the cell's own shading).
   - Refused, with the reason: a cell that only looks merged (two cells without a border between them, each with its own clipping or shading, as Word draws them); a merged cell whose text would read as one line with the next cell's once the rows move (the editor couldn't tell them apart after; smaller text beside a line used to be read as part of it across a cell's border when Word's spaces ran across the border: no more). While rows move, a merged cell's text is held still, and the page can read oddly for a moment; at the end every line must read as before, on its own, its ends in place.
   - On the test tables, every row change from every cell: 110 done; 7 refused (deleting, clicked on a tall cell). On the samples' merged tables: 57 of 66 done; refused: 5 a tall cell clicked to delete, 4 cells that only look merged.
-- It's refused, with the reason, where it can't be done exactly: no room left at the bottom of the page (nothing goes onto the next page), a cell's text too long for its cell (cells don't wrap), a table without borders, lines drawn through all the rows, or a table's only row.
+- **A full page:** the rows that no longer fit go to the top of the next page, whole, as text does ([When a page is full](#when-a-page-is-full)); then the new row goes in. Under the last row of a table that fills its page, the new row goes to the top of the next page: the last row is drawn again there (and stays where it is), a new row is added above that copy, and the copy is deleted, each step checked as on its own. Above a last row that would itself have to go, it's refused: add the row below the row above instead.
+- It's refused, with the reason, where it can't be done exactly: a cell's text too long for its cell (cells don't wrap), a table without borders, lines drawn through all the rows, a merged cell at the page's end, or a table's only row.
 - Each step is checked as other changes are: what moves is exactly where it was, one row lower or higher; the copied borders and shading, drawn alone, look exactly like the row's own, pixel for pixel; nothing outside the row's place changes. The steps make one change: one Undo takes it all back.
 - Totals aren't recalculated: a "Total" row stays as it was, and can be edited like any line.
 
-On every bordered table of the test documents, adding a row below and above each row and deleting each row: 28 of 34, 27 of 34 and 32 of 34 are done; the others are refused, for a full page (6), a table's only row, and a line with an icon just above a table, which reads differently once the table moves.
+On every bordered table of the test documents (55 rows, the merged tables included), adding a row below and above each row and deleting each row: 55, 54 and 50 are done; refused: deleting a row by a cell merged over several rows (3), a table's only row, and a line with an icon just above a table, which reads differently once the table moves (2). None is refused for a full page any more (12 were): the Word documents' footnote and bottom box stay put while the rows move. On the private samples, nothing changes.
 
 ## Table columns
 
@@ -319,7 +358,7 @@ Known limits: shapes drawn with lines (a logo made of shapes, a chart) don't com
 
 ## The website
 
-- A list of small page pictures sits beside the pages; on phones, the page number button opens it.
+- A list of small page pictures sits beside the pages; on phones, the page number button opens it. Pages are deleted, added and moved there ([Pages](#pages)).
 - A selected line shows in the panel magnified from the page itself, with its font, size and color.
 - The magnifier (its button, or the M key) shows the print up close under the mouse.
 - Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). The Delete key deletes the selected lines.
@@ -386,6 +425,8 @@ Put real PDFs to test with in `samples/`. That folder is never committed.
 `backend/tests/fixtures/additions/` has lists (numbered and bulleted, English and Arabic), a centered title, a justified paragraph, a right-aligned line and a table with an empty cell, with free space after each, for adding text. It is saved by Word and printed by Chrome.
 
 `backend/tests/fixtures/decorations/` has one document of underlines (single, double, colored, part of a word, under a link), strikethroughs and highlights, next to look-alikes that belong to the page (a paragraph border, a table border right under cell text, the footnote separator). It is saved by Word and printed by Chrome.
+
+`backend/tests/fixtures/flow/` and `backend/tests/fixtures/flow-full/` are terms of delivery printed by Chrome with a header and a "Page X of Y" footer: one with a full first page and a short second page, one with a single full page whose last line has a link.
 
 `backend/tests/fixtures/images/` has a report with pictures: a logo (in Word's version, in the header of every page), a photo, an icon inside a line, a see-through signature and stamp in a table, Arabic text, and the same signature on page 2. Chrome's version also has a logo drawn as shapes. `make_images.py` draws the pictures; `images.js` (Word) and `images.html` (Chrome) build the document.
 

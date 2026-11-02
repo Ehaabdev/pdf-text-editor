@@ -126,11 +126,17 @@ def test_refused_with_a_reason():
     line = line_in_row(FRENCH, 1)
     with pytest.raises(EditRejected, match="doesn't fit in its cell"):
         add_row(FRENCH, 0, line.id, line.text, "below", ["", "A quantity far too long for this narrow column of the table", "", ""])
-    # A full page: nothing goes onto the next one.
+    # (A table that fills its page: rows flow onto the next one, see test_overflow.py.)
+
+
+def test_a_box_at_the_bottom_of_the_page_stays_while_the_rows_move():
+    """The Word report's "Highlight" box sits at the page's bottom, far below the table: a
+    new row moves the text between them down, and the box stays put."""
     english = (FIXTURES / "word" / "english-styles-word.pdf").read_bytes()
     line = line_in_row(english, 1)
-    with pytest.raises(EditRejected, match="no room on this page"):
-        add_row(english, 0, line.id, line.text, "below", ["x", "", "", ""])
+    result = add_row(english, 0, line.id, line.text, "below", ["x", "", "", ""])
+    box = lambda src: [l.bbox for l in page_lines(pymupdf.open("pdf", src)[0]) if l.text.startswith("Highlight")]
+    assert box(result.pdf) == box(english) != []
     # A table's only row.
     contract = (FIXTURES / "word" / "bilingual-contract-word.pdf").read_bytes()
     line = line_in_row(contract, 0, page_no=1)

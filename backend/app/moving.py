@@ -28,6 +28,7 @@ import pikepdf
 import pymupdf
 
 from . import decorations
+from .tables import find_tables
 from .changes import (
     EditRejected,
     LinkChange,
@@ -49,6 +50,19 @@ from .textlayout import Line, page_lines
 
 class MoveRefused(Exception):
     """The text can't be moved exactly. The message says why, to follow "because" or ":"."""
+
+
+class Overflow(MoveRefused):
+    """The text below would run past the page's end (its bottom margin, or its footer): the
+    pieces that wouldn't fit (whole lines, below everything that would stay), for the next
+    page to take (overflow.py). Asked for with plan(split=True)."""
+
+    def __init__(self, why: str, over: list, stay: list, floor: float, both: list | None = None):
+        super().__init__(why)
+        self.over = over  # pieces (text, shapes, pictures) that go
+        self.stay = stay  # those that would still fit, moved
+        self.floor = floor  # PDF y: how low what moves may go
+        self.both = both or []  # of those that stay, the ones drawn on the next page too (a table's border)
 
 
 _DIGITS = re.compile(r"[0-9٠-٩۰-۹]+")
@@ -271,7 +285,7 @@ def bottom_limit(doc: pymupdf.Document, page_no: int, lines: list[Line], crop: B
     return limit, footers
 
 
-def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: frozenset = frozenset()) -> Shift | None:
+def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, lines: list[Line], anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: frozenset = frozenset(), split: bool = False) -> Shift | None:
     """What moves, and whether it can: everything in the anchor's column below `cut` (PDF
     y), down by dy (up when negative). None when nothing is below. `column` (PDF x) says
     which column instead: a whole table's width, for a new or deleted row. The pieces
@@ -371,7 +385,9 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         if cell and across_cell(p):
             stoppers.append(p)  # a border between rows (Word draws one per cell)
             continue
-        if not inside or in_footer(p) or y1 < limit:
+        # In the bottom margin, what leaves ink stays; Word's empty paragraph marks, pushed
+        # there by an earlier change, move on with the text.
+        if not inside or in_footer(p) or (y1 < limit and _inked(rp, p)):
             stoppers.append(p)
         else:
             moving.append(p)
@@ -382,6 +398,16 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         if across:
             raise MoveRefused("text below runs into a line or border that has to stay")
         moving = [p for p in moving if p.box[1] >= stop - 0.01]
+    if dy > 0 and moving and not cell:
+        # Running past the page's end: what's anchored at its bottom stays, and the text
+        # above moves into the space over it.
+        floor = limit if stop is None else max(limit, stop + 0.3 * size)
+        if any(_past(rp, p, dy, floor, crop) for p in moving):
+            kept = _anchored(rp, moving, dy, size, cx0, cx1, crop)
+            if kept:
+                stoppers += [p for p in moving if p.start in kept]
+                moving = [p for p in moving if p.start not in kept]
+                stop = max(p.box[3] for p in stoppers)
     if not moving:
         # Nothing to move in a table cell: the new line itself must still fit above its border.
         if cell and cell_floor is not None and dy > 0 and anchor[1] - dy < cell_floor + 0.3 * size:
@@ -421,7 +447,11 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
                 what = "the text below would run into the page's footer"
             else:
                 what = "the text below would run into a line or border below it"
-        if box[1] - dy < floor - 0.01:
+        if any(_past(rp, p, dy, floor, crop) for p in drawn):
+            blocker = max(stoppers, key=lambda p: p.box[3]) if stoppers else None
+            page_end = blocker is None or floor <= limit + 0.01 or blocker.kind == "text"
+            if split and not cell and page_end:
+                raise _overflow(rp, lines, drawn, dy, floor, what, page, crop)
             raise MoveRefused(what)
     else:
         visible = {t for l in lines for t in l.members}
@@ -475,6 +505,123 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
     if not moved_lines and not any(p.kind in ("path", "image") for p in moving):
         return None  # only invisible marks (Word's empty paragraphs): nothing to make room for
     return Shift(page_no, dy, moving, links, box, moved_lines)
+
+
+def _anchored(rp: Replay, pieces: list[Piece], dy: float, size: float, cx0: float, cx1: float, crop: Box) -> set[int]:
+    """What sits at the page's bottom on its own, to stay put when the text above moves down
+    (their first instructions; none when there's no such thing):
+    - a footnote: Word's separator (a short rule at the column's edge, with no text right
+      over it as over an underline) and everything under it;
+    - whatever sits far below the rest (a box placed at the bottom): under an empty gap
+      of four letters' height at least, with room left in it for the move.
+    Letters count where they leave ink; text that leaves none (Word's empty paragraphs)
+    goes with the side it's on."""
+    width = cx1 - cx0
+    inked = [p for p in pieces if p.kind != "text" or any(not _blank(rp, rp.glyphs[t]) for t in p.glyphs)]
+    for rule in inked:
+        x0, y0, x1, y1 = rule.box
+        if rule.kind != "path" or y1 - y0 > 1.5 or not 0.15 * width <= x1 - x0 <= 0.5 * width:
+            continue
+        if not (abs(x0 - cx0) <= 3 or abs(x1 - cx1) <= 3) or y1 > crop[1] + 0.5 * (crop[3] - crop[1]):
+            continue
+        over = [p for p in inked if p.kind == "text" and y1 - 0.5 <= p.box[1] <= y1 + 4 and min(p.box[2], x1) > max(p.box[0], x0)]
+        under = [p for p in inked if p is not rule and p.box[3] <= y1 + 0.5]
+        if not over and any(p.kind == "text" for p in under):
+            return {p.start for p in pieces if (p.box[1] + p.box[3]) / 2 <= y1 + 0.5}
+    need = max(dy + 0.3 * size, 4 * size)
+    ordered = sorted(inked, key=lambda p: p.box[1])
+    top = None
+    for p in ordered:
+        if top is not None and p.box[1] - top >= need:
+            return {q.start for q in pieces if (q.box[1] + q.box[3]) / 2 < top + need / 2}
+        top = p.box[3] if top is None else max(top, p.box[3])
+    return set()
+
+
+def _inked(rp: Replay, p: Piece) -> bool:
+    """Whether a piece leaves ink: not text whose every letter is blank (Word's empty
+    paragraphs, a space)."""
+    return p.kind != "text" or any(not _blank(rp, rp.glyphs[t]) for t in p.glyphs)
+
+
+def _past(rp: Replay, p: Piece, dy: float, floor: float, crop: Box) -> bool:
+    """Whether a piece moved dy down would run past the page's end: what leaves ink, past
+    `floor`; a mark that leaves none, off the paper."""
+    return p.box[1] - dy < (floor if _inked(rp, p) else crop[1]) - 0.01
+
+
+def _overflow(rp: Replay, lines: list[Line], drawn: list[Piece], dy: float, floor: float, what: str, page: pymupdf.Page | None = None, crop: Box | None = None) -> MoveRefused:
+    """What would run past the page's end, split off as whole lines (with what's drawn with
+    them), all below what stays: an Overflow, or the refusal when it can't be split so.
+
+    A table with borders goes by whole rows, from the first row anything of it goes from.
+    The border between that row and the one above stays, and is drawn again on the next
+    page too (`both`): the bottom of the rows that stay, the top of those that go. Refused:
+    a merged cell, or a border or shading drawn across the rows on both sides."""
+    line_of = {t: l.id for l in lines for t in l.members}
+    tables = []
+    if page is not None:
+        for t in find_tables(page, lines):
+            if t.ruled:
+                tables.append((t, _pdf(page, t.bbox), [_pdf(page, (0, y, 1, y))[1] for y in t.rows]))
+
+    def table_of(p: Piece):
+        return next((k for k, (_, b, _) in enumerate(tables) if b[0] - 2 <= p.box[0] and p.box[2] <= b[2] + 2 and b[1] - 2 <= p.box[1] and p.box[3] <= b[3] + 2), None)
+
+    where = {p.start: table_of(p) for p in drawn}
+    mid = lambda p: (p.box[1] + p.box[3]) / 2
+    crop = crop or (0.0, -1e9, 0.0, 0.0)
+    over = {p.start for p in drawn if _past(rp, p, dy, floor, crop)}
+    both: set[int] = set()
+    while True:
+        gone = {line_of[t] for p in drawn if p.start in over for t in p.glyphs if t in line_of}
+        more = {p.start for p in drawn if p.start not in over and any(line_of.get(t) in gone for t in p.glyphs)}
+        # Lines, boxes and pictures drawn at the height of what goes (an underline) go too,
+        # and marks that leave no ink under its top.
+        top = max((p.box[3] for p in drawn if p.start in over | more and _inked(rp, p)), default=None)
+        more |= {p.start for p in drawn if p.start not in over and (p.kind != "text" or not _inked(rp, p)) and where[p.start] is None and top is not None and mid(p) < top}
+        for k, (t, _, edges) in enumerate(tables):
+            inside = [p for p in drawn if where[p.start] == k]
+            going = [p for p in inside if p.start in over | more and p.start not in both]
+            if not going:
+                continue
+            # Each piece's row by its middle (edges: PDF y, top to bottom).
+            row_of = lambda y: min(max([i for i, e in enumerate(edges) if e >= y - 1.5], default=0), len(edges) - 2)
+            r = min(row_of(mid(p)) for p in going)
+            if any(c.row < r < c.row + c.rowspan for c in t.cells):
+                return MoveRefused("a merged table cell would be cut by the end of the page")
+            if r == 0:
+                more |= {p.start for p in inside}  # the whole table goes
+                continue
+            edge = edges[r]
+            for p in inside:
+                if abs(mid(p) - edge) <= 1.5 and p.box[3] - p.box[1] <= 3:
+                    both.add(p.start)  # the border between the rows: on both pages
+                elif mid(p) < edge:
+                    more.add(p.start)
+                elif p.box[1] < edge - 0.5:
+                    return MoveRefused("a table's border or shading reaches across the end of the page")
+        more -= over | both
+        if not more:
+            break
+        over |= more
+    over -= both
+    stay = [p for p in drawn if p.start not in over]
+    out = [p for p in drawn if p.start in over]
+    ends = [p for p in stay if p.start not in both]
+    if not out or (ends and max(p.box[3] for p in out) > min(p.box[1] for p in ends) + 0.5):
+        return MoveRefused(what)  # text side by side, or drawn together: no clean line between
+    if not any(_inked(rp, p) for p in out) or any(_past(rp, p, dy, floor, crop) for p in stay):
+        return MoveRefused(what)
+    # A box drawn in strips, a line each (Word's shading and borders of a paragraph or a
+    # text box): a strip that goes, touching one that stays, would cut the box in two.
+    for p in out:
+        for q in stay:
+            if where[p.start] is not None and where[p.start] == where[q.start]:
+                continue  # a table's rows: split above
+            if p.kind != "text" and q.kind != "text" and min(p.box[2], q.box[2]) - max(p.box[0], q.box[0]) > 0.5 and p.box[3] >= q.box[1] - 1.0:
+                return MoveRefused("a box below would be cut in two by the end of the page")
+    return Overflow(what, out, stay, floor, [p for p in drawn if p.start in both])
 
 
 def _cm(p: Piece, dy: float, dx: float = 0.0) -> tuple[list, list]:
@@ -713,7 +860,7 @@ def _differs_after_shift(before, after, area, zoom: float, sx: int, sy: int, sla
     return int(changed.sum()) > allow
 
 
-def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: dict | None = None, hold: frozenset = frozenset()) -> tuple[bytes, list, int, Shift] | None:
+def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, dy: float, column: tuple[float, float] | None = None, stretch: dict | None = None, hold: frozenset = frozenset(), split: bool = False) -> tuple[bytes, list, int, Shift] | None:
     """Move everything in the anchor's column below `cut` (PDF y) down by dy (up when
     negative). Returns (the new file, the areas that changed, how many lines moved, the
     shift), or None when there's nothing below. Raises MoveRefused.
@@ -734,7 +881,7 @@ def shift_below(src: bytes, page_no: int, anchor: Box, size: float, cut: float, 
         raise MoveRefused("the page is built in a way that can't be moved safely yet")
     lines = page_lines(page)
     stretch = stretch or {}
-    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column, frozenset(stretch) | hold)
+    shift = plan(pdf, doc, page_no, rp, lines, anchor, size, cut, dy, column, frozenset(stretch) | hold, split)
     if shift is None:
         if not stretch:
             return None

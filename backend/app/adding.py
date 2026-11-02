@@ -29,7 +29,7 @@ import pikepdf
 import pymupdf
 import pypdfium2 as pdfium
 
-from . import decorations, moving
+from . import decorations, moving, overflow
 from . import fonts as fontlib
 from .changes import (
     EditRejected,
@@ -42,6 +42,7 @@ from .changes import (
     outside,
     render,
     to_display,
+    to_pdf,
 )
 from .editing import (
     EditResult,
@@ -325,20 +326,30 @@ def add_line(
     # Where it goes: one line spacing from the reference, aligned as its paragraph is.
     spacing = _line_spacing(ref, all_lines, rp, style, paint, word_made)
     refusal = None
+    over = None  # what would run past the page's end, to flow onto the next page
+    anchor = tuple(_pdf_rect(ref.bbox, page))
+    line_base = _baseline(ref, rp)
+    cut = line_base - 0.3 * spacing if where == "below" else line_base + 0.7 * spacing
+
+    def moved_on(made) -> EditResult:
+        moved_src, areas, count, shift = made
+        result = add_line(moved_src, page_no, text, _moved_line_id(moved_src, page_no, ref, shift, page), ref_text, where, make_room=False)
+        result.areas = areas + result.areas
+        result.moved = count
+        result.warnings = [n for n in getattr(shift, "notes", []) if n not in result.warnings] + result.warnings
+        return result
+
     if make_room:
         # First the text below moves down by that spacing; then the line goes in the room made.
-        line_base = _baseline(ref, rp)
-        cut = line_base - 0.3 * spacing if where == "below" else line_base + 0.7 * spacing
         try:
-            made = moving.shift_below(src, page_no, tuple(_pdf_rect(ref.bbox, page)), ref.style.size, cut, spacing)
+            made = moving.shift_below(src, page_no, anchor, ref.style.size, cut, spacing, split=True)
+        except moving.Overflow as e:
+            made, refusal, over = None, str(e), e
         except moving.MoveRefused as e:
             made, refusal = None, str(e)
         if made is not None:
-            moved_src, areas, count, shift = made
-            result = add_line(moved_src, page_no, text, _moved_line_id(moved_src, page_no, ref, shift, page), ref_text, where, make_room=False)
-            result.areas = areas + result.areas
-            result.moved = count
-            return result
+            made[3].notes = []
+            return moved_on(made)
     baseline = base - spacing if where == "below" else base + spacing
     column = _column(ref, old, page)
     neighbours = _paragraph_edges(ref, all_lines, page)
@@ -384,20 +395,86 @@ def add_line(
         raise EditRejected("The new text is too long for one line. Shorten it, or add it as two lines.")
     ref_box = _pdf_rect(ref.bbox, page)
     new_box = pymupdf.Rect(x0, baseline - (base - ref_box.y0), x1, baseline + (ref_box.y1 - base))
+    marker_base = base + (_baseline(item_line, rp) - _baseline(ref, rp)) if new_marker else None
     if refusal is not None:
         # The text below couldn't move. The line still goes in if there's room for it at
         # full line spacing, as before; squeezed in, it isn't.
         why = f"There's no room for a new line {where} this one: {refusal}."
-        if _crowded(baseline, new_box, ref, all_lines, rp, page, spacing):
-            raise EditRejected(why)
         try:
+            if _crowded(baseline, new_box, ref, all_lines, rp, page, spacing):
+                raise EditRejected(why)
             _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, f"{where} this one")
         except EditRejected:
-            raise EditRejected(why)
+            if over is None:
+                raise EditRejected(why)
+            # It ran past the page's end: what no longer fits flows onto the next page.
+            try:
+                return moved_on(overflow.flow(src, page_no, over, anchor, ref.style.size, cut, spacing))
+            except moving.MoveRefused as e:
+                raise EditRejected(f"There's no room for a new line {where} this one: {e}.")
+    elif where == "below" and _past_floor(mu, pdf, page_no, rp, all_lines, ref, ref_box, new_box) and _may_flow(src, page_no, anchor):
+        # The page is full: the new line itself goes to the top of the next page.
+        return _onto_next_page(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, ref_box, expected, fonts, marker_base, {id(w) for w in new_marker}, page)
     else:
         _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, f"{where} this one")
-    marker_base = base + (_baseline(item_line, rp) - _baseline(ref, rp)) if new_marker else None
     return _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base, {id(w) for w in new_marker})
+
+
+def _ink_bottom(rp: Replay, ref: Line, ref_box: pymupdf.Rect) -> float:
+    """The lowest a line's letters reach (PDF y): its box often reaches lower."""
+    inked = [moving._glyph_box(rp.glyphs[t]) for t in ref.members if not moving._blank(rp, rp.glyphs[t])]
+    return min(b[1] for b in inked) if inked else ref_box.y0
+
+
+def _past_floor(doc, pdf, page_no: int, rp: Replay, lines: list[Line], ref: Line, ref_box: pymupdf.Rect, box: pymupdf.Rect) -> bool:
+    """Whether a new line (box, PDF) under body text would run past the page's end: its
+    bottom margin, or close over its footer (as moving.plan finds them, by where letters
+    reach; the new line's reach as deep under its box's bottom as the reference line's)."""
+    page = doc[page_no]
+    floor, footers = moving.bottom_limit(doc, page_no, lines, moving._crop(pdf, page_no))
+    if ref.id in footers:
+        return False  # the reference line is itself in the margin (wholly), or a footer
+    ink = _ink_bottom(rp, ref, ref_box)
+    for l in lines:
+        r = _pdf_rect(l.bbox, page)
+        if l.id in footers and r.y1 <= ref_box.y0:
+            floor = max(floor, r.y1 + 0.3 * ref.style.size)
+    return box.y0 + (ink - ref_box.y0) < floor - 0.01
+
+
+def _may_flow(src: bytes, page_no: int, anchor) -> bool:
+    try:
+        overflow.may_flow(src, page_no, anchor)
+    except moving.MoveRefused:
+        return False
+    return True
+
+
+def _onto_next_page(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, ref_box, expected, fonts, marker_base, markers, page) -> EditResult:
+    """A new line that doesn't fit at the bottom of a full page: drawn under its reference
+    line (checked as any new line), then moved to the top of the next page as the lines
+    that no longer fit move (overflow.send_on, checked), the next page's text moving down."""
+    no_room = "There's no room for a new line below this one: the page is full, and"
+    try:
+        _check_room(new_box, ref_box, ref, page, all_lines, rp, pdf, page_no, "below this one")
+    except EditRejected:
+        raise EditRejected(f"{no_room} the new line can't be put on the next page.")
+    drawn = _draw(src, pdf, page_no, rp, ref, all_lines, visual, joined, base, baseline, new_box, expected, fonts, marker_base, markers)
+    # Its pieces: drawn after everything else, so their letters come last.
+    new_rp = replay(pikepdf.open(io.BytesIO(drawn.pdf)), page_no)
+    old = len(rp.glyphs)
+    pieces = [p for p in moving._pieces(new_rp) if p.glyphs and max(p.glyphs) >= old]
+    if any(min(p.glyphs) < old for p in pieces) or sum(len(p.glyphs) for p in pieces) != len(new_rp.glyphs) - old:
+        fail("the new line would be drawn together with other text")
+    above = _ink_bottom(rp, ref, ref_box)
+    try:
+        moved, areas, notes, target, dy = overflow.send_on(drawn.pdf, page_no, {p.start for p in pieces}, above, ref.style.size)
+    except moving.MoveRefused as e:
+        raise EditRejected(f"{no_room} {e}.")
+    there = pymupdf.open("pdf", moved)[target]
+    mark = to_display(there, (new_box.x0, new_box.y0 - dy, new_box.x1, new_box.y1 - dy))
+    notes = notes + [f"The page was full, so the new line went to the top of page {target + 1}."]
+    return EditResult(moved, notes + drawn.warnings, expected, areas, [(target, *tuple(mark))], drawn.lookalikes)
 
 
 def _moved_line_id(moved_src: bytes, page_no: int, ref: Line, shift, page: pymupdf.Page) -> str:
@@ -879,3 +956,72 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     check_other_pages(old_bytes, new_bytes, {page_no})
     mark = to_display(page, tuple(box)) if joined_to is not None else pymupdf.Rect(mine[0].bbox)
     return tuple(area), tuple(mark)
+
+
+def add_text_styled_from(src: bytes, page_no: int, text: str, style_page: int, ref_id: str, ref_text: str, at: tuple[float, float]) -> EditResult:
+    """Text at a point on a page in the style of a line on another page (a new page has no
+    text of its own to take a style from). From steps each checked as on their own:
+    1. the line drawn on this page for a moment (overflow.copy_onto: its font comes with
+       it), out of the way of the new text: at the top or the bottom of the page's body,
+       whichever is further from where the text goes and free;
+    2. the text added at the point in its style, as any;
+    3. the copy deleted, nothing moving (deleting.py)."""
+    from .deleting import delete_lines  # (deleting.py uses this module)
+
+    mu = pymupdf.open("pdf", src)
+    if not (0 <= page_no < mu.page_count and 0 <= style_page < mu.page_count):
+        raise EditRejected("That page doesn't exist.")
+    source = mu[style_page]
+    ref = next((l for l in page_lines(source) if l.id == ref_id), None)
+    if ref is None or comparable(ref.text) != comparable(ref_text):
+        raise EditRejected("This line changed since you selected it. Select it again.")
+    pdf = pikepdf.open(io.BytesIO(src))
+    try:
+        rp = replay(pdf, style_page)
+    except Unsupported as e:
+        raise EditRejected(str(e))
+    # The text objects the line is drawn in, and every line they draw: copied, then deleted.
+    pieces = [p for p in moving._pieces(rp) if p.kind == "text" and set(ref.members) & set(p.glyphs)]
+    drawn = {t for p in pieces for t in p.glyphs}
+    copied = [l for l in page_lines(source) if set(l.members) & drawn]
+    if not pieces or len(copied) > 6:
+        raise EditRejected("This style can't be brought from that page. Pick a style from this page.")
+    box = pymupdf.Rect(_pdf_rect(copied[0].bbox, source))
+    for l in copied[1:]:
+        box |= _pdf_rect(l.bbox, source)
+
+    # Out of the way: at the body's top or bottom, further from the point, on nothing.
+    page = mu[page_no]
+    crop = moving._crop(pdf, page_no)
+    lines = page_lines(page)
+    floor, _ = moving.bottom_limit(mu, page_no, lines, crop)
+    tap = to_pdf(page, (at[0], at[1], at[0], at[1]))[1]
+    margin = floor - crop[1]
+    tops = [crop[3] - margin - 2 * box.height, floor + 2 * box.height + box.height]
+    taken = [_pdf_rect(l.bbox, page) + (-2, -2, 2, 2) for l in lines]
+    spots = []
+    for top in tops:
+        place = pymupdf.Rect(box.x0, top - box.height, box.x1, top)
+        if any(place.intersects(r) for r in taken) or abs((place.y0 + place.y1) / 2 - tap) < 4 * box.height + box.height:
+            continue
+        spots.append((abs((place.y0 + place.y1) / 2 - tap), top))
+    if not spots:
+        raise EditRejected("There's no room on this page to bring that style here. Pick a style from this page.")
+    dy = box.y1 - max(spots)[1]
+    try:
+        current, _ = overflow.copy_onto(src, style_page, page_no, {p.start for p in pieces}, dy)
+    except moving.MoveRefused as e:
+        raise EditRejected(f"This style can't be brought from that page: {e}.")
+
+    def find(doc_bytes: bytes, line: Line) -> Line:
+        r = _pdf_rect(line.bbox, source)
+        want = to_display(pymupdf.open("pdf", doc_bytes)[page_no], (r.x0, r.y0 - dy, r.x1, r.y1 - dy))
+        for l in page_lines(pymupdf.open("pdf", doc_bytes)[page_no]):
+            if comparable(l.text) == comparable(line.text) and all(abs(a - b) <= 0.5 for a, b in zip(l.bbox, want)):
+                return l
+        fail("the line brought from the other page couldn't be read back")
+
+    added = add_line(current, page_no, text, find(current, ref).id, ref.text, at=at)
+    gone = delete_lines(added.pdf, [(page_no, (c := find(added.pdf, l)).id, c.text) for l in copied], close_gap=False)
+    warnings = added.warnings + [w for w in gone.warnings if w not in added.warnings]
+    return EditResult(gone.pdf, warnings, added.text, added.areas, added.marks, added.lookalikes)

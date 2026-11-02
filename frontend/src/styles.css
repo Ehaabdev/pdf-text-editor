@@ -2354,6 +2354,12 @@ html.theme-switching::view-transition-new(root) {
   color: var(--muted);
 }
 
+/* A style borrowed from another page (a page with no text yet): which page. */
+.style-option-page {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .style-option-sample {
   font-size: 0.8125rem;
   color: var(--muted);
@@ -2502,7 +2508,7 @@ html.theme-switching::view-transition-new(root) {
   display: none;
 }
 
-/* Wide enough: a list of the pages beside them, for files with more than one. */
+/* Wide enough: a list of the pages beside them, to jump to and to add, delete or move pages. */
 @media (min-width: 1280px) {
   .workspace--rail {
     grid-template-columns: var(--rail) minmax(0, 1fr) var(--dock);
@@ -2590,6 +2596,178 @@ html.theme-switching::view-transition-new(root) {
     0 0 0 2px var(--accent),
     0 0 0 6px var(--accent-wash),
     0 10px 24px -8px var(--accent-glow);
+}
+
+/* Editing the pages from the list: an X on each, a + at the end, dragging to move. ------ */
+.thumbs--editable > li {
+  position: relative;
+  transition: transform 250ms var(--spring);
+}
+
+/* The X: a small glass button on the page's corner, there on hover or focus (always on
+   touch screens, and in the pages panel). */
+.thumb-delete {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--glass-shadow);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 150ms ease-out,
+    transform 200ms var(--spring),
+    color 150ms ease-out,
+    background 150ms ease-out;
+}
+
+.thumbs--editable > li:hover .thumb-delete,
+.thumbs--editable > li:focus-within .thumb-delete,
+.thumbs--grid .thumb-delete {
+  opacity: 1;
+  transform: none;
+}
+
+@media (hover: none) {
+  .thumb-delete {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.thumb-delete:hover,
+.thumb-delete:focus-visible {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.thumb-delete:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* The +: an empty sheet the shape of the last page, waiting to be added. */
+.thumb-add-sheet {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  border-radius: 3px;
+  border: 1.5px dashed color-mix(in srgb, var(--muted) 55%, transparent);
+  background: var(--glass);
+  color: var(--muted);
+  transition:
+    border-color 150ms ease-out,
+    color 150ms ease-out,
+    box-shadow 200ms ease-out,
+    transform 250ms var(--spring);
+}
+
+.thumb-add:hover .thumb-add-sheet,
+.thumb-add:focus-visible .thumb-add-sheet {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow:
+    0 0 0 4px var(--accent-wash),
+    0 10px 24px -10px var(--accent-glow);
+  transform: translateY(-2px);
+}
+
+.thumb-add:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Dragging: the page lifts and follows; a glowing line shows where it will land. */
+.thumbs--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.thumbs--dragging .thumb-delete {
+  visibility: hidden;
+}
+
+.thumbs--editable > li.thumb-lifted {
+  z-index: 2;
+  transition: none;
+  pointer-events: none;
+}
+
+.thumb-lifted img {
+  opacity: 0.55;
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 18px 40px -12px var(--accent-glow);
+}
+
+.thumb-gap-before::before,
+.thumb-gap-after::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  z-index: 3; /* over the lifted page */
+}
+
+.thumb-gap-before::before {
+  top: -9px;
+}
+
+.thumb-gap-after::after {
+  bottom: -9px;
+}
+
+/* In the panel's grid, the line stands beside the page instead. */
+.thumbs--grid .thumb-gap-before::before,
+.thumbs--grid .thumb-gap-after::after {
+  top: 0;
+  bottom: 18px;
+  width: 3px;
+  height: auto;
+}
+
+.thumbs--grid .thumb-gap-before::before {
+  left: -9px;
+  right: auto;
+}
+
+.thumbs--grid .thumb-gap-after::after {
+  left: auto;
+  right: -9px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumbs--editable > li,
+  .thumb-delete,
+  .thumb-add-sheet {
+    transition: none;
+  }
+}
+
+/* Compared with the original: a page that was added since, as an empty sheet. */
+.thumb-added {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  border-radius: 3px;
+  border: 1px dashed rgba(15, 23, 42, 0.25);
+  font-size: 0.75rem;
 }
 
 /* The chip over the pages: which page is in view, and the way to the others. Nearly solid,

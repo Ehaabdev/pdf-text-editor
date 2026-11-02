@@ -254,10 +254,10 @@ def test_add_edit_delete_then_undo_everything(client):
 
 def test_adding_where_there_is_no_room_explains_why(client):
     doc = _fixture_upload(client)
-    ref = _line(client, doc, "Quarterly Service Report")
+    ref = _line(client, doc, "Messages sent")  # a table cell: cells don't grow
     r = client.post(f"/api/documents/{doc['id']}/additions", json={
         "revision": doc["revision"], "page": 0, "lineId": ref["id"], "oldText": ref["text"], "text": "Draft"})
-    assert r.status_code == 422 and "no room" in r.json()["detail"]
+    assert r.status_code == 422 and "no room" in r.json()["detail"] and "cell is full" in r.json()["detail"]
 
 
 def test_a_list_item_added_and_deleted_with_the_text_moving(client):

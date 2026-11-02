@@ -76,8 +76,10 @@ export default function PageView({
     src: url(960),
     srcSet: WIDTHS.map((w) => `${url(w)} ${w}w`).join(", "),
   };
+  // Compared with the original, a page added since (text flowed onto it) has no picture.
+  const added = version === 0 && index >= doc.originalPageCount;
   const loaded = shown !== null;
-  const state = failed === wanted.key ? "failed" : loaded ? "ready" : "loading";
+  const state = added ? "ready" : failed === wanted.key ? "failed" : loaded ? "ready" : "loading";
 
   // Text boxes are fetched once the page has first shown, and again after every change.
   useEffect(() => {
@@ -144,7 +146,7 @@ export default function PageView({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   // While a new image loads underneath, the previous one stays on top of it.
   const swapping = shown !== null && shown.key !== wanted.key;
-  const layers = swapping ? [wanted, shown] : [wanted];
+  const layers = added ? [] : swapping ? [wanted, shown] : [wanted];
 
   // The lens moves by direct style changes, not React state: the page has hundreds of line
   // boxes that shouldn't re-render on every mouse move.
@@ -339,7 +341,12 @@ export default function PageView({
         {spot && !(preview && (preview.kind === "item" || preview.kind === "line")) && (
           <span className="spot" style={{ left: pct(spot.x, size.width), top: pct(spot.y, size.height) }} aria-hidden="true" />
         )}
-        {state === "failed" && (
+        {added && (
+          <div className="page-failed">
+            <p>This page wasn't in the original: it was added since.</p>
+          </div>
+        )}
+        {state === "failed" && !added && (
           <div className="page-failed">
             <p>This page didn't load.</p>
             <button

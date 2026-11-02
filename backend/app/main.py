@@ -15,9 +15,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import columns, config, dragging, exporting, images, limits, rows, scaling
+from . import columns, config, dragging, exporting, images, limits, pages, rows, scaling
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
-from .adding import add_line
+from .adding import add_line, add_text_styled_from
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .lists import add_item, markers, renumber_after_delete
@@ -131,9 +131,25 @@ def _document_json(meta: DocumentMeta, info) -> dict:
         # be redone until the next change).
         "history": [{**entry, "applied": k < meta.version} for k, entry in enumerate(meta.history)],
         "pageCount": info.page_count,
+        # Pages flow onto new ones: compared with the original, those weren't there.
+        "originalPageCount": _original_pages(meta, info.page_count),
         "pages": [{"width": p.width, "height": p.height} for p in info.pages],
         "isSigned": info.is_signed,
     }
+
+
+def _original_pages(meta: DocumentMeta, now: int) -> int:
+    try:
+        return _pages_in(str(store.version_path(meta, 0)))
+    except NoSuchVersion:
+        return now
+
+
+@lru_cache(maxsize=256)
+def _pages_in(path: str) -> int:
+    """How many pages a stored version has (a stored version never changes)."""
+    with pymupdf.open(path) as doc:
+        return doc.page_count
 
 
 @app.get("/api/health")
@@ -256,6 +272,14 @@ class AdditionRequest(BaseModel):
     at: tuple[float, float] | None = None
     # As a new item of the line's list: numbered on, with the items after it renumbered.
     item: bool = False
+    # With `at`: the page the style's line is on, when it's another (a page with no text).
+    stylePage: int | None = None
+
+
+class PageRequest(BaseModel):
+    revision: int
+    page: int  # the page deleted or moved; for a new page, the page it goes after
+    to: int | None = None  # moving: where the page ends up
 
 
 class RowRequest(BaseModel):
@@ -415,6 +439,8 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
     try:
         if body.item and body.at is None:
             result = await run_in_threadpool(add_item, src, body.page, body.text, body.lineId, body.oldText, body.where)
+        elif body.at is not None and body.stylePage is not None and body.stylePage != body.page:
+            result = await run_in_threadpool(add_text_styled_from, src, body.page, body.text, body.stylePage, body.lineId, body.oldText, body.at)
         else:
             result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
     except EditRejected as e:
@@ -487,6 +513,42 @@ async def delete_table_row(doc_id: str, body: RowRequest):
     except StaleRevision:
         raise HTTPException(409, _STALE)
     return _outcome(meta, result)
+
+
+async def _page_change(doc_id: str, body: PageRequest, kind: str, summary: str, do) -> dict:
+    meta = _get_meta(doc_id)
+    if meta.revision != body.revision:
+        raise HTTPException(409, _STALE)
+    src = store.current_path(meta).read_bytes()
+    try:
+        result = await run_in_threadpool(do, src)
+    except EditRejected as e:
+        raise HTTPException(422, str(e))
+    try:
+        meta = await run_in_threadpool(store.save_version, doc_id, body.revision, result.pdf, _entry(kind, summary, result))
+    except StaleRevision:
+        raise HTTPException(409, _STALE)
+    return _outcome(meta, result)
+
+
+@app.post("/api/documents/{doc_id}/pages/delete")
+async def delete_whole_page(doc_id: str, body: PageRequest):
+    """A page taken out of the document."""
+    return await _page_change(doc_id, body, "delete", f"Deleted page {body.page + 1}", lambda src: pages.delete_page(src, body.page))
+
+
+@app.post("/api/documents/{doc_id}/pages/add")
+async def add_whole_page(doc_id: str, body: PageRequest):
+    """A new page after a page, like it: its size, header and footer."""
+    return await _page_change(doc_id, body, "add", f"Added a page after page {body.page + 1}", lambda src: pages.add_page(src, body.page))
+
+
+@app.post("/api/documents/{doc_id}/pages/move")
+async def move_whole_page(doc_id: str, body: PageRequest):
+    """A page taken to another place in the document."""
+    if body.to is None:
+        raise HTTPException(422, "Say where the page goes.")
+    return await _page_change(doc_id, body, "move", f"Moved page {body.page + 1} to page {body.to + 1}", lambda src: pages.move_page(src, body.page, body.to))
 
 
 @app.post("/api/documents/{doc_id}/columns/add")

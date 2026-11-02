@@ -29,7 +29,7 @@ from dataclasses import dataclass
 import pikepdf
 import pymupdf
 
-from . import moving
+from . import moving, overflow
 from .adding import add_line
 from .changes import check_other_pages, fail, outside, render, to_display, to_pdf, write_page
 from .deleting import delete_lines
@@ -724,7 +724,7 @@ def _room_refused(reason: str) -> EditRejected:
     if "drawn across" in reason:
         return EditRejected("This table's lines run through all its rows, so a row can't be added to it yet.")
     if "bottom of the page" in reason or "footer" in reason or "border below" in reason:
-        return EditRejected("There's no room on this page for another row: nothing moves onto the next page.")
+        return EditRejected("There's no room on this page for another row, and what's below it can't move onto the next page.")
     return EditRejected(f"A row can't be added here: {reason}.")
 
 
@@ -761,14 +761,29 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
     for c in taller:
         _drawn_as_one(page, rp, c)
     stretch = _taller(page, rp, taller, crosses, height)
+    notes = []
     try:
-        made = moving.shift_below(src, page_no, band, size, cut, height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, taller, crosses, height))
+        # Rows that no longer fit go to the next page, whole (overflow.py); not past a cell
+        # merged over the rows around the new one.
+        made = moving.shift_below(src, page_no, band, size, cut, height, column=(crop[0], crop[2]), stretch=stretch, hold=_held(src, page_no, taller, crosses, height), split=not taller)
+    except moving.Overflow as o:
+        own = {t for c in cells for l in c.lines for t in l.members}
+        if any(own & set(p.glyphs) for p in o.over):
+            raise EditRejected("There's no room on this page for another row above this one: add it below the row above instead.")
+        try:
+            made = overflow.flow(src, page_no, o, band, size, cut, height, (crop[0], crop[2]))
+        except moving.MoveRefused as e:
+            raise _room_refused(str(e))
+        notes = made[3].notes
     except moving.MoveRefused as e:
         raise _room_refused(str(e))
     if made is None:
         limit, _ = moving.bottom_limit(doc, page_no, lines, crop)
         if edge - height < limit - 0.01:
-            raise EditRejected("There's no room on this page for another row: nothing moves onto the next page.")
+            if where != "below" or taller:
+                raise EditRejected("There's no room on this page for another row.")
+            # The table fills its page: the new row goes to the top of the next one.
+            return _row_on_next_page(src, page_no, table, row, texts, size)
         current = src
     else:
         current, moved_areas, _, _ = made
@@ -822,7 +837,51 @@ def add_row(src: bytes, page_no: int, line_id: str, old_text: str, where: str, t
         areas += result.areas
     if taller:
         _reads_same(current, page_no, lines, [t for t in texts if t])
+    warnings = [n for n in notes if n not in warnings] + warnings
     return EditResult(current, warnings, " | ".join(t for t in texts if t), areas, [(page_no, *new_box)], lookalikes)
+
+
+def _row_on_next_page(src: bytes, page_no: int, table: Table, row: int, texts: list[str], size: float) -> EditResult:
+    """A new row under the last row of a table that fills its page, at the top of the next
+    page, from steps each checked as on their own:
+    1. the last row drawn again there (overflow.send_on, kept here too), with the border
+       along its top, the next page's text moving down to make room;
+    2. the new row added above that copy, as any new row;
+    3. the copy deleted, as any row."""
+    doc, page, pdf, rp = _open(src, page_no)
+    top, bottom = table.rows[row], table.rows[row + 1]
+    x0, x1 = table.cols[0], table.cols[-1]
+    go, both = set(), set()
+    for p in moving._pieces(rp):
+        if p.kind == "clip":
+            continue
+        r = to_display(page, p.box)
+        if r.x1 < x0 - 2 or r.x0 > x1 + 2 or r.y1 < top - 2 or r.y0 > bottom + 2:
+            continue
+        m = (r.y0 + r.y1) / 2
+        if abs(m - top) <= 1.5 and r.height <= 3:
+            both.add(p.start)  # the border along its top
+        elif top < m <= bottom + 1.5:
+            if r.y0 < top - 2:
+                raise EditRejected("There's no room on this page for another row, and the table's lines run through its rows.")
+            go.add(p.start)
+    first = next((l for c in Spot(table, row).cells for l in c.lines), None)
+    if not go or first is None:
+        raise EditRejected("There's no room on this page for another row.")
+    try:
+        current, areas, notes, target, dy = overflow.send_on(src, page_no, go, to_pdf(page, (0, top, 1, top))[1], size, also=both, take=False)
+    except moving.MoveRefused as e:
+        raise EditRejected(f"There's no room on this page for another row, and it can't go onto the next page: {e}.")
+    b = to_pdf(page, first.bbox)
+    there = to_display(pymupdf.open("pdf", current)[target], (b[0], b[1] - dy, b[2], b[3] - dy))
+    copy = _find(page_lines(pymupdf.open("pdf", current)[target]), first.text, tuple(there), 0.0)
+    added = add_row(current, target, copy.id, copy.text, "above", texts)
+    height = bottom - top
+    copy = _find(page_lines(pymupdf.open("pdf", added.pdf)[target]), first.text, tuple(there), height)
+    gone = delete_row(added.pdf, target, copy.id, copy.text)
+    notes = notes + [f"The page was full, so the new row went to the top of page {target + 1}."]
+    warnings = notes + [w for w in added.warnings + gone.warnings if w not in notes]
+    return EditResult(gone.pdf, warnings, added.text, areas + added.areas + gone.areas, added.marks, added.lookalikes)
 
 
 # Deleting a row ------------------------------------------------------------------------------
