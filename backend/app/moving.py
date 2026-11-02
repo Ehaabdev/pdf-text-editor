@@ -385,7 +385,9 @@ def plan(pdf: pikepdf.Pdf, doc: pymupdf.Document, page_no: int, rp: Replay, line
         if cell and across_cell(p):
             stoppers.append(p)  # a border between rows (Word draws one per cell)
             continue
-        if not inside or in_footer(p) or y1 < limit:
+        # In the bottom margin, what leaves ink stays; Word's empty paragraph marks, pushed
+        # there by an earlier change, move on with the text.
+        if not inside or in_footer(p) or (y1 < limit and _inked(rp, p)):
             stoppers.append(p)
         else:
             moving.append(p)
