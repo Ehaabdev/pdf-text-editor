@@ -132,10 +132,17 @@ def _document_json(meta: DocumentMeta, info) -> dict:
         "history": [{**entry, "applied": k < meta.version} for k, entry in enumerate(meta.history)],
         "pageCount": info.page_count,
         # Pages flow onto new ones: compared with the original, those weren't there.
-        "originalPageCount": _pages_in(str(store.version_path(meta, 0))),
+        "originalPageCount": _original_pages(meta, info.page_count),
         "pages": [{"width": p.width, "height": p.height} for p in info.pages],
         "isSigned": info.is_signed,
     }
+
+
+def _original_pages(meta: DocumentMeta, now: int) -> int:
+    try:
+        return _pages_in(str(store.version_path(meta, 0)))
+    except NoSuchVersion:
+        return now
 
 
 @lru_cache(maxsize=256)

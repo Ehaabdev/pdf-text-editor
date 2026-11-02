@@ -76,8 +76,10 @@ export default function PageView({
     src: url(960),
     srcSet: WIDTHS.map((w) => `${url(w)} ${w}w`).join(", "),
   };
+  // Compared with the original, a page added since (text flowed onto it) has no picture.
+  const added = version === 0 && index >= doc.originalPageCount;
   const loaded = shown !== null;
-  const state = failed === wanted.key ? "failed" : loaded ? "ready" : "loading";
+  const state = added ? "ready" : failed === wanted.key ? "failed" : loaded ? "ready" : "loading";
 
   // Text boxes are fetched once the page has first shown, and again after every change.
   useEffect(() => {
@@ -144,8 +146,6 @@ export default function PageView({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   // While a new image loads underneath, the previous one stays on top of it.
   const swapping = shown !== null && shown.key !== wanted.key;
-  // Compared with the original, a page added since (text flowed onto it) has no picture.
-  const added = version === 0 && index >= doc.originalPageCount;
   const layers = added ? [] : swapping ? [wanted, shown] : [wanted];
 
   // The lens moves by direct style changes, not React state: the page has hundreds of line
