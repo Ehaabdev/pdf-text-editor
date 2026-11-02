@@ -228,6 +228,10 @@ It's refused, with the reason: text side by side in columns (it flows down its o
 
 Compared with the original, a page that was added shows as "This page wasn't in the original". Undo takes it away again.
 
+Adding a line under every line of the test documents (743 lines), compared with before: 163 lines refused for a full page are now added, the text that no longer fits going onto the next page; 7 lines under a full page's last line now go to the top of the next page instead of into the bottom margin; nothing that worked before is refused, and nothing else changes. After each, the whole document's text reads as before, with the new line once, right after its line. Pushing the Word test documents' tables down a line at a time: their rows go onto the next page one by one, then the whole table, which then splits again over the next two pages, its text in order at every step.
+
+Known limits: after many lines pushed in on a page with a box at its bottom, the page-sized clipping Word draws with can make a pixel row of the box's edge come out differently, and the change is refused; tables without borders flow as lines of text.
+
 ## Pictures
 
 `backend/app/images.py` lists a page's pictures and changes them. Click a picture on the page to:
@@ -266,7 +270,7 @@ Click a line in a table with borders: the panel adds a row below or above its ro
 - Each step is checked as other changes are: what moves is exactly where it was, one row lower or higher; the copied borders and shading, drawn alone, look exactly like the row's own, pixel for pixel; nothing outside the row's place changes. The steps make one change: one Undo takes it all back.
 - Totals aren't recalculated: a "Total" row stays as it was, and can be edited like any line.
 
-On every bordered table of the test documents, adding a row below and above each row and deleting each row: 28 of 34, 27 of 34 and 32 of 34 are done; the others are refused, for a full page (6), a table's only row, and a line with an icon just above a table, which reads differently once the table moves.
+On every bordered table of the test documents (55 rows, the merged tables included), adding a row below and above each row and deleting each row: 55, 54 and 50 are done; refused: deleting a row by a cell merged over several rows (3), a table's only row, and a line with an icon just above a table, which reads differently once the table moves (2). None is refused for a full page any more (12 were): the Word documents' footnote and bottom box stay put while the rows move. On the private samples, nothing changes.
 
 ## Table columns
 
