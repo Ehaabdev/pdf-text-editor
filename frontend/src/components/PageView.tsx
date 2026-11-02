@@ -343,7 +343,7 @@ export default function PageView({
         )}
         {added && (
           <div className="page-failed">
-            <p>This page wasn't in the original. It was added when text flowed onto a new page.</p>
+            <p>This page wasn't in the original: it was added since.</p>
           </div>
         )}
         {state === "failed" && !added && (

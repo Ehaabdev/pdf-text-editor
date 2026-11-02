@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import columns, config, dragging, exporting, images, limits, pages, rows, scaling
 from .pdf import InvalidPdf, describe_file, inspect_upload, render_page_png
-from .adding import add_line
+from .adding import add_line, add_text_styled_from
 from .deleting import delete_lines
 from .editing import EditRejected, replace_line
 from .lists import add_item, markers, renumber_after_delete
@@ -272,6 +272,8 @@ class AdditionRequest(BaseModel):
     at: tuple[float, float] | None = None
     # As a new item of the line's list: numbered on, with the items after it renumbered.
     item: bool = False
+    # With `at`: the page the style's line is on, when it's another (a page with no text).
+    stylePage: int | None = None
 
 
 class PageRequest(BaseModel):
@@ -437,6 +439,8 @@ async def add_document_line(doc_id: str, body: AdditionRequest):
     try:
         if body.item and body.at is None:
             result = await run_in_threadpool(add_item, src, body.page, body.text, body.lineId, body.oldText, body.where)
+        elif body.at is not None and body.stylePage is not None and body.stylePage != body.page:
+            result = await run_in_threadpool(add_text_styled_from, src, body.page, body.text, body.stylePage, body.lineId, body.oldText, body.at)
         else:
             result = await run_in_threadpool(add_line, src, body.page, body.text, body.lineId, body.oldText, body.where, body.at)
     except EditRejected as e:

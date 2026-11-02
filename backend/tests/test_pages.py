@@ -75,7 +75,7 @@ def test_a_new_page_is_like_the_page_before_it(after):
     assert lines == ["Harbor Supplies - Proposal HS-2026-07", f"Page {after + 1} of 2"]
     assert doc[after + 1].rect == doc[after].rect
     assert result.marks[0][0] == after + 1
-    assert any("after page" in w and "page number" in w for w in result.warnings)
+    assert result.warnings == [f"It has the header and footer of page {after + 1}: check its page number, and the page count on the other pages."]
 
 
 def test_a_moved_page_keeps_the_links_that_go_to_it():
@@ -88,6 +88,24 @@ def test_a_moved_page_keeps_the_links_that_go_to_it():
     assert [texts(result.pdf)[t] for t in targets] == ["Second page", "Third page"]
     with pytest.raises(EditRejected, match="already there"):
         move_page(src, 1, 1)
+
+
+def test_text_on_a_new_page_in_the_style_of_another_page():
+    """A new page has no text to take a style from: the text comes in the style of a line
+    on another page, and nothing else is left on it."""
+    from app.adding import add_text_styled_from
+
+    src = add_page(TWO, 1).pdf
+    page = pymupdf.open("pdf", src)[0]
+    ref = next(l for l in page_lines(page) if l.text.startswith("2. Prices are given"))
+    result = add_text_styled_from(src, 2, "Typed on the new page", 0, ref.id, ref.text, (90.0, 400.0))
+    doc = pymupdf.open("pdf", result.pdf)
+    assert [l.text for l in page_lines(doc[2])] == ["Harbor Supplies - Proposal HS-2026-07", "Typed on the new page", "Page 2 of 2"]
+    new = next(l for l in page_lines(doc[2]) if l.text == "Typed on the new page")
+    assert abs(new.bbox[0] - 90) < 1 and abs((new.bbox[1] + new.bbox[3]) / 2 - 400) < 2
+    assert (new.style.font, round(new.style.size, 1)) == (ref.style.font, round(ref.style.size, 1))
+    assert texts(result.pdf)[:2] == texts(src)[:2]
+    assert result.marks[0][0] == 2
 
 
 def test_pages_through_the_website(client):

@@ -45,9 +45,9 @@ def _numbered(doc: pymupdf.Document) -> bool:
     return False
 
 
-def _note(doc: pymupdf.Document, what: str) -> list[str]:
+def _note(doc: pymupdf.Document, what: str = "") -> list[str]:
     if _numbered(doc):
-        return [f"{what} Check the page numbers printed on the pages, and the page count: they don't change by themselves."]
+        return [f"{what}Check the page numbers printed on the pages, and the page count: they don't change by themselves."]
     return []
 
 
@@ -151,7 +151,7 @@ def delete_page(src: bytes, page_no: int) -> EditResult:
     del pdf.pages[page_no]
     new = _save(pdf)
     _check(src, new, [n for n in range(len(before)) if n != page_no])
-    return EditResult(new, _note(doc, f"Page {page_no + 1} was deleted."), "", [], [])
+    return EditResult(new, _note(doc), "", [], [])
 
 
 def add_page(src: bytes, after: int) -> EditResult:
@@ -173,7 +173,10 @@ def add_page(src: bytes, after: int) -> EditResult:
     _check(src, new, list(range(after + 1)) + [None] + list(range(after + 1, last + 1)))
     there = pymupdf.open("pdf", new)[after + 1]
     box = (after + 1, 0.0, 0.0, there.rect.width, there.rect.height)
-    notes = [n.replace("at the end", f"after page {after + 1}") for n in notes]
+    # (overflow.py's note, said for this page)
+    copied = bool(notes) and "header" in notes[0]
+    numbered = any("page number" in n for n in notes)
+    notes = [f"It has the header and footer of page {after + 1}" + (": check its page number, and the page count on the other pages." if numbered else ".")] if copied else []
     return EditResult(new, notes, "", [box], [box])
 
 
@@ -220,7 +223,7 @@ def move_page(src: bytes, page_no: int, to: int, check_only: bool = False) -> Ed
         return EditResult(new, [], "", [], [])
     there = pymupdf.open("pdf", new)[to]
     box = (to, 0.0, 0.0, there.rect.width, there.rect.height)
-    return EditResult(new, _note(doc, f"Page {page_no + 1} is now page {to + 1}."), "", [box], [box])
+    return EditResult(new, _note(doc, f"Page {page_no + 1} is now page {to + 1}. "), "", [box], [box])
 
 
 def _check(old: bytes, new: bytes, order: list) -> None:

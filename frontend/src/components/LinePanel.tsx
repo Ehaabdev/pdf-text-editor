@@ -14,7 +14,7 @@ function Swatch({ color }: { color: string }) {
   return <span className="swatch" style={{ background: `#${color}` }} aria-hidden="true" />;
 }
 
-export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted" | "column added" | "column deleted" | "column resized" | "row resized" | "table resized";
+export type Change = "changed" | "deleted" | "added" | "row added" | "row deleted" | "column added" | "column deleted" | "column resized" | "row resized" | "table resized" | "page deleted" | "page added" | "page moved";
 
 type Props = {
   doc: DocInfo;

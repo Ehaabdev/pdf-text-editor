@@ -232,6 +232,17 @@ Adding a line under every line of the test documents (743 lines), compared with 
 
 Known limits: after many lines pushed in on a page with a box at its bottom, the page-sized clipping Word draws with can make a pixel row of the box's edge come out differently, and the change is refused; tables without borders flow as lines of text.
 
+## Pages
+
+In the list of pages (`backend/app/pages.py`), each page has an X to delete it, the list ends with a + to add a page, and a page is moved by dragging it (on a touch screen, hold it first). From the keyboard: Alt+arrows move the page in focus, Delete deletes it. Each is one change, undone as any.
+
+- **Deleting** takes the page out with what points at it: links on other pages that open it, its bookmarks (their sub-bookmarks that open other pages move up a level), and form fields only on it. The only page can't be deleted.
+- **Adding** puts a new page after the last one, like it: its size and turn, its header and footer drawn again (as when text flows onto a new page). Where those can't be drawn again, it's blank.
+- **Moving** takes the page itself, so links to it still go to it.
+- **Text on a page with no text yet** (a new one): "Add text" offers the styles of the pages nearby ("from page 2"). The text goes in from steps each checked as on their own: a line in that style drawn on the page for a moment, out of the way (its font comes with it), the text added at the spot in its style, then that line deleted.
+- Checked: every other page is the same page as before, drawn and reading the same, in the order asked for.
+- Printed page numbers ("Page 2 of 5") don't change by themselves: the website says to check them. Page labels and a tagged PDF's structure aren't changed either.
+
 ## Pictures
 
 `backend/app/images.py` lists a page's pictures and changes them. Click a picture on the page to:
@@ -347,7 +358,7 @@ Known limits: shapes drawn with lines (a logo made of shapes, a chart) don't com
 
 ## The website
 
-- A list of small page pictures sits beside the pages; on phones, the page number button opens it.
+- A list of small page pictures sits beside the pages; on phones, the page number button opens it. Pages are deleted, added and moved there ([Pages](#pages)).
 - A selected line shows in the panel magnified from the page itself, with its font, size and color.
 - The magnifier (its button, or the M key) shows the print up close under the mouse.
 - Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on a Mac). The Delete key deletes the selected lines.

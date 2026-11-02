@@ -42,6 +42,7 @@ from .changes import (
     outside,
     render,
     to_display,
+    to_pdf,
 )
 from .editing import (
     EditResult,
@@ -955,3 +956,72 @@ def _verify(old_bytes: bytes, new_bytes: bytes, page_no: int, rp: Replay, lines:
     check_other_pages(old_bytes, new_bytes, {page_no})
     mark = to_display(page, tuple(box)) if joined_to is not None else pymupdf.Rect(mine[0].bbox)
     return tuple(area), tuple(mark)
+
+
+def add_text_styled_from(src: bytes, page_no: int, text: str, style_page: int, ref_id: str, ref_text: str, at: tuple[float, float]) -> EditResult:
+    """Text at a point on a page in the style of a line on another page (a new page has no
+    text of its own to take a style from). From steps each checked as on their own:
+    1. the line drawn on this page for a moment (overflow.copy_onto: its font comes with
+       it), out of the way of the new text: at the top or the bottom of the page's body,
+       whichever is further from where the text goes and free;
+    2. the text added at the point in its style, as any;
+    3. the copy deleted, nothing moving (deleting.py)."""
+    from .deleting import delete_lines  # (deleting.py uses this module)
+
+    mu = pymupdf.open("pdf", src)
+    if not (0 <= page_no < mu.page_count and 0 <= style_page < mu.page_count):
+        raise EditRejected("That page doesn't exist.")
+    source = mu[style_page]
+    ref = next((l for l in page_lines(source) if l.id == ref_id), None)
+    if ref is None or comparable(ref.text) != comparable(ref_text):
+        raise EditRejected("This line changed since you selected it. Select it again.")
+    pdf = pikepdf.open(io.BytesIO(src))
+    try:
+        rp = replay(pdf, style_page)
+    except Unsupported as e:
+        raise EditRejected(str(e))
+    # The text objects the line is drawn in, and every line they draw: copied, then deleted.
+    pieces = [p for p in moving._pieces(rp) if p.kind == "text" and set(ref.members) & set(p.glyphs)]
+    drawn = {t for p in pieces for t in p.glyphs}
+    copied = [l for l in page_lines(source) if set(l.members) & drawn]
+    if not pieces or len(copied) > 6:
+        raise EditRejected("This style can't be brought from that page. Pick a style from this page.")
+    box = pymupdf.Rect(_pdf_rect(copied[0].bbox, source))
+    for l in copied[1:]:
+        box |= _pdf_rect(l.bbox, source)
+
+    # Out of the way: at the body's top or bottom, further from the point, on nothing.
+    page = mu[page_no]
+    crop = moving._crop(pdf, page_no)
+    lines = page_lines(page)
+    floor, _ = moving.bottom_limit(mu, page_no, lines, crop)
+    tap = to_pdf(page, (at[0], at[1], at[0], at[1]))[1]
+    margin = floor - crop[1]
+    tops = [crop[3] - margin - 2 * box.height, floor + 2 * box.height + box.height]
+    taken = [_pdf_rect(l.bbox, page) + (-2, -2, 2, 2) for l in lines]
+    spots = []
+    for top in tops:
+        place = pymupdf.Rect(box.x0, top - box.height, box.x1, top)
+        if any(place.intersects(r) for r in taken) or abs((place.y0 + place.y1) / 2 - tap) < 4 * box.height + box.height:
+            continue
+        spots.append((abs((place.y0 + place.y1) / 2 - tap), top))
+    if not spots:
+        raise EditRejected("There's no room on this page to bring that style here. Pick a style from this page.")
+    dy = box.y1 - max(spots)[1]
+    try:
+        current, _ = overflow.copy_onto(src, style_page, page_no, {p.start for p in pieces}, dy)
+    except moving.MoveRefused as e:
+        raise EditRejected(f"This style can't be brought from that page: {e}.")
+
+    def find(doc_bytes: bytes, line: Line) -> Line:
+        r = _pdf_rect(line.bbox, source)
+        want = to_display(pymupdf.open("pdf", doc_bytes)[page_no], (r.x0, r.y0 - dy, r.x1, r.y1 - dy))
+        for l in page_lines(pymupdf.open("pdf", doc_bytes)[page_no]):
+            if comparable(l.text) == comparable(line.text) and all(abs(a - b) <= 0.5 for a, b in zip(l.bbox, want)):
+                return l
+        fail("the line brought from the other page couldn't be read back")
+
+    added = add_line(current, page_no, text, find(current, ref).id, ref.text, at=at)
+    gone = delete_lines(added.pdf, [(page_no, (c := find(added.pdf, l)).id, c.text) for l in copied], close_gap=False)
+    warnings = added.warnings + [w for w in gone.warnings if w not in added.warnings]
+    return EditResult(gone.pdf, warnings, added.text, added.areas, added.marks, added.lookalikes)

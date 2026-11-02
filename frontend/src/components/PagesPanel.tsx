@@ -1,6 +1,6 @@
 import type { DocInfo } from "../api";
 import { CLOSE, Icon } from "./Icon";
-import Thumbnails from "./Thumbnails";
+import Thumbnails, { type PageEdits } from "./Thumbnails";
 
 type Props = {
   doc: DocInfo;
@@ -8,10 +8,11 @@ type Props = {
   current: number;
   onJump: (page: number) => void;
   onClose: () => void;
+  edit?: PageEdits;
 };
 
 /** Every page as a small picture, to jump to (where there's no room for the list beside the pages). */
-export default function PagesPanel({ doc, version, current, onJump, onClose }: Props) {
+export default function PagesPanel({ doc, version, current, onJump, onClose, edit }: Props) {
   return (
     <section className="panel pages-panel" aria-label="Pages">
       <div className="panel-head">
@@ -22,7 +23,7 @@ export default function PagesPanel({ doc, version, current, onJump, onClose }: P
           <Icon d={CLOSE} />
         </button>
       </div>
-      <Thumbnails doc={doc} version={version} current={current} onJump={onJump} className="thumbs--grid" />
+      <Thumbnails doc={doc} version={version} current={current} onJump={onJump} className="thumbs--grid" edit={edit} />
     </section>
   );
 }
